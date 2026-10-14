@@ -16,7 +16,8 @@ Human steps (send as written):
 
 > Setting up French Weave. A few quick questions below; I'll do the rest, except these steps for you:
 > 1. If you pick the Chrome extension: at the end, open `chrome://extensions`, switch on **Developer mode**, click
->    **Load unpacked**, and pick the folder I give you. Chrome doesn't let scripts do this part.
+>    **Load unpacked**, and pick the folder I give you, then click the French Weave toolbar icon and **Allow all
+>    websites** (or tick **This site** on each site you want). Chrome doesn't let scripts do this part.
 > 2. If you pick the Chrome extension: a Gemini API key (free at https://aistudio.google.com/apikey), as a file
 >    path now or pasted into the extension's popup at the end.
 > 3. If you pick Codex CLI: the next time you start `codex`, it asks you to review a new hook; choose
@@ -122,7 +123,9 @@ If one says `FAIL`, fix it before going on; rerunning setup fixes most.
 Tell the person, in plain English (leave out the items for things they didn't pick):
 
 1. Chrome extension: the HUMAN Chrome step with the exact folder from `check` (`~/.french-weave/extension` expanded
-   to a full path): `chrome://extensions` -> Developer mode on -> Load unpacked -> that folder.
+   to a full path): `chrome://extensions` -> Developer mode on -> Load unpacked -> that folder. Then the French
+   Weave toolbar icon (puzzle piece menu -> pin it): every-site mode, click **Allow all websites** (Chrome asks
+   once; until then it only runs on X); only-sites-I-turn-on mode, tick **This site** on each site they want.
 2. Chrome extension, no key file given: click the French Weave toolbar icon (puzzle piece menu -> pin it) and paste
    the Gemini key.
 3. Codex CLI: at the next `codex` start, choose **Trust all and continue** when it asks about the new hook.

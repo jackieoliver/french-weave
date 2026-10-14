@@ -1,7 +1,7 @@
 # French Weave
 
 Learn French passively from the English you already read. French Weave swaps a few French words into AI chat
-replies (and tweets), at your level, and moves words from learning to known as you see them.
+replies and the web pages you read, at your level, and moves words from learning to known as you see them.
 
 > The build passes maintenant, mais the cache is stale, donc I cleared it.
 > (maintenant = now, "man-tuh-nahn"; mais = but, "meh"; donc = so, "donk")
@@ -20,10 +20,12 @@ extension, a claude.ai or ChatGPT block), whether the extension runs on every si
 how you'll give it a Gemini key. Skip any question to take the default. Rerunning setup (`/french-weave:setup`)
 asks again and never resets your progress.
 
-Then you do up to three things (your agent tells you when):
+Then you do up to four things (your agent tells you when):
 1. Extension: a free Gemini API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey), as a file path or pasted into the extension popup.
 2. Extension: in Chrome, `chrome://extensions`, turn on **Developer mode**, **Load unpacked**, pick the folder it names.
-3. Codex only: at the next `codex` start, choose **Trust all and continue** for the new hook.
+3. Extension: click the French Weave toolbar icon and **Allow all websites** (Chrome asks once; until then it only
+   runs on X). If you chose only sites you turn on, tick **This site** in the same popup on each site you want.
+4. Codex only: at the next `codex` start, choose **Trust all and continue** for the new hook.
 
 **claude.ai or ChatGPT, with Claude Code installed.** Run `/french-weave:export` (or `/french-weave:export --chatgpt`)
 and paste the block it prints:
@@ -60,7 +62,7 @@ All of it shares one word list on your machine, so words you see on the web coun
 | `/french-weave:known <word>` | Mark a word known (no more glosses) |
 | `/french-weave:learn <word>` | Put a word back into the learning set |
 | `/french-weave:stage 1-4\|auto` | Pin your stage, or let it follow your known words |
-| `/french-weave:pause` / `resume` | Stop or restart French in chat and on X |
+| `/french-weave:pause` / `resume` | Stop or restart French in chat and on websites |
 | `/french-weave:export [--chatgpt] [--log-day]` | Paste-ready block for claude.ai or ChatGPT |
 
 The same commands work from a terminal as `python3 ~/.french-weave/app/scripts/fw.py <command>`.
@@ -71,10 +73,10 @@ Words come from [`data/lexicon.csv`](data/lexicon.csv): about 1,000 French words
 frequency/usefulness order (connectors and adverbs first, then everyday nouns, adjectives and verbs), each with a
 gloss and a sound hint.
 
-- **Exposure day**: a day you saw the word in a Claude Code or Codex reply, or in a tweet.
+- **Exposure day**: a day you saw the word in a Claude Code or Codex reply, or on a web page.
 - **Learning (active)**: up to 20 at a time; at most 5 new words a day, and none while 5 or more are shaky.
 - **Learning -> known**: 3 exposure days, with no flip, `learn` or peek on the last 3.
-- **Flip or `learn` -> shaky**: clicking a French word on X back to English, or `/french-weave:learn`. A **peek**
+- **Flip or `learn` -> shaky**: clicking a French word on a web page back to English, or `/french-weave:learn`. A **peek**
   (hovering until the meaning shows) holds back a learning word; a known word peeked on 2 days within a week turns
   shaky. **Shaky -> known** after 7 days with no flip or peek.
 - **Stage** follows your known words: 1 to start, 2 at 40 known, 3 at 150, 4 at 400.

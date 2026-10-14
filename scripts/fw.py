@@ -190,8 +190,13 @@ def setup(args):
     print('Human steps left (Chrome blocks scripts from doing these):')
     print('  1. Open chrome://extensions and switch on Developer mode (top right).')
     print(f'  2. Click "Load unpacked" and pick: {home / "extension"}')
+    print('  3. Pin the French Weave toolbar icon (puzzle piece menu) and click it:')
+    if sites == 'all':
+        print('     click "Allow all websites" (Chrome asks once; until then it runs only on X).')
+    else:
+        print('     on each site you want, tick "This site" (Chrome asks for that site).')
     if not key and not (home / 'gemini_key').exists():
-        print('  3. Click the French Weave toolbar icon and paste a Gemini API key (https://aistudio.google.com/apikey).')
+        print('     Paste a Gemini API key (https://aistudio.google.com/apikey).')
     print('Chat weaving runs wherever the plugin is enabled; sessions opened from now on pick it up.')
 
 
