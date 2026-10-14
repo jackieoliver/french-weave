@@ -130,6 +130,23 @@ def setup_codex(dry_run):
     print('  Codex never runs a new hook before that. `codex exec` runs stay French-free either way.')
 
 
+KEY_SHAPE = re.compile(r'^[A-Za-z0-9_-]{30,64}$')
+
+
+def read_key_file(arg):
+    """The key from a file. Never echoes the argument, the path or the contents, since any of them may be the key."""
+    path = Path(arg).expanduser()
+    if not path.is_file() and (arg.startswith('AIza') or KEY_SHAPE.match(arg)):
+        sys.exit('That looks like a key, not a file path; paste the key into the extension popup instead.')
+    try:
+        key = path.read_text().strip()
+    except (OSError, UnicodeDecodeError):
+        sys.exit('Could not read the Gemini key file.')
+    if not KEY_SHAPE.match(key):
+        sys.exit('The Gemini key file should hold only the key (letters, digits, - and _).')
+    return key
+
+
 def setup(args):
     info = plan(args.user_data_dir)
     if sys.version_info < (3, 9):
@@ -137,11 +154,7 @@ def setup(args):
     root, home = fwlib.PLUGIN_ROOT, fwlib.home()
     if not (root / 'extension' / 'manifest.json').exists():
         sys.exit(f'No extension/ folder next to {root / "scripts"}; run setup from a full copy of the repo.')
-    key = None
-    if args.gemini_key_file:
-        key = Path(args.gemini_key_file).expanduser().read_text().strip()
-        if not key:
-            sys.exit('The Gemini key file is empty.')
+    key = read_key_file(args.gemini_key_file) if args.gemini_key_file else None
     if args.dry_run:
         print(json.dumps(dict(info, dry_run=True, gemini_key='would be stored' if key else 'not given',
                               known_top=args.known_top, sites=args.sites), indent=1))

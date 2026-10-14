@@ -8,7 +8,8 @@
 // granted up front, since Chrome's grant dialog can't be clicked from a script. Serves a fake x.com timeline and a
 // fake article on another site (synthetic text), and prints what happened: native host sync, real Gemini swaps
 // (a few requests), delayed hover tip, click flip, health text untouched, links and forms intact, seen/flip events
-// flushed back to the word state, and the article reverting when its site is turned off.
+// flushed back to the word state, forged page events ignored, no swaps on webmail, and the article reverting
+// when its site is turned off.
 import { chromium } from 'playwright';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -87,6 +88,23 @@ try {
     // Events: seen + flip are queued, then flushed to the host after ~10 s.
     await page.waitForTimeout(13000);
     out.pendingAfterFlush = await sw.evaluate(() => chrome.storage.local.get('pendingEvents').then((o) => o.pendingEvents));
+    out.identifyingAttrs = await page.$$eval('[data-fw-key],[data-fw-word]', (els) => els.length);
+    // The page itself can't forge events: synthetic clicks and hovers, on a real swap or on its own fw-word span.
+    out.forged = await page.evaluate(async () => {
+      const real = document.querySelector('.fw-word');
+      const before = real.textContent;
+      const fake = Object.assign(document.createElement('span'), { className: 'fw-word', textContent: 'très' });
+      fake.dataset.fwWord = 'très';
+      document.querySelector('main').append(fake);
+      for (const el of [real, fake]) {
+        el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+      return { realUnchanged: real.textContent === before, fakeUnchanged: fake.textContent === 'très' };
+    });
+    out.forged.pending = await sw.evaluate(() => chrome.storage.local.get('pendingEvents').then((o) => o.pendingEvents || []));
   }
   // A plain article on another site: the dynamically registered content script runs there too.
   for (let i = 0; i < 40; i++) {
@@ -104,6 +122,16 @@ try {
   out.articleHealthTouched = await reading.$$eval('#a3 .fw-word', (els) => els.length);
   out.articleFormTouched = await reading.$$eval('form .fw-word', (els) => els.length);
   out.articleNavIntact = await reading.$eval('nav', (n) => n.textContent);
+
+  // Webmail starts off even with every site on: no swaps, so no page text sent.
+  await ctx.route('https://mail.google.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: article }));
+  const calls = () => sw.evaluate(() => chrome.storage.local.get('modelCalls').then((o) => o.modelCalls?.count || 0));
+  const callsBeforeMail = await calls();
+  const mail = await ctx.newPage();
+  await mail.goto('https://mail.google.com/mail/u/0/');
+  await mail.waitForTimeout(8000);
+  out.mailSwaps = await mail.$$eval('.fw-word', (els) => els.length);
+  out.mailModelCalls = (await calls()) - callsBeforeMail;
 
   const popup = await ctx.newPage();
   await popup.goto(`chrome-extension://${out.extensionId}/src/popup.html`);

@@ -1,6 +1,6 @@
 // Content script: watch readable text (tweets on X, prose elsewhere), ask the background for swaps, paint them,
 // handle the delayed gloss, click/Enter flip and seen/peek/flip events. Every async reply belongs to one config generation.
-import { flatten, applySwaps, revert, toggle, SWAP_CLASS } from './text.js';
+import { flatten, applySwaps, revert, toggle, isSwap, swapWord, SWAP_CLASS } from './text.js';
 import { hashKey } from './hash.js';
 import { siteEnabled, hasSiteAccess } from './settings.js';
 import { selector, readable } from './page.js';
@@ -12,6 +12,7 @@ let visible = null;
 let timer = null;
 let generation = 0;
 const memo = new Map();
+const keys = new WeakMap(); // element -> revision:text hash, kept off the DOM so pages can't read it
 const pending = new Map();
 const inflight = new Set();
 const tracked = new Set();
@@ -24,14 +25,20 @@ let tipTimer = null;
 const send = (msg) => chrome.runtime.sendMessage(msg);
 const on = () => config?.hasKey && !config.paused && siteEnabled(config.settings, location.href) && hasSiteAccess(location.href, config.origins);
 const targets = () => selector(location.href);
+// Only real user input on spans this extension made; pages can't forge flips, peeks or seen events.
+const swapFor = (e) => {
+  const span = e.isTrusted && e.target?.closest?.(`span.${SWAP_CLASS}`);
+  return span && isSwap(span) ? span : null;
+};
 
 function record(span, event) {
-  if (!span.dataset.fwWord || !on()) return;
-  const id = new Date().toISOString().slice(0, 10) + ':' + event + ':' + span.dataset.fwWord;
+  const word = swapWord(span);
+  if (!word || !on()) return;
+  const id = new Date().toISOString().slice(0, 10) + ':' + event + ':' + word;
   const daily = event === 'seen' || event === 'peek';
   if (daily && seen.has(id)) return;
   if (daily) seen.add(id);
-  void send({ type: 'event', word: span.dataset.fwWord, event }).then((r) => {
+  void send({ type: 'event', word, event }).then((r) => {
     if (!r?.ok && daily) seen.delete(id);
   }).catch(() => { if (daily) seen.delete(id); });
 }
@@ -41,7 +48,7 @@ function hideTip() {
   for (const el of document.querySelectorAll(`.${SWAP_CLASS}.fw-tip`)) el.classList.remove('fw-tip');
 }
 function armTip(e) {
-  const span = e.target?.closest?.(`span.${SWAP_CLASS}`);
+  const span = swapFor(e);
   if (!span || !on() || span.classList.contains('fw-tip')) return;
   hideTip();
   tipTimer = setTimeout(() => {
@@ -52,7 +59,7 @@ function armTip(e) {
   }, TIP_DELAY_MS);
 }
 function disarmTip(e) {
-  const span = e.target?.closest?.(`span.${SWAP_CLASS}`);
+  const span = swapFor(e);
   if (span && !span.contains(e.relatedTarget)) hideTip();
 }
 function seenVisible() {
@@ -60,21 +67,21 @@ function seenVisible() {
   for (const span of visibleWords) if (span.isConnected) record(span, 'seen');
 }
 function paint(el, key) {
-  if (!on() || el.dataset.fwKey !== key || !readable(el, location.href)) return;
+  if (!on() || keys.get(el) !== key || !readable(el, location.href)) return;
   const swaps = memo.get(key);
   if (!swaps?.length) return;
   applySwaps(el, swaps);
-  for (const span of el.querySelectorAll(`.${SWAP_CLASS}`)) visible.observe(span);
+  for (const span of el.querySelectorAll(`.${SWAP_CLASS}`)) if (isSwap(span)) visible.observe(span);
   observer?.takeRecords();
 }
 function consider(el) {
   if (!on() || !el.isConnected) return;
   if (el.querySelector(`.${SWAP_CLASS}`)) revert(el);
   observer?.takeRecords();
-  if (!readable(el, location.href)) { delete el.dataset.fwKey; return; }
+  if (!readable(el, location.href)) { keys.delete(el); return; }
   const text = flatten(el).text;
   const key = `${config.revision}:${hashKey(text)}`;
-  el.dataset.fwKey = key;
+  keys.set(el, key);
   if (memo.has(key)) { paint(el, key); return; }
   let p = pending.get(key);
   if (!p) { p = { text, els: new Set() }; pending.set(key, p); }
@@ -103,7 +110,7 @@ async function flush() {
       failures.set(i.key, tries);
       if (p && tries <= MAX_RETRIES) {
         const wait = Math.max(result?.retryAfterMs || 0, 5000 * tries);
-        setTimeout(() => { if (gen === generation) for (const el of p.els) if (el.dataset.fwKey === i.key) { delete el.dataset.fwKey; consider(el); } }, wait);
+        setTimeout(() => { if (gen === generation) for (const el of p.els) if (keys.get(el) === i.key) { keys.delete(el); consider(el); } }, wait);
       }
       continue;
     }
@@ -134,7 +141,7 @@ function mutations(records) {
   }
   for (const el of changed) {
     if (el.querySelector(`.${SWAP_CLASS}`)) revert(el);
-    delete el.dataset.fwKey;
+    keys.delete(el);
     if (readable(el, location.href)) { near.unobserve(el); near.observe(el); }
   }
   observer?.takeRecords();
@@ -151,7 +158,7 @@ function start() {
     seenVisible();
   }, { threshold: [0, 0.5] });
   near = new IntersectionObserver((entries) => {
-    for (const e of entries) if (e.isIntersecting && !e.target.dataset.fwKey) consider(e.target);
+    for (const e of entries) if (e.isIntersecting && !keys.has(e.target)) consider(e.target);
   }, { rootMargin: '600px' });
   observer = new MutationObserver(mutations);
   observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
@@ -163,7 +170,7 @@ function stop() {
   near?.disconnect(); visible?.disconnect();
   clearTimeout(timer); timer = null;
   pending.clear(); inflight.clear(); memo.clear(); failures.clear(); hideTip();
-  for (const el of tracked) { revert(el); delete el.dataset.fwKey; }
+  for (const el of tracked) { revert(el); keys.delete(el); }
   tracked.clear(); visibleWords.clear();
 }
 function update(next, retry = false) {
@@ -172,7 +179,7 @@ function update(next, retry = false) {
   stop(); config = next; start();
 }
 function reveal(e) {
-  const span = e.target?.closest?.(`span.${SWAP_CLASS}`);
+  const span = swapFor(e);
   if (!span || !on()) return;
   if (e.type === 'keydown' && !['Enter', ' '].includes(e.key)) return;
   e.preventDefault(); e.stopPropagation();

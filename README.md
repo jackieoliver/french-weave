@@ -108,11 +108,12 @@ The extension's prompts are built for levels 1-2; at Stage 3-4 it uses the level
 ## Privacy
 
 Everything stays on your machine in `~/.french-weave` (override with `FRENCH_WEAVE_HOME`). The hook reads your
-local Claude Code and Codex transcripts to count exposure and never sends them anywhere. The extension sends readable
-page text from sites where it's on to Google's Gemini API with your key (free-tier keys allow Google to train on
-prompts) and talks to the plugin through a Chrome native messaging host that only this extension's ID may call. If
-setup stored your Gemini key, it sits in `~/.french-weave/gemini_key` (mode 600) and is handed only to the
-extension's background worker, never to the pages it runs on.
+local Claude Code and Codex transcripts to count exposure and never sends them anywhere. By default the extension
+runs on every site you allow, and readable page text from those sites goes to Google's Gemini API with your key
+(free-tier keys allow Google to train on prompts); webmail, AI chat sites and local addresses start off. It talks
+to the plugin through a Chrome native messaging host that only this extension's ID may call. If setup stored
+your Gemini key, it sits in `~/.french-weave/gemini_key` (mode 600) and is handed only to the extension's
+background worker, never to the pages it runs on.
 
 ## Layout
 

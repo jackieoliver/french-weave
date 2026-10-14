@@ -18,8 +18,10 @@ default option first with "(default)" in its label. Leave Codex CLI out of quest
    into the extension's popup at the end (default) / A file that contains it: type its path under Other. Never
    paste the key itself here.
 
-Skipped questions get the default. Never ask for the key in chat, and never print it. Then run, with the `source`
-folder from the plan above:
+Skipped questions get the default. Never ask for the key in chat, and never print it. If the answer to question 4
+looks like a key rather than a file path (for example it starts with `AIza`), don't run setup with it, don't repeat
+it, and tell them to paste it into the extension popup instead. Then run, with the `source` folder from the plan
+above:
 
 `python3 <source>/scripts/fw.py setup $ARGUMENTS` plus:
 - question 1: `--known-top 0`, `--known-top 40` or `--known-top 150`

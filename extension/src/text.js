@@ -9,6 +9,11 @@ export const SWAP_CLASS = 'fw-word';
 // Remember synthetic siblings so a framework replacing its original text node wins.
 const splitGroups = new WeakMap();
 const spanGroups = new WeakMap();
+// Spans this extension made -> their learning word ('' if none). Kept out of the DOM, so a page can neither read the
+// word list from attributes nor pass off its own span as a swap.
+const owned = new WeakMap();
+export const isSwap = (span) => owned.has(span);
+export const swapWord = (span) => owned.get(span) || '';
 
 // Returns { text, map, segs, raw }:
 //   raw   = every text node's data in order (plus emoji alt text), untouched
@@ -33,7 +38,7 @@ export function flatten(root) {
           push(null, child.getAttribute('alt') || '', false);
         } else if (tag === 'BR') {
           push(null, '\n', false);
-        } else if (child.classList && child.classList.contains(SWAP_CLASS)) {
+        } else if (owned.has(child)) {
           push(null, child.getAttribute('data-en') || child.textContent, false);
         } else {
           walk(child, blocked || SKIP_TAGS.has(tag) || child.matches('[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="button"],[hidden],[aria-hidden="true"],[translate="no"],.notranslate'));
@@ -133,13 +138,13 @@ function wrap(place, swap) {
   span.setAttribute('data-fr', swap.f);
   span.setAttribute('data-tip', tipFor(swap));
   span.setAttribute('data-fw-split', '1');
-  if (swap.word) span.dataset.fwWord = swap.word;
   if (swap.status) span.dataset.fwStatus = swap.status;
   span.tabIndex = 0;
   span.setAttribute('role', 'button');
   span.setAttribute('aria-label', `${swap.f}: ${swap.g}. Show English`);
   span.textContent = swap.f;
   mid.parentNode.replaceChild(span, mid);
+  owned.set(span, swap.word || '');
   const group = splitGroups.get(node) || { node, pieces: new Set() };
   group.prefix = node.data;
   group.pieces.add(span); group.pieces.add(suffix);
@@ -169,7 +174,7 @@ export function applySwaps(root, swaps) {
 
 // Removes every swap under root and merges the split text nodes back, restoring the original node.
 export function revert(root) {
-  const spans = Array.from(root.querySelectorAll(`span.${SWAP_CLASS}`));
+  const spans = Array.from(root.querySelectorAll(`span.${SWAP_CLASS}`)).filter(isSwap);
   const groups = new Set(spans.map((span) => spanGroups.get(span)).filter(Boolean));
   for (const group of groups) {
     if (group.node.data !== group.prefix && group.node.parentNode) {

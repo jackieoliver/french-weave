@@ -25,11 +25,26 @@ export function newSitesDefault(settings, sites) {
   return typeof settings.newSitesEnabled === 'boolean' ? settings.newSitesEnabled : sites !== 'ask';
 }
 
-// `settings` here has newSitesEnabled resolved to a boolean (see newSitesDefault).
+// Webmail, AI chat and local addresses start off even when every site is on, so their text never goes to
+// Gemini unless the user turns the site on from the popup.
+const OFF_HOSTS = new Set(['mail.google.com', 'outlook.live.com', 'outlook.office.com', 'outlook.office365.com',
+  'mail.proton.me', 'mail.yahoo.com', 'claude.ai', 'chatgpt.com', 'chat.openai.com', 'gemini.google.com']);
+export function offByDefault(hostname) {
+  return OFF_HOSTS.has(hostname) || hostname === 'localhost' || hostname === '[::1]' ||
+    /\.(local|localhost)$/.test(hostname) ||
+    /^(127|10)\.\d+\.\d+\.\d+$/.test(hostname) || /^192\.168\.\d+\.\d+$/.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(hostname);
+}
+
+// `settings` here has newSitesEnabled resolved to a boolean (see newSitesDefault). A popup choice wins.
+export function siteOn(settings, hostname) {
+  return settings.siteOverrides[hostname] ?? (settings.newSitesEnabled && !offByDefault(hostname));
+}
+
 export function siteEnabled(settings, url) {
   try {
     const u = new URL(url);
-    return /^https?:$/.test(u.protocol) && settings.enabled && (settings.siteOverrides[u.hostname] ?? settings.newSitesEnabled);
+    return /^https?:$/.test(u.protocol) && settings.enabled && siteOn(settings, u.hostname);
   } catch { return false; }
 }
 

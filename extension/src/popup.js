@@ -1,6 +1,6 @@
 import { resolveLevel, MAX_BUILT_LEVEL } from './levels.js';
 import { MODELS } from './gemini.js';
-import { siteEnabled, hasSiteAccess } from './settings.js';
+import { siteEnabled, siteOn, hasSiteAccess } from './settings.js';
 
 const $ = (id) => document.getElementById(id);
 const ALL_SITES = ['http://*/*', 'https://*/*'];
@@ -30,12 +30,12 @@ async function refresh() {
   const all = await chrome.permissions.contains({ origins: ALL_SITES });
   $('enabled').checked = s.enabled;
   $('newSitesEnabled').value = String(s.newSitesEnabled);
-  $('siteEnabled').checked = !!host && (s.siteOverrides[host] ?? s.newSitesEnabled) && hasSiteAccess(tab.url, c.origins);
+  $('siteEnabled').checked = !!host && siteOn(s, host) && hasSiteAccess(tab.url, c.origins);
   $('siteEnabled').disabled = !host;
   $('siteName').textContent = host || 'This page (not a website)';
   $('grantSites').hidden = all || !s.newSitesEnabled;
   $('accessNote').textContent = s.newSitesEnabled
-    ? (all ? 'On for every site except the ones you turn off.' : 'Chrome needs your OK before it can run on other sites.')
+    ? (all ? 'On for every site except the ones you turn off. Webmail, AI chat and local addresses start off.' : 'Chrome needs your OK before it can run on other sites.')
     : 'Off on sites until you turn them on here.';
   const { stage, chosen } = resolveLevel(s, c.stage);
   $('levelInfo').textContent = `L${chosen}${stage && chosen !== stage ? ` (Claude Code stage ${stage})` : ''}${chosen > MAX_BUILT_LEVEL ? ` · L${MAX_BUILT_LEVEL} rules for now` : ''}`;

@@ -7,6 +7,7 @@ import { cleanSettings, newSitesDefault, siteEnabled, hasSiteAccess } from './se
 import { resolveLevel, exactFr, isZeroFrench, wordCount } from './levels.js';
 import { hashKey } from './hash.js';
 import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from './hostsource.js';
+import { DAILY_MODEL_CALLS, callsToday, countCall } from './quota.js';
 
 const store = chrome.storage.local;
 const cache = createCache(chromeStorage);
@@ -66,8 +67,10 @@ async function swaps(msg, sender) {
   try {
     const fresh = await modelCall(async () => {
       if ((await context()).revision !== ctx.revision) return null;
+      if (await callsToday(chromeStorage) >= DAILY_MODEL_CALLS) throw new Error(`Daily limit of ${DAILY_MODEL_CALLS} model calls reached; French resumes tomorrow`);
       const { wordState, apiKey, hostKey } = await store.get(['wordState', 'apiKey', 'hostKey']);
-      return requestSwaps({ apiKey: apiKey || hostKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words,
+      const fetchImpl = async (...args) => { await countCall(chromeStorage); return fetch(...args); };
+      return requestSwaps({ apiKey: apiKey || hostKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, fetchImpl,
         shownToday: await shownToday(chromeStorage), cooldown, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
     });
     return await locked(async () => {

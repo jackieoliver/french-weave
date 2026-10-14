@@ -449,10 +449,13 @@ class Host(Home):
         self.assertIsNone(fw_host.read_message(io.BytesIO(b'')))
 
 
+FAKE_KEY = 'AIzaTEST_placeholder_not_a_real_key_0000'
+
+
 class Setup(Home):
     def test_setup_installs_extension_host_and_key(self):
         key = self.home / 'key.txt'
-        key.write_text('  AIzaTEST \n')
+        key.write_text(f'  {FAKE_KEY} \n')
         with mock.patch.object(Path, 'home', return_value=self.home), \
                 mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': ''}), mock.patch('sys.stdout', new=io.StringIO()) as out:
             fw.main(['setup', '--dry-run', '--gemini-key-file', str(key)])
@@ -462,7 +465,7 @@ class Setup(Home):
         self.assertIn('Load unpacked', out.getvalue())
         self.assertTrue((home / 'extension' / 'manifest.json').exists())
         self.assertFalse((home / 'extension' / 'test').exists())
-        self.assertEqual((home / 'gemini_key').read_text().strip(), 'AIzaTEST')
+        self.assertEqual((home / 'gemini_key').read_text().strip(), FAKE_KEY)
         self.assertEqual(oct((home / 'gemini_key').stat().st_mode & 0o777), '0o600')
         base = self.home / ('Library/Application Support/Google/Chrome' if sys.platform == 'darwin' else '.config/google-chrome')
         manifest = json.loads((base / 'NativeMessagingHosts' / f'{fw.HOST_NAME}.json').read_text())
@@ -475,7 +478,25 @@ class Setup(Home):
                                 env=dict(os.environ))
         reply = json.loads(result.stdout[4:])
         self.assertTrue(reply['ok'])
-        self.assertEqual(reply['geminiKey'], 'AIzaTEST')
+        self.assertEqual(reply['geminiKey'], FAKE_KEY)
+
+    def test_key_file_problems_never_echo_the_key_or_path(self):
+        def fails(arg):
+            with mock.patch.object(Path, 'home', return_value=self.home), mock.patch('sys.stdout', new=io.StringIO()) as out, \
+                    self.assertRaises(SystemExit) as caught:
+                fw.main(['setup', '--dry-run', '--gemini-key-file', arg])
+            return str(caught.exception.code) + out.getvalue()
+        self.assertIn('looks like a key', fails(FAKE_KEY))  # the key itself, given as the path
+        self.assertNotIn(FAKE_KEY, fails(FAKE_KEY))
+        self.assertIn('looks like a key', fails('x' * 40))
+        missing = str(self.home / 'secret-dir' / 'no-such-file')
+        self.assertNotIn('secret-dir', fails(missing))
+        bad = self.home / 'notes.txt'
+        bad.write_text(f'my key is {FAKE_KEY}\n')
+        message = fails(str(bad))
+        self.assertIn('only the key', message)
+        self.assertNotIn(FAKE_KEY, message)
+        self.assertFalse((self.home / 'fw').exists())
 
     def run_setup(self, *flags):
         with mock.patch.object(Path, 'home', return_value=self.home), mock.patch.dict(os.environ, {

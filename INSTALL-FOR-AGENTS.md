@@ -42,7 +42,9 @@ Questions:
    - A file that contains it: type its path (in Claude Code, under Other). Never paste the key itself here.
 
 Steps 1 and 2 below don't depend on the answers: if you can keep working while the person answers, do them now;
-otherwise do them right after. Never ask for the key in chat if a file path is possible, and never print the key.
+otherwise do them right after. Never ask for the key in chat, and never print it. If an answer looks like a key
+rather than a file path (for example it starts with `AIza`), don't pass it to setup or repeat it; tell the person to
+paste it into the extension popup instead.
 
 How the answers map to setup (step 3) and the hand-over (step 5):
 

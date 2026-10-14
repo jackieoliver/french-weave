@@ -79,6 +79,8 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
   });
   const call = (msg) => dispatch(msg, popup);
   const wait = (ms = 400) => new Promise((done) => setTimeout(done, ms));
+  // happy-dom has no isTrusted; real user input is marked by hand, a page's dispatchEvent is left untrusted.
+  const user = (e) => Object.defineProperty(e, 'isTrusted', { value: true });
   try {
     await import('../src/background.js');
     let config = await dispatch({ type: 'config' }, page());
@@ -114,25 +116,44 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     expect(local.pendingEvents.map((e) => e.kind)).toEqual(['seen']);
     expect(span.dataset.fwStatus).toBe('active');
     // The gloss waits for a dwell; a passing pointer neither shows it nor records anything.
-    span.dispatchEvent(new win.MouseEvent('mouseover', { bubbles: true }));
+    span.dispatchEvent(user(new win.MouseEvent('mouseover', { bubbles: true })));
     await wait(100);
-    span.dispatchEvent(new win.MouseEvent('mouseout', { bubbles: true }));
+    span.dispatchEvent(user(new win.MouseEvent('mouseout', { bubbles: true })));
     await wait(700);
     expect(span.classList.contains('fw-tip')).toBe(false);
     expect(local.pendingEvents).toHaveLength(1);
-    span.dispatchEvent(new win.MouseEvent('mouseover', { bubbles: true }));
+    span.dispatchEvent(user(new win.MouseEvent('mouseover', { bubbles: true })));
     await wait(800);
     expect(span.classList.contains('fw-tip')).toBe(true);
     expect(local.pendingEvents.map((e) => e.kind)).toEqual(['seen', 'peek']);
-    span.dispatchEvent(new win.MouseEvent('mouseout', { bubbles: true }));
-    span.dispatchEvent(new win.MouseEvent('mouseover', { bubbles: true }));
+    span.dispatchEvent(user(new win.MouseEvent('mouseout', { bubbles: true })));
+    span.dispatchEvent(user(new win.MouseEvent('mouseover', { bubbles: true })));
     await wait(800);
     expect(local.pendingEvents).toHaveLength(2); // one peek per word per day
-    span.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    span.dispatchEvent(user(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
     await wait(20);
     expect(span.textContent).toBe('and');
     expect(local.pendingEvents.map((e) => e.kind)).toEqual(['seen', 'peek', 'flip']);
     expect(await dispatch({ type: 'event', word: 'bonjour', event: 'seen' }, page())).toEqual({ ok: false }); // not a known word
+    // Nothing in the DOM names the word or the revision; pages can't forge events with fake spans or synthetic input.
+    expect(win.document.body.innerHTML).not.toMatch(/data-fw-(word|key)/);
+    const fake = win.document.createElement('span');
+    fake.className = 'fw-word';
+    fake.dataset.fwWord = 'très';
+    fake.setAttribute('data-en', 'very');
+    fake.textContent = 'très';
+    win.document.querySelector('main').append(fake);
+    await wait(20);
+    expect(span.isConnected).toBe(true);
+    fake.dispatchEvent(user(new win.MouseEvent('click', { bubbles: true })));
+    fake.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    span.dispatchEvent(new win.MouseEvent('click', { bubbles: true })); // untrusted click on a real swap
+    span.dispatchEvent(new win.MouseEvent('mouseover', { bubbles: true }));
+    await wait(800);
+    expect(fake.textContent).toBe('très');
+    expect(span.textContent).toBe('and');
+    expect(local.pendingEvents.map((e) => e.kind)).toEqual(['seen', 'peek', 'flip']);
+    fake.remove(); await wait();
 
     // Syncing flushes the queue to the host first; only words and kinds leave, never page text.
     await call({ type: 'syncWords' });
@@ -192,6 +213,18 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     await wait(5500);
     expect(retried.querySelector('.fw-word')?.textContent).toBe('et');
 
+    // Past the daily cap, no more Gemini requests until tomorrow.
+    const callsBefore = modelCalls;
+    const counted = local.modelCalls;
+    local.modelCalls = { ...counted, count: 300 };
+    const capped = win.document.createElement('p');
+    capped.textContent = 'She reads late and sleeps in on quiet mornings.';
+    win.document.querySelector('main').append(capped); await wait();
+    expect(modelCalls).toBe(callsBefore);
+    expect(capped.querySelector('.fw-word')).toBeNull();
+    expect(local.modelStatus.error).toContain('Daily limit');
+    local.modelCalls = counted;
+
     // Removing website access reverts the page.
     origins = [];
     for (const fn of originEvents.removed) fn();
@@ -203,6 +236,7 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     expect(toPages.join('')).not.toContain('synthetic-');
     expect(pageReplies.join('')).not.toContain('synthetic-');
     expect(pageReplies.some((r) => r.includes('"hasKey":true'))).toBe(true);
+    expect(local.modelCalls.count).toBe(modelCalls); // every Gemini request counts toward the daily cap
   } finally {
     if (release) release();
     await win.happyDOM.close();
