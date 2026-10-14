@@ -49,6 +49,9 @@ python3 "$FW" setup --gemini-key-file /path/to/key-file   # or without --gemini-
 If `find` prints nothing, run setup from a clone of `<repo>` instead (`python3 <clone>/scripts/fw.py setup ...`);
 setup copies what it needs, so the clone can be deleted afterwards.
 
+If the person runs Chrome or Chromium with a custom `--user-data-dir`, add `--user-data-dir <that dir>` (repeatable):
+a browser started that way looks for native hosts only inside that dir.
+
 Setup is safe to run again (it keeps the person's word progress). It creates:
 
 - `~/.french-weave/` (or `$FRENCH_WEAVE_HOME`): word state, the extension folder to load, the native host

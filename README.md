@@ -95,6 +95,7 @@ tests/            python tests, live model check
 python3 -m unittest discover -s tests          # hook, rules, native host, setup
 cd extension && bun install && bun test         # extension (happy-dom)
 python3 tests/model_eval.py --out /tmp/fw-eval  # live check: 20 claude -p runs, isolated from your config
+node tests/extension_e2e.mjs                    # after setup: Playwright Chromium + fake X page + real Gemini call
 ```
 
 ## License
