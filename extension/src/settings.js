@@ -30,10 +30,11 @@ export function newSitesDefault(settings, sites) {
 const OFF_HOSTS = new Set(['mail.google.com', 'outlook.live.com', 'outlook.office.com', 'outlook.office365.com',
   'mail.proton.me', 'mail.yahoo.com', 'claude.ai', 'chatgpt.com', 'chat.openai.com', 'gemini.google.com']);
 export function offByDefault(hostname) {
-  return OFF_HOSTS.has(hostname) || hostname === 'localhost' || hostname === '[::1]' ||
-    /\.(local|localhost)$/.test(hostname) ||
-    /^(127|10)\.\d+\.\d+\.\d+$/.test(hostname) || /^192\.168\.\d+\.\d+$/.test(hostname) ||
-    /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(hostname);
+  const host = hostname.replace(/\.$/, '');
+  return OFF_HOSTS.has(host) || host === 'localhost' || host === '0.0.0.0' || host.startsWith('[') ||
+    /\.(local|localhost|internal|lan|test|home\.arpa|ts\.net)$/.test(host) ||
+    /^(127|10)\.\d+\.\d+\.\d+$/.test(host) || /^(192\.168|169\.254)\.\d+\.\d+$/.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(host) || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+$/.test(host);
 }
 
 // `settings` here has newSitesEnabled resolved to a boolean (see newSitesDefault). A popup choice wins.

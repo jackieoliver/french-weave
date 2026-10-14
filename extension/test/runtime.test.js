@@ -122,6 +122,13 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     await wait(700);
     expect(span.classList.contains('fw-tip')).toBe(false);
     expect(local.pendingEvents).toHaveLength(1);
+    // Focus shows the gloss for keyboard readers but never records a peek, since a page can focus a span from script.
+    span.dispatchEvent(user(new win.FocusEvent('focusin', { bubbles: true })));
+    await wait(800);
+    expect(span.classList.contains('fw-tip')).toBe(true);
+    expect(local.pendingEvents).toHaveLength(1);
+    span.dispatchEvent(user(new win.FocusEvent('focusout', { bubbles: true })));
+    expect(span.classList.contains('fw-tip')).toBe(false);
     span.dispatchEvent(user(new win.MouseEvent('mouseover', { bubbles: true })));
     await wait(800);
     expect(span.classList.contains('fw-tip')).toBe(true);

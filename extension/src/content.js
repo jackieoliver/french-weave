@@ -55,7 +55,7 @@ function armTip(e) {
     tipTimer = null;
     if (!span.isConnected || span.classList.contains('fw-en')) return;
     span.classList.add('fw-tip');
-    record(span, 'peek');
+    if (e.type === 'mouseover') record(span, 'peek'); // a page can focus a span from script, so focus never counts
   }, TIP_DELAY_MS);
 }
 function disarmTip(e) {
