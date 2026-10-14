@@ -17,8 +17,8 @@ Send this (fill in nothing yet; you will give the exact folder path at the end):
 > 3. (Only if you use Codex CLI) The next time you start `codex`, it asks you to review a new hook: choose
 >    **Trust all and continue**.
 
-Leave out item 3 if `codex --version` fails. Don't wait for an answer before starting: do steps 1-4 while the
-person finds the key, and ask for the key file path only when you reach step 3.
+Leave out item 3 if `codex --version` fails. Don't wait for an answer: go straight on with the steps. At step 3, pass
+the key file if the person has named one by then; otherwise run setup without it (they paste the key in the popup).
 
 Never ask for the key in chat if a file path is possible, and never print the key.
 
@@ -95,7 +95,8 @@ Tell the person, in plain English:
    `/french-weave:stage 1-4|auto`, `/french-weave:pause`, `/french-weave:resume`, and `/french-weave:export` for a
    claude.ai or ChatGPT preferences block.
 
-You are done when `check` is all `ok` and only the HUMAN steps above remain.
+You are done when `check` is all `ok` and only the HUMAN steps above remain. If you cloned the repo only to read
+these instructions, delete that clone (setup keeps its own copy in `~/.french-weave`).
 
 ## Uninstall
 

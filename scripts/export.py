@@ -11,8 +11,9 @@ import fwlib
 
 CHATGPT_LIMIT = 1500   # characters per ChatGPT custom-instructions field (Free and Go; paid plans allow 5,000)
 KNOWN_LIST_MAX = fwlib.COLLAPSE_AT  # above this many known words, the state line names a rank band instead
-STAGE_SHAPES = {1: '', 2: '', 3: ' plus about one short, fully French sentence in five',
-                4: ' plus about two in five, English for complex or technical ideas'}
+STAGE_SHAPES = {1: '', 2: '', 3: ' plus about one short, fully French sentence in five (2 in a ten-sentence reply, '
+                'in the explanation around any steps)',
+                4: ' plus about two in five (4 in ten), English for complex or technical ideas'}
 
 # (full text for claude.ai, short text for ChatGPT). Order matters: it is the order of the pasted block.
 RULES = [

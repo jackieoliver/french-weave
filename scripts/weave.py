@@ -23,7 +23,7 @@ TAIL = 2_000_000  # bytes at the end of a transcript searched for the last reply
 SHORT = 40  # replies with fewer prose words are too short to measure
 RECALL_EVERY = 3
 # Most known words listed per tier, so the brief stays small at Stages 3-4 (hundreds of known words).
-LIMITS = {'rare': 30, 'some': 60, 'lot': 80}
+LIMITS = {'rare': 24, 'some': 60, 'lot': 80}
 # French grammar words on no list: several in one reply mean it slipped into French sentences.
 GRAMMAR = set("je tu il elle nous vous ils elles les une des du sont était été suis avez avons ont cette ces notre votre "
               "leur j'ai c'était n'est qu'il".split())
@@ -74,10 +74,12 @@ def brief(state, seen, recall=None):
                'mais the cache is stale, donc I cleared it." Never a French sentence or clause, and no French outside these '
                'lists (no French articles, verbs or numbers); if a sentence starts turning French, rewrite it in English. '
                if stage < 3 else
-               f'About {"one sentence in five" if stage == 3 else "two sentences in five"} should be fully French: short, '
-               'simple and guessable from the English around it, like "Le test passe maintenant." or "C\'est la bonne '
-               'approche." The other sentences stay English with French words swapped in. At this stage use any common '
-               'French word the user would follow, not only the lists, and reach the target in technical replies too. ')
+               f'About {"one sentence in five" if stage == 3 else "two sentences in five"} should be fully French '
+               f'({"2" if stage == 3 else "4"} in a ten-sentence reply): short, simple and guessable from the English '
+               'around it, like "Le test passe maintenant." or "C\'est la bonne approche." Steps stay English, so put '
+               'the French sentences in the explanation, summary and advice around them. The other sentences stay English '
+               'with French words swapped in. At this stage use any common French word the user would follow, not only '
+               'the lists. ')
     text = (f'French Weave (Stage {stage}): the user is a native English speaker learning French passively. Write your chat '
             f'reply in English and swap in French words from the lists below: about {target}% of the words in a reply (about '
             f'{round(target * 1.5)} in a 150-word reply{", so most sentences carry one or two" if stage <= 2 else ""}), '
@@ -103,7 +105,7 @@ def brief(state, seen, recall=None):
     return text
 
 
-DEFAULT_SWAPS = 15  # in band mode: the top-ranked known words (connectors and adverbs) written in French every time
+DEFAULT_SWAPS = 12  # in band mode: the top-ranked known words (connectors and adverbs) written in French every time
 
 
 def band_line(state):
