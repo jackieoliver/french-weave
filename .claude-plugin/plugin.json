@@ -1,7 +1,11 @@
 {
   "name": "french-weave",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Weaves a few French words into Claude's chat replies, at your level, and syncs your words with the French Weave Chrome extension.",
   "license": "MIT",
-  "keywords": ["french", "language-learning", "hooks"]
+  "keywords": [
+    "french",
+    "language-learning",
+    "hooks"
+  ]
 }

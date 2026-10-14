@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """French Weave command line: setup, status, word and stage changes. Python 3.9+, standard library only.
 
-  fw.py setup [--gemini-key-file FILE] [--dry-run]   install the state dir, extension copy and native host
+  fw.py setup [--gemini-key-file FILE] [--user-data-dir DIR]... [--dry-run]
+                                                     install the state dir, extension copy and native host;
+                                                     --user-data-dir also registers the host for a browser run
+                                                     with that --user-data-dir (Chromium looks there)
   fw.py status                                       stage, word counts, learning words
   fw.py known WORD...                                mark words as known
   fw.py learn WORD...                                put words back in the learning set (shaky)
@@ -26,17 +29,19 @@ HOST_NAME = 'com.frenchweave.host'
 EXTENSION_ID = 'ckihjnkijacemibkblmjfjgpffflbced'  # fixed by the "key" in extension/manifest.json
 
 
-def host_dirs():
-    """User-level NativeMessagingHosts folders for Google Chrome and Chromium on this OS."""
+def host_dirs(extra=()):
+    """User-level NativeMessagingHosts folders for Google Chrome and Chromium on this OS, plus any extra
+    browser user-data dirs (a browser started with --user-data-dir looks only inside that dir)."""
     home = Path.home()
+    extra = [Path(d).expanduser().resolve() / 'NativeMessagingHosts' for d in extra]
     if sys.platform == 'darwin':
         base = home / 'Library' / 'Application Support'
-        return [base / 'Google' / 'Chrome' / 'NativeMessagingHosts', base / 'Chromium' / 'NativeMessagingHosts']
+        return [base / 'Google' / 'Chrome' / 'NativeMessagingHosts', base / 'Chromium' / 'NativeMessagingHosts'] + extra
     config = Path(os.environ.get('XDG_CONFIG_HOME') or home / '.config')
-    return [config / 'google-chrome' / 'NativeMessagingHosts', config / 'chromium' / 'NativeMessagingHosts']
+    return [config / 'google-chrome' / 'NativeMessagingHosts', config / 'chromium' / 'NativeMessagingHosts'] + extra
 
 
-def plan():
+def plan(extra=()):
     root, home = fwlib.PLUGIN_ROOT, fwlib.home()
     return {
         'python': sys.executable,
@@ -46,13 +51,13 @@ def plan():
         'state_dir': str(home),
         'extension_dir': str(home / 'extension'),
         'host_launcher': str(home / 'app' / 'fw-host'),
-        'host_manifests': [str(d / f'{HOST_NAME}.json') for d in host_dirs()],
+        'host_manifests': [str(d / f'{HOST_NAME}.json') for d in host_dirs(extra)],
         'extension_id': EXTENSION_ID,
     }
 
 
 def setup(args):
-    info = plan()
+    info = plan(args.user_data_dir)
     if sys.version_info < (3, 9):
         sys.exit(f'French Weave needs Python 3.9 or newer; this is {info["python_version"]}.')
     root, home = fwlib.PLUGIN_ROOT, fwlib.home()
@@ -81,7 +86,7 @@ def setup(args):
     launcher.chmod(0o755)
     manifest = {'name': HOST_NAME, 'description': 'French Weave word state', 'path': str(launcher), 'type': 'stdio',
                 'allowed_origins': [f'chrome-extension://{EXTENSION_ID}/']}
-    for directory in host_dirs():
+    for directory in host_dirs(args.user_data_dir):
         directory.mkdir(parents=True, exist_ok=True)
         (directory / f'{HOST_NAME}.json').write_text(json.dumps(manifest, indent=1) + '\n')
     if key:
@@ -100,7 +105,7 @@ def setup(args):
     print(f'  2. Click "Load unpacked" and pick: {home / "extension"}')
     if not key and not (home / 'gemini_key').exists():
         print('  3. Click the French Weave toolbar icon and paste a Gemini API key (https://aistudio.google.com/apikey).')
-    print('Chat weaving is already on in Claude Code; it starts with your next message.')
+    print('Chat weaving runs wherever the plugin is enabled; sessions opened from now on pick it up.')
 
 
 def check(_args):
@@ -210,6 +215,7 @@ def main(argv=None):
     sub = parser.add_subparsers(dest='command', required=True)
     p = sub.add_parser('setup')
     p.add_argument('--gemini-key-file')
+    p.add_argument('--user-data-dir', action='append', default=[])
     p.add_argument('--dry-run', action='store_true')
     p.set_defaults(run=setup)
     p = sub.add_parser('uninstall')
