@@ -20,6 +20,15 @@ function enqueue(fn) {
 
 const send = (message) => chrome.runtime.sendNativeMessage(HOST, message);
 
+// Event queue reads and writes go one at a time: concurrent read-modify-writes of storage would drop events.
+let eventChain = Promise.resolve();
+function serialEvents(fn) {
+  const p = eventChain.then(fn);
+  eventChain = p.catch(() => {});
+  return p;
+}
+const flush = () => serialEvents(() => flushEvents({ storage: chromeStorage, send }));
+
 async function getSettings() {
   const { settings } = await chrome.storage.local.get('settings');
   return withDefaults(settings);
@@ -35,7 +44,7 @@ async function syncWords() {
 let flushTimer = null;
 function scheduleFlush() {
   clearTimeout(flushTimer);
-  flushTimer = setTimeout(() => flushEvents({ storage: chromeStorage, send }), FLUSH_DELAY_MS);
+  flushTimer = setTimeout(flush, FLUSH_DELAY_MS);
 }
 
 async function handleSwaps({ level, items }) {
@@ -80,7 +89,7 @@ chrome.runtime.onInstalled.addListener(arm);
 chrome.runtime.onStartup.addListener(arm);
 chrome.alarms.onAlarm.addListener(async (a) => {
   if (a.name !== ALARM) return;
-  await flushEvents({ storage: chromeStorage, send });
+  await flush();
   await syncWords();
 });
 
@@ -94,12 +103,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     case 'swaps':
       return reply(handleSwaps(msg).catch((e) => ({ results: {}, error: String(e?.message || e) })), sendResponse);
     case 'events':
-      return reply(queueEvents(chromeStorage, msg.events).then((n) => { scheduleFlush(); return { ok: true, queued: n }; }), sendResponse);
+      return reply(
+        serialEvents(() => queueEvents(chromeStorage, msg.events)).then((n) => { scheduleFlush(); return { ok: true, queued: n }; }),
+        sendResponse,
+      );
     case 'clearCache':
       return reply(cache.clear().then((n) => ({ ok: true, removed: n })), sendResponse);
     case 'syncWords':
       return reply(
-        flushEvents({ storage: chromeStorage, send })
+        flush()
           .then(syncWords)
           .then((r) => ({ ok: !r.error, error: r.error, count: r.state?.words?.length || 0, stage: r.state?.stage || 0 })),
         sendResponse,
