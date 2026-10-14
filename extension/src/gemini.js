@@ -27,7 +27,16 @@ export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, 
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    const error = new Error(`HTTP ${res.status}`);
+    error.status = res.status;
+    // 429 bodies carry RetryInfo ("retryDelay": "36s"); fall back to Retry-After.
+    let detail = '';
+    try { detail = await res.text(); } catch { /* status alone is enough */ }
+    const delay = Number(/"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(detail)?.[1] || res.headers?.get?.('retry-after'));
+    if (delay > 0) error.retryAfterMs = Math.min(delay, 600) * 1000;
+    throw error;
+  }
   const data = await res.json();
   const text = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
   return parseSwapsResponse(text);
@@ -36,7 +45,7 @@ export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, 
 export function parseSwapsResponse(text) {
   const data = JSON.parse(text);
   const out = new Map();
-  for (const t of data?.tweets || []) {
+  for (const t of data?.passages || data?.tweets || []) {
     if (t && typeof t.id === 'string') out.set(t.id, Array.isArray(t.swaps) ? t.swaps : []);
   }
   return out;

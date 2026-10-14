@@ -56,6 +56,50 @@ describe('engine', () => {
     await expect(requestSwaps({ apiKey: 'K', model: 'gemini-3.5-flash-lite', level: 1, batch: [], fetchImpl })).rejects.toThrow();
     expect(n).toBe(1);
   });
+  test('rate-limited models cool down: the next batch skips them, and an all-cooling batch fails fast with a retry time', async () => {
+    let clock = 1000;
+    const now = () => clock;
+    const cooldown = new Map();
+    const models = [];
+    const fetchImpl = async (url) => {
+      const m = url.split('/').pop().split(':')[0];
+      models.push(m);
+      if (m === 'gemini-3.8-flash') return { ok: false, status: 429, text: async () => '{"error":{"details":[{"retryDelay":"36s"}]}}' };
+      return geminiReply([{ id: 'a', swaps: [] }]);
+    };
+    const args = { apiKey: 'K', model: 'gemini-3.8-flash', level: 2, batch: [{ id: 'a', text: 'x' }], fetchImpl, cooldown, now };
+    await requestSwaps(args);
+    expect(models).toEqual(['gemini-3.8-flash', 'gemini-3.5-flash-lite']);
+    expect(cooldown.get('gemini-3.8-flash')).toBe(1000 + 36000);
+    await requestSwaps(args);
+    expect(models.slice(2)).toEqual(['gemini-3.5-flash-lite']);
+    cooldown.set('gemini-3.5-flash-lite', 1000 + 5000);
+    const error = await requestSwaps(args).catch((e) => e);
+    expect(error.message).toContain('rate limit');
+    expect(error.retryAfterMs).toBe(5000);
+    expect(models).toHaveLength(3);
+    clock = 1000 + 36001;
+    await requestSwaps(args);
+    expect(models.slice(3)).toEqual(['gemini-3.8-flash', 'gemini-3.5-flash-lite']);
+  });
+  test('caps density per sentence, one use per word, learning words kept before known filler', async () => {
+    const words = [
+      { fr: 'grand', en: 'big', hint: 'grahn', status: 'active' },
+      { fr: 'et', en: 'and', hint: 'ay', status: 'known' },
+      { fr: 'mais', en: 'but', hint: 'meh', status: 'known' },
+      { fr: 'très', en: 'very', hint: 'treh', status: 'known' },
+    ];
+    const swaps = [
+      { o: 'and', f: 'et', ctx: 'x and' }, { o: 'very', f: 'très', ctx: 'very' }, { o: 'and', f: 'et', ctx: 'y and' },
+      { o: 'but', f: 'mais', ctx: 'but' }, { o: 'big', f: 'grand', ctx: 'a big' },
+    ];
+    const fetchImpl = async () => geminiReply([{ id: 'a', swaps }]);
+    const text = 'It was a big day and a very long one, but fine.';
+    const r = await requestSwaps({ apiKey: 'K', model: 'gemini-3.5-flash-lite', level: 1, batch: [{ id: 'a', text }], words, fetchImpl });
+    expect(r.results.a.map((s) => s.f)).toEqual(['grand']);
+    const two = await requestSwaps({ apiKey: 'K', model: 'gemini-3.5-flash-lite', level: 2, batch: [{ id: 'a', text }], words, fetchImpl });
+    expect(two.results.a.map((s) => s.f)).toEqual(['et', 'grand']);
+  });
 });
 
 describe('cache', () => {

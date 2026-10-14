@@ -2,15 +2,24 @@
 // --load-extension, so this uses Playwright's Chromium). Run setup first, registering the profile dir used here:
 //   python3 scripts/fw.py setup --user-data-dir /tmp/fw-profile [--gemini-key-file KEY]
 //   PROFILE=/tmp/fw-profile node tests/extension_e2e.mjs
-// Loads ~/.french-weave/extension, serves a fake x.com timeline (synthetic tweets), and prints what happened:
-// native host sync, real Gemini swaps (a couple of requests), hover tip, click flip, health tweet untouched,
-// links intact, seen/flip events flushed back to the word state.
+// To leave your own setup alone, give both commands a scratch FRENCH_WEAVE_HOME (and setup a scratch HOME, so
+// it writes no host manifest into your real browsers).
+// Loads a temporary copy of ~/.french-weave/extension (or $FRENCH_WEAVE_HOME/extension) with website access
+// granted up front, since Chrome's grant dialog can't be clicked from a script. Serves a fake x.com timeline and a
+// fake article on another site (synthetic text), and prints what happened: native host sync, real Gemini swaps
+// (a few requests), delayed hover tip, click flip, health text untouched, links and forms intact, seen/flip events
+// flushed back to the word state, and the article reverting when its site is turned off.
 import { chromium } from 'playwright';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 
-const EXT = join(process.env.FRENCH_WEAVE_HOME || join(homedir(), '.french-weave'), 'extension');
+const INSTALLED = join(process.env.FRENCH_WEAVE_HOME || join(homedir(), '.french-weave'), 'extension');
+const EXT = mkdtempSync(join(tmpdir(), 'fw-ext-'));
+cpSync(INSTALLED, EXT, { recursive: true });
+const manifest = JSON.parse(readFileSync(join(EXT, 'manifest.json'), 'utf8'));
+manifest.host_permissions.push(...manifest.optional_host_permissions); // same key, so the same extension ID
+writeFileSync(join(EXT, 'manifest.json'), JSON.stringify(manifest));
 const tweets = [
   ['t1', 'en', 'Finally shipped the new search page and it is very fast now, but the old filters still need work.'],
   ['t2', 'en', 'I always forget my umbrella, so of course it rained again today and I got soaked without one.'],
@@ -22,8 +31,21 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><title>Home / X</
   .map(([id, lang, t]) => `<article data-testid="tweet" id="${id}"><div lang="${lang}" dir="auto" data-testid="tweetText"><span>${t}</span></div></article>`)
   .join('\n')}</main></body></html>`;
 
-const userDataDir = process.env.PROFILE || mkdtempSync('/tmp/fw-profile-');
+const ARTICLE_URL = 'https://reading.example/2026/10/notes';
+const article = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Notes</title></head><body>
+<header><nav><a href="/">Home</a> and <a href="/about">About</a></nav></header>
+<main><article>
+<h1>What I learned from a slow week</h1>
+<p id="a1">The garden was very quiet this week, and I finally read the book my friend gave me last year.</p>
+<p id="a2">Maybe the best part was walking home every evening without my phone, because the light was always so warm.</p>
+<p id="a3">My doctor changed the dose of my medication, and the side effects are still there, so I am resting.</p>
+<p id="a4">We also cooked a big dinner together now that the kitchen is finally fixed, and it was a lot of fun.</p>
+<form><p id="a5">Write your comment here and tell us what you think about the article today.</p><textarea></textarea></form>
+</article></main></body></html>`;
+
+const userDataDir = process.env.PROFILE || mkdtempSync(join(tmpdir(), 'fw-profile-'));
 const ctx = await chromium.launchPersistentContext(userDataDir, {
+  channel: 'chromium', // the default headless shell cannot load extensions
   headless: true,
   args: ['--headless=new', `--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
 });
@@ -55,6 +77,7 @@ try {
   if (out.swaps.length) {
     const first = page.locator('.fw-word').first();
     await first.hover();
+    await page.waitForTimeout(1000); // the gloss shows after a short dwell, which also counts as a peek
     out.hoverAfter = await first.evaluate((e) => getComputedStyle(e, '::after').content);
     await first.click();
     out.afterClick = await first.evaluate((e) => ({ text: e.textContent, english: e.classList.contains('fw-en') }));
@@ -65,10 +88,32 @@ try {
     await page.waitForTimeout(13000);
     out.pendingAfterFlush = await sw.evaluate(() => chrome.storage.local.get('pendingEvents').then((o) => o.pendingEvents));
   }
+  // A plain article on another site: the dynamically registered content script runs there too.
+  for (let i = 0; i < 40; i++) {
+    const ids = await sw.evaluate(() => chrome.scripting.getRegisteredContentScripts().then((s) => s.map((x) => x.id)));
+    if (ids.includes('weave-sites')) break;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  await ctx.route('https://reading.example/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: article }));
+  const reading = await ctx.newPage();
+  reading.on('console', (m) => { if (/french-weave/.test(m.text())) (out.console ||= []).push(m.text()); });
+  await reading.goto(ARTICLE_URL);
+  await reading.waitForSelector('.fw-word', { timeout: 60000 }).catch(() => {});
+  await reading.waitForTimeout(3000);
+  out.articleSwaps = await reading.$$eval('.fw-word', (els) => els.map((e) => ({ p: e.closest('[id]')?.id || e.parentElement.tagName, fr: e.dataset.fr, en: e.dataset.en })));
+  out.articleHealthTouched = await reading.$$eval('#a3 .fw-word', (els) => els.length);
+  out.articleFormTouched = await reading.$$eval('form .fw-word', (els) => els.length);
+  out.articleNavIntact = await reading.$eval('nav', (n) => n.textContent);
+
   const popup = await ctx.newPage();
   await popup.goto(`chrome-extension://${out.extensionId}/src/popup.html`);
   await popup.waitForTimeout(1500);
   out.popup = await popup.$eval('body', (b) => b.innerText);
+  // Turning the site off from the popup reverts the open article.
+  await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'save', siteOverride: { host: 'reading.example', enabled: false } }));
+  await reading.waitForTimeout(1500);
+  out.articleSwapsAfterSiteOff = await reading.$$eval('.fw-word', (els) => els.length);
+  out.articleTextAfterSiteOff = await reading.$eval('#a1', (e) => e.textContent);
 } finally {
   await ctx.close();
 }

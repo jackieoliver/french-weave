@@ -25,6 +25,7 @@ export function parseState(data) {
     version: String(data?.version ?? ''),
     stage: stage >= 1 && stage <= 4 ? stage : 1,
     paused: data?.paused === true,
+    sites: data?.prefs?.extension_sites === 'ask' ? 'ask' : 'all', // setup's default for sites not set in the popup
     words,
   };
 }
@@ -74,6 +75,13 @@ export async function queueEvents(storage, events, day = localDay()) {
   }
   await storage.set({ [PENDING_KEY]: pending.slice(-500), [SENT_KEY]: sent });
   return pending.length;
+}
+
+// Words already seen today, so the prompt can put the ones not yet shown first.
+export async function shownToday(storage, day = localDay()) {
+  const obj = await storage.get([SENT_KEY]);
+  const sent = obj?.[SENT_KEY];
+  return sent?.day === day ? sent.words.filter((w) => !w.includes(':')) : [];
 }
 
 // Sends queued events to the host; keeps them queued if the host is missing or fails.

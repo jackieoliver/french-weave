@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { parseState, readCached, refresh, queueEvents, flushEvents, STATE_KEY, PENDING_KEY } from '../src/hostsource.js';
+import { parseState, readCached, refresh, queueEvents, flushEvents, shownToday, STATE_KEY, PENDING_KEY } from '../src/hostsource.js';
 import { memoryStorage } from '../src/cache.js';
 import { validateSwaps } from '../src/levels.js';
 import { buildSystemPrompt } from '../src/prompt.js';
@@ -22,7 +22,12 @@ const host = (reply) => async () => reply;
 describe('parseState', () => {
   it('reads the host reply shape', () => {
     const s = parseState(REPLY);
-    expect(s).toEqual({ version: 'abc123', stage: 1, paused: false, words: REPLY.words });
+    expect(s).toEqual({ version: 'abc123', stage: 1, paused: false, sites: 'all', words: REPLY.words });
+  });
+  it('reads the site default setup chose; anything but "ask" means all sites', () => {
+    expect(parseState({ ...REPLY, prefs: { extension_sites: 'ask' } }).sites).toBe('ask');
+    expect(parseState({ ...REPLY, prefs: { extension_sites: 'all' } }).sites).toBe('all');
+    expect(parseState({ ...REPLY, prefs: { extension_sites: 'bogus' } }).sites).toBe('all');
   });
   it('drops unusable rows and duplicates; bad stage falls back to 1', () => {
     const s = parseState({ stage: 9, words: [{ fr: 'et', en: 'and' }, { fr: 'et', en: 'x' }, { fr: ' ', en: 'y' }, null, { fr: 'mais' }] });
@@ -59,7 +64,9 @@ describe('refresh', () => {
     const s = parseState(REPLY);
     expect(validateSwaps(1, [{ o: 'so', f: 'alors', ctx: 'so then' }], s.words)[0].f).toBe('alors');
     expect(validateSwaps(1, [{ o: 'but', f: 'mais', ctx: 'x' }], s.words)).toEqual([]);
-    expect(buildSystemPrompt(1, s.words)).toContain('alors, très, et');
+    const prompt = buildSystemPrompt(1, s.words);
+    expect(prompt).toContain('alors = so / then; très = very');
+    expect(prompt).toContain('KNOWN words (filler only):\net');
   });
 });
 
@@ -90,6 +97,12 @@ describe('events', () => {
     expect(ok).toEqual({ sent: 1, applied: 1 });
     expect(sent[0].type).toBe('events');
     expect((await storage.get([PENDING_KEY]))[PENDING_KEY]).toEqual([]);
+  });
+  it('words seen today come back for the prompt; peeks and other days do not', async () => {
+    const storage = memoryStorage();
+    await queueEvents(storage, [{ word: 'très', kind: 'seen' }, { word: 'et', kind: 'peek' }], '2026-10-01');
+    expect(await shownToday(storage, '2026-10-01')).toEqual(['très']);
+    expect(await shownToday(storage, '2026-10-02')).toEqual([]);
   });
   it('readCached ignores empty state', async () => {
     expect(await readCached(memoryStorage({ [STATE_KEY]: { words: [] } }))).toBeNull();

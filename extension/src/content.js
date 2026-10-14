@@ -1,194 +1,200 @@
-// Content script: watch for tweet text, ask the background for swaps, paint them, handle hover/click/off.
+// Content script: watch readable text (tweets on X, prose elsewhere), ask the background for swaps, paint them,
+// handle the delayed gloss, click/Enter flip and seen/peek/flip events. Every async reply belongs to one config generation.
 import { flatten, applySwaps, revert, toggle, SWAP_CLASS } from './text.js';
-import { wordCount, isZeroFrench, resolveLevel } from './levels.js';
 import { hashKey } from './hash.js';
-import { withDefaults } from './settings.js';
+import { siteEnabled, hasSiteAccess } from './settings.js';
+import { selector, readable } from './page.js';
 
-const SEL = '[data-testid="tweetText"]';
-const BATCH = 8;
-const DEBOUNCE_MS = 250;
-const MIN_WORDS = 6;
-
-let settings = withDefaults();
-let synced = { stage: 0, paused: false, hostKey: '' }; // from the Claude Code plugin, via the background
+let config = null;
 let observer = null;
-let seenObserver = null;
+let near = null;
+let visible = null;
 let timer = null;
-const memo = new Map();     // key -> swaps (this tab's copy; background holds the durable cache)
-const pending = new Map();  // key -> { text, els: Set<Element> }
+let generation = 0;
+const memo = new Map();
+const pending = new Map();
 const inflight = new Set();
+const tracked = new Set();
+const visibleWords = new Set();
+const seen = new Set();
+const failures = new Map(); // text key -> failed model attempts; retried with backoff
+const MAX_RETRIES = 3;
+const TIP_DELAY_MS = 700; // a beat to recall the word before the meaning appears
+let tipTimer = null;
+const send = (msg) => chrome.runtime.sendMessage(msg);
+const on = () => config?.hasKey && !config.paused && siteEnabled(config.settings, location.href) && hasSiteAccess(location.href, config.origins);
+const targets = () => selector(location.href);
 
-const active = (s, w = synced) => !!(s.enabled && (s.apiKey || w.hostKey) && !w.paused);
-const levelOf = (s, w = synced) => resolveLevel(s, w.stage).effective;
-const currentLevel = () => levelOf(settings);
-
-// Seen and flip events go to the background, which batches them to the plugin's word state.
-function report(word, kind) {
-  chrome.runtime.sendMessage({ type: 'events', events: [{ word, kind }] }).catch(() => {});
+function record(span, event) {
+  if (!span.dataset.fwWord || !on()) return;
+  const id = new Date().toISOString().slice(0, 10) + ':' + event + ':' + span.dataset.fwWord;
+  const daily = event === 'seen' || event === 'peek';
+  if (daily && seen.has(id)) return;
+  if (daily) seen.add(id);
+  void send({ type: 'event', word: span.dataset.fwWord, event }).then((r) => {
+    if (!r?.ok && daily) seen.delete(id);
+  }).catch(() => { if (daily) seen.delete(id); });
 }
-
-function watchSeen(el) {
-  if (!seenObserver) {
-    seenObserver = new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        if (!e.isIntersecting) continue;
-        seenObserver.unobserve(e.target);
-        if (e.target.dataset.fr) report(e.target.dataset.fr, 'seen');
-      }
-    });
-  }
-  for (const span of el.querySelectorAll(`.${SWAP_CLASS}`)) seenObserver.observe(span);
+// The gloss appears only after a short dwell; reaching it counts as a peek (the reader needed the meaning).
+function hideTip() {
+  clearTimeout(tipTimer); tipTimer = null;
+  for (const el of document.querySelectorAll(`.${SWAP_CLASS}.fw-tip`)) el.classList.remove('fw-tip');
 }
-
-function isEnglish(el) {
-  const lang = el.getAttribute('lang');
-  return !lang || /^(en|und|qme|zxx|art)/i.test(lang);
+function armTip(e) {
+  const span = e.target?.closest?.(`span.${SWAP_CLASS}`);
+  if (!span || !on() || span.classList.contains('fw-tip')) return;
+  hideTip();
+  tipTimer = setTimeout(() => {
+    tipTimer = null;
+    if (!span.isConnected || span.classList.contains('fw-en')) return;
+    span.classList.add('fw-tip');
+    record(span, 'peek');
+  }, TIP_DELAY_MS);
 }
-
-function consider(el) {
-  if (!el.isConnected || !isEnglish(el)) return;
-  if (el.querySelector(`.${SWAP_CLASS}`)) revert(el);
-  const { text } = flatten(el);
-  if (wordCount(text) < MIN_WORDS || isZeroFrench(text)) {
-    el.dataset.fwKey = 'skip';
-    return;
-  }
-  const key = `${currentLevel()}:${hashKey(text)}`;
-  el.dataset.fwKey = key;
-  if (memo.has(key)) {
-    paint(el, key);
-    return;
-  }
-  let p = pending.get(key);
-  if (!p) {
-    p = { text, els: new Set() };
-    pending.set(key, p);
-  }
-  p.els.add(el);
-  if (!timer) timer = setTimeout(flush, DEBOUNCE_MS);
+function disarmTip(e) {
+  const span = e.target?.closest?.(`span.${SWAP_CLASS}`);
+  if (span && !span.contains(e.relatedTarget)) hideTip();
 }
-
+function seenVisible() {
+  if (document.visibilityState === 'hidden') return;
+  for (const span of visibleWords) if (span.isConnected) record(span, 'seen');
+}
 function paint(el, key) {
+  if (!on() || el.dataset.fwKey !== key || !readable(el, location.href)) return;
   const swaps = memo.get(key);
-  if (!swaps || !swaps.length || el.dataset.fwKey !== key || !el.isConnected) return;
+  if (!swaps?.length) return;
   applySwaps(el, swaps);
-  observer?.takeRecords(); // our own edits are not X re-renders
-  watchSeen(el);
+  for (const span of el.querySelectorAll(`.${SWAP_CLASS}`)) visible.observe(span);
+  observer?.takeRecords();
 }
-
+function consider(el) {
+  if (!on() || !el.isConnected) return;
+  if (el.querySelector(`.${SWAP_CLASS}`)) revert(el);
+  observer?.takeRecords();
+  if (!readable(el, location.href)) { delete el.dataset.fwKey; return; }
+  const text = flatten(el).text;
+  const key = `${config.revision}:${hashKey(text)}`;
+  el.dataset.fwKey = key;
+  if (memo.has(key)) { paint(el, key); return; }
+  let p = pending.get(key);
+  if (!p) { p = { text, els: new Set() }; pending.set(key, p); }
+  p.els.add(el);
+  if (!timer) timer = setTimeout(flush, 250);
+}
 async function flush() {
   timer = null;
-  const items = [];
-  for (const [key, p] of pending) {
-    if (inflight.has(key)) continue;
-    items.push({ key, text: p.text });
-    if (items.length >= BATCH) break;
-  }
+  if (!on()) return;
+  const gen = generation;
+  const items = [...pending].filter(([key]) => !inflight.has(key)).slice(0, 8).map(([key, p]) => ({ key, text: p.text }));
   if (!items.length) return;
   for (const i of items) inflight.add(i.key);
-  let res;
-  try {
-    res = await chrome.runtime.sendMessage({ type: 'swaps', level: currentLevel(), items });
-  } catch (e) {
-    res = { results: {}, error: String(e) };
-  }
+  let result;
+  try { result = await send({ type: 'swaps', revision: config.revision, items }); }
+  catch { result = { error: 'Extension unavailable' }; }
+  if (gen !== generation || !on()) return;
   for (const i of items) {
     inflight.delete(i.key);
     const p = pending.get(i.key);
     pending.delete(i.key);
-    const swaps = res?.results?.[i.key];
-    if (!swaps) continue; // model failed for this batch; those tweets stay English
+    const swaps = result?.results?.[i.key];
+    if (!Array.isArray(swaps)) {
+      // A failed model call (usually the free tier's rate limit) is retried instead of leaving the passage English.
+      const tries = (failures.get(i.key) || 0) + 1;
+      failures.set(i.key, tries);
+      if (p && tries <= MAX_RETRIES) {
+        const wait = Math.max(result?.retryAfterMs || 0, 5000 * tries);
+        setTimeout(() => { if (gen === generation) for (const el of p.els) if (el.dataset.fwKey === i.key) { delete el.dataset.fwKey; consider(el); } }, wait);
+      }
+      continue;
+    }
+    failures.delete(i.key);
     memo.set(i.key, swaps);
     if (p) for (const el of p.els) paint(el, i.key);
   }
-  if (res?.error) console.warn('[french-weave]', res.error);
+  if (result?.stale) { update(await send({ type: 'config' })); return; }
   if ([...pending.keys()].some((k) => !inflight.has(k))) timer = setTimeout(flush, 50);
 }
-
-function onMutations(records) {
-  const todo = new Set();
+function track(root) {
+  if (root.nodeType !== 1) return;
+  const elements = root.matches(targets()) ? [root, ...root.querySelectorAll(targets())] : root.querySelectorAll(targets());
+  for (const el of elements) {
+    if (tracked.has(el) || !readable(el, location.href)) continue;
+    tracked.add(el);
+    near.observe(el);
+  }
+}
+function mutations(records) {
+  const changed = new Set();
   for (const r of records) {
-    for (const n of r.addedNodes) {
-      if (n.nodeType !== 1) continue;
-      if (n.matches(SEL)) todo.add(n);
-      else for (const el of n.querySelectorAll(SEL)) todo.add(el);
-    }
+    for (const n of r.addedNodes || []) if (n.nodeType === 1) track(n);
     const base = r.target.nodeType === 1 ? r.target : r.target.parentElement;
-    const host = base?.closest?.(SEL);
-    if (host && host.dataset.fwKey) todo.add(host); // X re-rendered inside a tweet we handled
+    const el = base?.closest(targets());
+    if (el && tracked.has(el)) changed.add(el);
+    else if (el) track(el);
   }
-  for (const el of todo) consider(el);
-}
-
-// Hovering a French word until its meaning shows is a peek: you needed the gloss.
-const PEEK_MS = 700;
-let peekTimer = null;
-function onOver(e) {
-  const span = e.target?.closest?.(`span.${SWAP_CLASS}`);
-  clearTimeout(peekTimer);
-  if (!span || span.classList.contains('fw-en')) return;
-  peekTimer = setTimeout(() => span.isConnected && span.matches(':hover') && report(span.dataset.fr, 'peek'), PEEK_MS);
-}
-
-function onClick(e) {
-  const span = e.target?.closest?.(`span.${SWAP_CLASS}`);
-  if (!span) return;
-  e.preventDefault();
-  e.stopPropagation();
-  toggle(span);
-  observer?.takeRecords(); // the flip is ours, not an X re-render
-  if (span.classList.contains('fw-en') && span.dataset.fr) report(span.dataset.fr, 'flip');
-}
-
-function start() {
-  if (observer) return;
-  observer = new MutationObserver(onMutations);
-  observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
-  for (const el of document.querySelectorAll(SEL)) consider(el);
-}
-
-function stop() {
-  observer?.disconnect();
-  observer = null;
-  seenObserver?.disconnect();
-  seenObserver = null;
-  clearTimeout(timer);
-  timer = null;
-  pending.clear();
-  inflight.clear();
-  for (const el of document.querySelectorAll(SEL)) {
-    revert(el);
+  for (const el of changed) {
+    if (el.querySelector(`.${SWAP_CLASS}`)) revert(el);
     delete el.dataset.fwKey;
+    if (readable(el, location.href)) { near.unobserve(el); near.observe(el); }
   }
+  observer?.takeRecords();
+  for (const el of tracked) if (!el.isConnected) { tracked.delete(el); near.unobserve(el); }
+  for (const span of visibleWords) if (!span.isConnected) { visibleWords.delete(span); visible.unobserve(span); }
 }
-
-const syncedFrom = (wordState, hostKey) => ({
-  stage: wordState?.stage || 0,
-  paused: !!wordState?.paused,
-  hostKey: hostKey || '',
+function start() {
+  if (observer || !on()) return;
+  visible = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting && e.intersectionRatio >= 0.5) visibleWords.add(e.target);
+      else visibleWords.delete(e.target);
+    }
+    seenVisible();
+  }, { threshold: [0, 0.5] });
+  near = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting && !e.target.dataset.fwKey) consider(e.target);
+  }, { rootMargin: '600px' });
+  observer = new MutationObserver(mutations);
+  observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  track(document.documentElement);
+}
+function stop() {
+  generation++;
+  observer?.disconnect(); observer = null;
+  near?.disconnect(); visible?.disconnect();
+  clearTimeout(timer); timer = null;
+  pending.clear(); inflight.clear(); memo.clear(); failures.clear(); hideTip();
+  for (const el of tracked) { revert(el); delete el.dataset.fwKey; }
+  tracked.clear(); visibleWords.clear();
+}
+function update(next, retry = false) {
+  if (!next?.settings || !next.revision) return;
+  if (!retry && next.revision === config?.revision) return;
+  stop(); config = next; start();
+}
+function reveal(e) {
+  const span = e.target?.closest?.(`span.${SWAP_CLASS}`);
+  if (!span || !on()) return;
+  if (e.type === 'keydown' && !['Enter', ' '].includes(e.key)) return;
+  e.preventDefault(); e.stopPropagation();
+  hideTip();
+  if (toggle(span)) record(span, 'flip');
+  observer?.takeRecords();
+}
+chrome.runtime.onMessage.addListener((msg) => {
+  if (['config', 'retry'].includes(msg?.type)) update(msg.config, msg.type === 'retry');
 });
-
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'local' || !(changes.settings || changes.wordState || changes.hostKey)) return;
-  const prev = settings;
-  const prevSynced = synced;
-  if (changes.settings) settings = withDefaults(changes.settings.newValue);
-  synced = syncedFrom(
-    changes.wordState ? changes.wordState.newValue : { stage: prevSynced.stage, paused: prevSynced.paused },
-    changes.hostKey ? changes.hostKey.newValue : prevSynced.hostKey,
-  );
-  const wasOn = active(prev, prevSynced);
-  const on = active(settings);
-  const levelChanged = levelOf(prev, prevSynced) !== currentLevel();
-  if (wasOn && (!on || levelChanged)) stop();
-  if (on && (!wasOn || levelChanged)) start();
-});
-
-document.addEventListener('click', onClick, true);
-document.addEventListener('mouseover', onOver, true);
-
-chrome.storage.local.get(['settings', 'wordState', 'hostKey']).then(({ settings: s, wordState, hostKey }) => {
-  settings = withDefaults(s);
-  synced = syncedFrom(wordState, hostKey);
-  if (active(settings)) start();
-});
+document.addEventListener('click', reveal, true);
+document.addEventListener('keydown', reveal, true);
+document.addEventListener('mouseover', armTip, true);
+document.addEventListener('focusin', armTip, true);
+document.addEventListener('mouseout', disarmTip, true);
+document.addEventListener('focusout', disarmTip, true);
+window.addEventListener('scroll', hideTip, { passive: true, capture: true });
+document.addEventListener('visibilitychange', seenVisible);
+window.addEventListener('online', () => { void send({ type: 'config' }).then((c) => update(c, true)).catch(() => {}); });
+// SPA navigation can reuse DOM nodes without changing their text.
+let page = location.href;
+setInterval(() => {
+  if (page !== location.href) { page = location.href; if (config) update(config, true); }
+}, 1000);
+void send({ type: 'config' }).then(update).catch(() => {});
