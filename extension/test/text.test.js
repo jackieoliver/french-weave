@@ -60,7 +60,7 @@ describe('applySwaps', () => {
     const el = tweet('<span>cats and dogs and birds</span>');
     const n = applySwaps(el, [S({ o: 'and', f: 'et', ctx: 'dogs and birds' })]);
     expect(n).toBe(1);
-    expect(el.innerHTML).toBe('<span>cats and dogs <span class="fw-word" data-en="and" data-fr="et" data-tip="and · &quot;ay&quot;" data-fw-split="1">et</span> birds</span>');
+    expect(el.innerHTML).toBe('<span>cats and dogs <span class="fw-word" data-en="and" data-fr="et" data-tip="and · &quot;ay&quot;" data-fw-split="1" tabindex="0" role="button" aria-label="et: and. Show English">et</span> birds</span>');
     expect(el.textContent).toBe('cats and dogs et birds');
   });
   test('two swaps in one text node, applied in any order', () => {
@@ -133,6 +133,16 @@ describe('applySwaps', () => {
 });
 
 describe('revert and toggle', () => {
+  test('a framework replacing its original text node does not regain stale split suffixes', () => {
+    const el = tweet('<span>cats and dogs and birds</span>');
+    const original = el.querySelector('span').firstChild;
+    applySwaps(el, [S({ o: 'and', f: 'et', ctx: 'cats and dogs' }), S({ o: 'and', f: 'et', ctx: 'dogs and birds' })]);
+    original.data = 'A newly edited sentence with completely different words.';
+    revert(el);
+    expect(el.textContent).toBe('A newly edited sentence with completely different words.');
+    expect(el.querySelector('span').firstChild).toBe(original);
+    expect(el.querySelector('span').childNodes.length).toBe(1);
+  });
   test('revert restores the original DOM and the same text node object', () => {
     const el = tweet('<span>cats and dogs and birds</span>');
     const original = el.querySelector('span').firstChild;

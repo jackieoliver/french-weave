@@ -7,7 +7,13 @@
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
-.fw-word:hover::after {
+/* Words still being learned get a faint tint so they stand out from known filler; never bold. */
+.fw-word[data-fw-status="active"], .fw-word[data-fw-status="shaky"] {
+  text-decoration-color: rgba(64, 140, 255, 0.9);
+  text-decoration-thickness: 1.5px;
+}
+/* The gloss appears after a short dwell (content.js adds .fw-tip), giving a moment to recall first. */
+.fw-word.fw-tip::after {
   content: attr(data-tip);
   position: absolute;
   left: 0;

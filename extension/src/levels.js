@@ -195,25 +195,32 @@ export function normalizeFr(s) {
     .trim();
 }
 
-const ARTICLE_RE = /^(le|la|les|l'|un|une|des) ?/;
+const ARTICLE_RE = /^(?:(?:les|le|la|une|un|des)\s+|l')/i;
+export const exactFr = (s) => String(s).normalize('NFC').toLowerCase().replace(/[’‘`]/g, "'").replace(/\s+/g, ' ').trim();
 
-// Keyed by the list itself, so the bundled lists and a remote one each get their own index.
-const indexCache = new WeakMap();
-function indexFor(words) {
-  if (indexCache.has(words)) return indexCache.get(words);
+const indexCache = new Map();
+function indexFor(level, sharedWords) {
+  const lvl = level <= 1 ? 1 : 2;
+  if (!sharedWords && indexCache.has(lvl)) return indexCache.get(lvl);
   const idx = new Map();
-  for (const w of words) {
-    const full = normalizeFr(w.fr);
-    idx.set(full, { canon: w.fr, en: w.en, hint: w.hint });
+  for (const w of sharedWords || wordsForLevel(lvl)) {
+    const full = exactFr(w.fr);
+    idx.set(full, { canon: w.fr, en: w.en, hint: w.hint, word: w.fr, status: w.status });
     const stripped = full.replace(ARTICLE_RE, '');
     if (stripped !== full && !idx.has(stripped)) {
       // Accept the bare noun ("problème" for "problem") and keep the accents from the list.
-      const canon = w.fr.replace(/^(le|la|les|l'|un|une|des) ?/i, '');
-      idx.set(stripped, { canon, en: w.en.replace(/^the /, ''), hint: w.hint.replace(/^(luh|lah|lay|lee|uhn|ün) /, '') });
+      const canon = w.fr.replace(ARTICLE_RE, '');
+      idx.set(stripped, { canon, en: w.en.replace(/^the /, ''), hint: w.hint.replace(/^(luh|lah|lay|lee|uhn|ün) /, ''), word: w.fr, status: w.status });
     }
   }
-  indexCache.set(words, idx);
-  return idx;
+  const folded = new Map();
+  for (const [key, value] of idx) {
+    const fold = normalizeFr(key);
+    folded.set(fold, folded.has(fold) ? null : value);
+  }
+  const result = { exact: idx, folded };
+  if (!sharedWords) indexCache.set(lvl, result);
+  return result;
 }
 
 export function matchCase(fr, original) {
@@ -223,18 +230,17 @@ export function matchCase(fr, original) {
   return fr;
 }
 
-// Fail closed: keep only swaps whose French is on the list.
+// Fail closed: keep only swaps whose French is on the list (the plugin's word state, else the level's bundled list).
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
-// `words` overrides the bundled list (see hostsource.js); without it the level picks L1 or L2.
-export function validateSwaps(level, swaps, words = wordsForLevel(level)) {
+export function validateSwaps(level, swaps, sharedWords) {
   if (!Array.isArray(swaps)) return [];
-  const idx = indexFor(words);
+  const idx = indexFor(level, sharedWords);
   const out = [];
   for (const s of swaps) {
     if (!s || typeof s.o !== 'string' || typeof s.f !== 'string') continue;
     const o = s.o.trim();
-    if (!o) continue;
-    const hit = idx.get(normalizeFr(s.f));
+    if (!o || !s.f.trim()) continue;
+    const hit = idx.exact.get(exactFr(s.f)) || idx.folded.get(normalizeFr(s.f));
     if (!hit) continue;
     out.push({
       o,
@@ -242,9 +248,25 @@ export function validateSwaps(level, swaps, words = wordsForLevel(level)) {
       g: hit.en,
       h: hit.hint,
       ctx: typeof s.ctx === 'string' ? s.ctx.trim() : '',
+      ...(sharedWords ? { word: hit.word, ...(hit.status ? { status: hit.status } : {}) } : {}),
     });
   }
   return out;
+}
+
+export function sentenceCount(text) {
+  return Math.max(1, String(text).split(/[.!?…]+(?:\s|$)|\n+/).filter((s) => wordCount(s) >= 3).length);
+}
+
+// Density ceiling per passage, one use per French word, learning words (active/shaky) kept before known ones.
+export function capSwaps(level, swaps, text, sharedWords) {
+  const max = (level <= 1 ? 1 : 2) * sentenceCount(text);
+  const status = new Map((sharedWords || []).map((w) => [w.fr, w.status]));
+  const rank = (s) => (status.get(s.word) && status.get(s.word) !== 'known' ? 0 : 1);
+  const used = new Set();
+  const unique = swaps.filter((s) => { const k = exactFr(s.word || s.f); if (used.has(k)) return false; used.add(k); return true; });
+  const keep = new Set([...unique].sort((a, b) => rank(a) - rank(b)).slice(0, max));
+  return unique.filter((s) => keep.has(s));
 }
 
 export function wordCount(text) {

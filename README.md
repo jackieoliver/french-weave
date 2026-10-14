@@ -40,10 +40,11 @@ Agents: follow [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
   runs (`claude -p`, `codex exec`).
 - **claude.ai and ChatGPT**: the same rules as a pasted preferences block. No hooks there, so the block is static
   until you refresh it.
-- **On X** (Chrome extension): a few English words in tweets become French. Hover for the meaning, click to flip
-  back. Swaps are chosen by Gemini on your own key.
+- **Any website in Chrome** (extension): a few English words on the page become French. Hover for the meaning,
+  click to flip back. On for every site by default; turn sites off from the toolbar popup, or set it to only the
+  sites you turn on. Swaps are chosen by Gemini on your own key.
 
-All of it shares one word list on your machine, so words you see in tweets count toward the chat and the other way round.
+All of it shares one word list on your machine, so words you see on the web count toward the chat and the other way round.
 
 ## Commands (Claude Code)
 
@@ -99,10 +100,11 @@ The extension's prompts are built for levels 1-2; at Stage 3-4 it uses the level
 ## Privacy
 
 Everything stays on your machine in `~/.french-weave` (override with `FRENCH_WEAVE_HOME`). The hook reads your
-local Claude Code and Codex transcripts to count exposure and never sends them anywhere. The extension sends tweet
-text to Google's Gemini API with your key (free-tier keys allow Google to train on prompts) and talks to the plugin
-through a Chrome native messaging host that only this extension's ID may call. If setup stored your Gemini key, it
-sits in `~/.french-weave/gemini_key` (mode 600) and is handed only to the extension.
+local Claude Code and Codex transcripts to count exposure and never sends them anywhere. The extension sends readable
+page text from sites where it's on to Google's Gemini API with your key (free-tier keys allow Google to train on
+prompts) and talks to the plugin through a Chrome native messaging host that only this extension's ID may call. If
+setup stored your Gemini key, it sits in `~/.french-weave/gemini_key` (mode 600) and is handed only to the
+extension's background worker, never to the pages it runs on.
 
 ## Layout
 
@@ -126,7 +128,7 @@ python3 scripts/make_blocks.py                   # regenerate blocks/ after chan
 cd extension && bun install && bun test           # extension (happy-dom)
 python3 tests/model_eval.py --out /tmp/fw-eval    # live check via claude -p, isolated from your own config
 python3 tests/model_eval.py --paste level-01 --stages 1 --out /tmp/fw-eval   # simulate claude.ai with a block
-node tests/extension_e2e.mjs                      # after setup: Playwright Chromium + fake X page + real Gemini call
+node tests/extension_e2e.mjs                      # after setup: Playwright Chromium + fake X and article pages + real Gemini
 ```
 
 ## License

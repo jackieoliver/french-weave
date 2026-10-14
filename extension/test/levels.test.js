@@ -58,6 +58,16 @@ describe('validateSwaps', () => {
     expect(validateSwaps(1, [{ o: 'Because', f: 'parce que' }])[0].f).toBe('Parce que');
     expect(matchCase("l'idée", 'The idea')).toBe("L'idée");
   });
+  test('keeps accented homographs distinct and rejects blank replacements', () => {
+    expect(validateSwaps(2, [{ o: 'or', f: 'ou' }])[0].f).toBe('ou');
+    expect(validateSwaps(2, [{ o: 'where', f: 'où' }])[0].f).toBe('où');
+    expect(validateSwaps(2, [{ o: 'and', f: '' }, { o: 'and', f: '  ' }])).toEqual([]);
+  });
+  test('plugin words replace the bundled list and keep the event spelling and status', () => {
+    const words = [{ fr: 'la lumière', en: 'the light', hint: 'loo-myair', status: 'active' }];
+    expect(validateSwaps(1, [{ o: 'light', f: 'lumiere' }, { o: 'and', f: 'et' }], words))
+      .toEqual([{ o: 'light', f: 'lumière', g: 'light', h: 'loo-myair', ctx: '', word: 'la lumière', status: 'active' }]);
+  });
   test('normalizeFr', () => {
     expect(normalizeFr(' Peut-Être ')).toBe('peut-etre');
     expect(normalizeFr('l’idée')).toBe("l'idee");

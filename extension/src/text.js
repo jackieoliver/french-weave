@@ -1,11 +1,14 @@
 // DOM side of a swap: flatten a tweet's text, locate the model's anchor, wrap one text-node slice.
 // Pure DOM functions (use node.ownerDocument), so they run under happy-dom in tests.
 
-const SKIP_TAGS = new Set(['A', 'CODE', 'PRE', 'BUTTON', 'INPUT', 'TEXTAREA', 'SCRIPT', 'STYLE', 'KBD', 'SAMP']);
+const SKIP_TAGS = new Set(['A', 'CODE', 'PRE', 'BUTTON', 'INPUT', 'TEXTAREA', 'SELECT', 'SCRIPT', 'STYLE', 'KBD', 'SAMP']);
 const WORD_CHAR = /[\p{L}\p{N}_]/u;
 const TEXT_NODE = 3;
 const ELEMENT_NODE = 1;
 export const SWAP_CLASS = 'fw-word';
+// Remember synthetic siblings so a framework replacing its original text node wins.
+const splitGroups = new WeakMap();
+const spanGroups = new WeakMap();
 
 // Returns { text, map, segs, raw }:
 //   raw   = every text node's data in order (plus emoji alt text), untouched
@@ -33,7 +36,7 @@ export function flatten(root) {
         } else if (child.classList && child.classList.contains(SWAP_CLASS)) {
           push(null, child.getAttribute('data-en') || child.textContent, false);
         } else {
-          walk(child, blocked || SKIP_TAGS.has(tag));
+          walk(child, blocked || SKIP_TAGS.has(tag) || child.matches('[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="button"],[hidden],[aria-hidden="true"],[translate="no"],.notranslate'));
         }
       }
     }
@@ -123,15 +126,24 @@ function wrap(place, swap) {
   const { node, offset, length } = place;
   const doc = node.ownerDocument;
   const mid = node.splitText(offset);
-  mid.splitText(length);
+  const suffix = mid.splitText(length);
   const span = doc.createElement('span');
   span.className = SWAP_CLASS;
   span.setAttribute('data-en', mid.data);
   span.setAttribute('data-fr', swap.f);
   span.setAttribute('data-tip', tipFor(swap));
   span.setAttribute('data-fw-split', '1');
+  if (swap.word) span.dataset.fwWord = swap.word;
+  if (swap.status) span.dataset.fwStatus = swap.status;
+  span.tabIndex = 0;
+  span.setAttribute('role', 'button');
+  span.setAttribute('aria-label', `${swap.f}: ${swap.g}. Show English`);
   span.textContent = swap.f;
   mid.parentNode.replaceChild(span, mid);
+  const group = splitGroups.get(node) || { node, pieces: new Set() };
+  group.prefix = node.data;
+  group.pieces.add(span); group.pieces.add(suffix);
+  splitGroups.set(node, group); spanGroups.set(span, group);
   return span;
 }
 
@@ -158,6 +170,13 @@ export function applySwaps(root, swaps) {
 // Removes every swap under root and merges the split text nodes back, restoring the original node.
 export function revert(root) {
   const spans = Array.from(root.querySelectorAll(`span.${SWAP_CLASS}`));
+  const groups = new Set(spans.map((span) => spanGroups.get(span)).filter(Boolean));
+  for (const group of groups) {
+    if (group.node.data !== group.prefix && group.node.parentNode) {
+      for (const piece of group.pieces) if (piece.parentNode === group.node.parentNode) piece.remove();
+    }
+    splitGroups.delete(group.node);
+  }
   for (const span of spans) {
     const parent = span.parentNode;
     if (!parent) continue;
@@ -184,5 +203,6 @@ export function toggle(span) {
   const showEn = !span.classList.contains('fw-en');
   span.classList.toggle('fw-en', showEn);
   span.textContent = showEn ? span.getAttribute('data-en') : span.getAttribute('data-fr');
+  span.setAttribute('aria-label', `${span.textContent}. Show ${showEn ? 'French' : 'English'}`);
   return showEn;
 }
