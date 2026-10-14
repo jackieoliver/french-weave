@@ -5,22 +5,58 @@ command yourself; the person only does the steps marked HUMAN. Write no French i
 
 `<repo>` below is what the person gave you: a GitHub `owner/name`, a git URL, or a local folder path.
 
-## 0. Tell the person what they will do, in one message, before you start
+## 0. Ask a few questions and list the human steps, in one batch, before you start
 
-Send this (fill in nothing yet; you will give the exact folder path at the end):
+Run `codex --version` first: if it fails, leave Codex CLI out of question 2. Then, in Claude Code, send the
+human steps below as a short message and ask all four questions in one AskUserQuestion call (question 2
+multi-select, the default option first with "(default)" in its label). In Codex or anywhere else, send the
+human steps and the numbered questions as one chat message. Anyone who skips a question gets the default.
 
-> Setting up French Weave. You'll do two things; I'll do the rest:
-> 1. A Gemini API key for the Chrome extension (free at https://aistudio.google.com/apikey). Give me the path to a
->    file containing it, or skip this and paste it into the extension's popup at the end.
-> 2. At the end, in Chrome: open `chrome://extensions`, switch on **Developer mode**, click **Load unpacked**, and pick
->    the folder I give you. Chrome doesn't let scripts do this part.
-> 3. (Only if you use Codex CLI) The next time you start `codex`, it asks you to review a new hook: choose
+Human steps (send as written):
+
+> Setting up French Weave. A few quick questions below; I'll do the rest, except these steps for you:
+> 1. If you pick the Chrome extension: at the end, open `chrome://extensions`, switch on **Developer mode**, click
+>    **Load unpacked**, and pick the folder I give you. Chrome doesn't let scripts do this part.
+> 2. If you pick the Chrome extension: a Gemini API key (free at https://aistudio.google.com/apikey), as a file
+>    path now or pasted into the extension's popup at the end.
+> 3. If you pick Codex CLI: the next time you start `codex`, it asks you to review a new hook; choose
 >    **Trust all and continue**.
 
-Leave out item 3 if `codex --version` fails. Don't wait for an answer: go straight on with the steps. At step 3, pass
-the key file if the person has named one by then; otherwise run setup without it (they paste the key in the popup).
+Questions:
 
-Never ask for the key in chat if a file path is possible, and never print the key.
+1. How much French do you know already?
+   - None (default)
+   - A few basic words
+   - I can read simple French
+2. Where should French show up? (pick any)
+   - Claude Code (always on with the plugin)
+   - Codex CLI (default when installed; only offered if `codex --version` works)
+   - The Chrome extension on websites (default)
+   - A claude.ai / ChatGPT preferences block to paste
+3. If you picked the Chrome extension, which websites?
+   - Every site; turn any off from the toolbar (default)
+   - Only sites I turn on
+4. If you picked the Chrome extension, your Gemini API key:
+   - Paste it into the extension's popup at the end (default)
+   - A file that contains it: type its path (in Claude Code, under Other). Never paste the key itself here.
+
+Steps 1 and 2 below don't depend on the answers: if you can keep working while the person answers, do them now;
+otherwise do them right after. Never ask for the key in chat if a file path is possible, and never print the key.
+
+How the answers map to setup (step 3) and the hand-over (step 5):
+
+| Answer | Effect |
+| --- | --- |
+| 1. None / a few basic words / simple French | `--known-top 0` / `--known-top 40` / `--known-top 150` |
+| 2. Codex CLI | `--codex` |
+| 2. Chrome extension | pass answers 3 and 4; give the Chrome steps at the end |
+| 2. Preferences block | run `export` at the end |
+| 3. Every site / only sites I turn on | `--sites all` / `--sites ask` |
+| 4. A file path | `--gemini-key-file <path>` |
+
+`--known-top N` marks the N most common words in `data/lexicon.csv` as known, so the stage follows on its own
+(Stage 2 at 40 known words, Stage 3 at 150). It only touches words not introduced yet, so a rerun never resets or
+lowers anyone's progress.
 
 ## 1. Check prerequisites
 
@@ -30,7 +66,6 @@ claude --version
 ```
 
 Python 3.9+ (macOS system `python3` is fine) and Claude Code. Nothing else is needed: no pip installs, no Node.
-Also run `codex --version`; if it works, the person uses Codex CLI and setup gets `--codex` below.
 
 ## 2. Install the Claude Code plugin
 
@@ -44,12 +79,12 @@ The plugin is enabled when the list shows it. It adds a prompt hook (the chat we
 
 ## 3. Run setup
 
-Find the installed copy and run its setup script. Pass the key file if the person gave you one:
+Find the installed copy and run its setup script with the flags from the answers (table in step 0):
 
 ```sh
 FW="$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins" -path '*french-weave*' -path '*/scripts/fw.py' 2>/dev/null | sort | tail -1)"
 echo "$FW"
-python3 "$FW" setup --gemini-key-file /path/to/key-file   # add --codex if codex is installed
+python3 "$FW" setup --known-top 40 --sites all --gemini-key-file /path/to/key-file --codex   # for example
 ```
 
 Without a key file, run setup without `--gemini-key-file`; the person pastes the key in the extension popup later.
@@ -64,7 +99,8 @@ setup copies what it needs, so the clone can be deleted afterwards.
 If the person runs Chrome or Chromium with a custom `--user-data-dir`, add `--user-data-dir <that dir>` (repeatable):
 a browser started that way looks for native hosts only inside that dir.
 
-Setup is safe to run again (it keeps the person's word progress). It creates:
+Setup is safe to run again (it keeps the person's word progress; leaving out `--sites` keeps the earlier choice).
+It always installs the extension folder and native host, even if the person didn't pick the extension. It creates:
 
 - `~/.french-weave/` (or `$FRENCH_WEAVE_HOME`): word state, the extension folder to load, the native host
 - Chrome and Chromium native messaging host manifests (user level, no sudo):
@@ -83,15 +119,19 @@ If one says `FAIL`, fix it before going on; rerunning setup fixes most.
 
 ## 5. Hand over
 
-Tell the person, in plain English:
+Tell the person, in plain English (leave out the items for things they didn't pick):
 
-1. The HUMAN Chrome step with the exact folder from `check` (`~/.french-weave/extension` expanded to a full path):
-   `chrome://extensions` -> Developer mode on -> Load unpacked -> that folder.
-2. If no key file was given: click the French Weave toolbar icon (puzzle piece menu -> pin it) and paste the Gemini key.
-3. Codex users: at the next `codex` start, choose **Trust all and continue** when it asks about the new hook.
+1. Chrome extension: the HUMAN Chrome step with the exact folder from `check` (`~/.french-weave/extension` expanded
+   to a full path): `chrome://extensions` -> Developer mode on -> Load unpacked -> that folder.
+2. Chrome extension, no key file given: click the French Weave toolbar icon (puzzle piece menu -> pin it) and paste
+   the Gemini key.
+3. Codex CLI: at the next `codex` start, choose **Trust all and continue** when it asks about the new hook.
 4. Chat weaving starts in the next Claude Code or Codex session they open (hooks load at session start), and never
    in one-shot `claude -p` or `codex exec` runs (`FRENCH_WEAVE_OFF=1` turns it off anywhere else).
-5. Commands: `/french-weave:status`, `/french-weave:known <word>`, `/french-weave:learn <word>`,
+5. Preferences block: run `python3 "$FW" export` (claude.ai) and `python3 "$FW" export --chatgpt` (ChatGPT) and
+   show each block as printed in a code block, with where to paste it; they use whichever applies. Re-export
+   about once a week.
+6. Commands: `/french-weave:status`, `/french-weave:known <word>`, `/french-weave:learn <word>`,
    `/french-weave:stage 1-4|auto`, `/french-weave:pause`, `/french-weave:resume`, and `/french-weave:export` for a
    claude.ai or ChatGPT preferences block.
 

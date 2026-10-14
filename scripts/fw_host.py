@@ -4,6 +4,7 @@
 Messages (JSON, 4-byte native-endian length prefix, one per line of conversation):
   {"type": "ping"}                      -> {"ok": true, "host": 1}
   {"type": "state"}                     -> {"ok": true, "version", "stage", "paused", "words": [{fr, en, hint, status}],
+                                            "prefs": {"extension_sites"?: "all" | "ask"} (absent means "all"),
                                             "geminiKey"?: stored key if setup saved one}
   {"type": "events", "events": [{"word", "kind": "seen"|"flip"|"peek", "day"?}]} -> {"ok": true, "applied": n}
 """
@@ -44,7 +45,7 @@ def handle(message):
     if kind == 'state':
         with fwlib.editing() as state:
             pass  # applies today's promotion before answering
-        reply = dict(fwlib.public_state(state), ok=True)
+        reply = dict(fwlib.public_state(state), ok=True, prefs=state.get('prefs') or {})
         key = fwlib.home() / 'gemini_key'
         if key.exists():
             reply['geminiKey'] = key.read_text().strip()

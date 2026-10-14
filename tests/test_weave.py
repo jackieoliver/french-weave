@@ -429,10 +429,17 @@ class Host(Home):
         self.assertEqual(state['stage'], 1)
         self.assertEqual(len(state['words']), fwlib.NEW_PER_DAY)
         self.assertNotIn('geminiKey', state)
+        self.assertEqual(state['prefs'], {})
         self.assertEqual(events, {'ok': True, 'applied': 2})
         self.assertEqual(after['words'][0], {'fr': 'mais', 'en': 'but', 'hint': 'meh', 'status': 'shaky'})
         self.assertNotEqual(after['version'], state['version'])
         self.assertFalse(bad['ok'])
+
+    def test_state_reply_carries_prefs(self):
+        with fwlib.editing() as state:
+            state['prefs'] = {'extension_sites': 'ask'}
+        reply, = self.converse({'type': 'state'})
+        self.assertEqual(reply['prefs'], {'extension_sites': 'ask'})
 
     def test_message_framing(self):
         stream = io.BytesIO()
@@ -469,6 +476,51 @@ class Setup(Home):
         reply = json.loads(result.stdout[4:])
         self.assertTrue(reply['ok'])
         self.assertEqual(reply['geminiKey'], 'AIzaTEST')
+
+    def run_setup(self, *flags):
+        with mock.patch.object(Path, 'home', return_value=self.home), mock.patch.dict(os.environ, {
+                'XDG_CONFIG_HOME': '', 'CODEX_HOME': str(self.home / 'codex')}), mock.patch('sys.stdout', new=io.StringIO()):
+            fw.main(['setup', *flags])
+        return fwlib.load_state(create=False)
+
+    def test_known_top_seeds_before_first_learning_words(self):
+        state = self.run_setup('--known-top', '40')
+        statuses = [w['status'] for w in state['words']]
+        self.assertEqual(statuses[:40], ['known'] * 40)
+        self.assertEqual(statuses[40:40 + fwlib.NEW_PER_DAY], ['active'] * fwlib.NEW_PER_DAY)
+        self.assertEqual(fwlib.stage_for(state), 2)
+        self.assertFalse(state['stage_pinned'])
+        self.assertNotIn('prefs', state)
+
+    def test_rerun_never_resets_or_downgrades(self):
+        self.run_setup()  # top 5 become learning words
+        with fwlib.editing() as state:
+            fwlib.apply_event(state, 'et', 'flip')  # shaky
+            fwlib.apply_event(state, 'mais', 'seen')
+        state = self.run_setup('--known-top', '150', '--sites', 'ask')
+        by = {w['fr']: w for w in state['words']}
+        self.assertEqual(by['et']['status'], 'shaky')
+        self.assertEqual(by['mais']['status'], 'active')
+        self.assertEqual(by['mais']['days'], [fwlib.today()])
+        self.assertEqual(sum(w['status'] == 'known' for w in state['words'][:150]), 145)
+        self.assertEqual(fwlib.stage_for(state), 2)  # 145 known: stage 3 comes once the learning words graduate
+        self.assertEqual(state['prefs'], {'extension_sites': 'ask'})
+        before = json.dumps(state)
+        state = self.run_setup('--known-top', '40')  # a lower answer later changes nothing
+        self.assertEqual(json.dumps(state), before)
+        self.assertEqual(state['prefs'], {'extension_sites': 'ask'})  # --sites left out keeps the choice
+        self.assertEqual(self.run_setup('--sites', 'all')['prefs'], {'extension_sites': 'all'})
+
+    def test_dry_run_reports_answers_and_writes_nothing(self):
+        with mock.patch.object(Path, 'home', return_value=self.home), \
+                mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': ''}), mock.patch('sys.stdout', new=io.StringIO()) as out:
+            fw.main(['setup', '--dry-run', '--known-top', '40', '--sites', 'ask'])
+        info = json.loads(out.getvalue())
+        self.assertEqual((info['known_top'], info['sites']), (40, 'ask'))
+        self.assertIn('codex_cli', info)
+        self.assertFalse((self.home / 'fw').exists())
+        with self.assertRaises(SystemExit), mock.patch('sys.stderr', new=io.StringIO()):
+            fw.main(['setup', '--dry-run', '--sites', 'some'])
 
     def test_extension_id_matches_manifest_key(self):
         import base64

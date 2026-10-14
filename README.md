@@ -14,9 +14,15 @@ replies (and tweets), at your level, and moves words from learning to known as y
 Set up French Weave from https://github.com/jackieoliver/french-weave
 ```
 
-Then you do three things (your agent tells you when):
-1. Give it a free Gemini API key file from [aistudio.google.com/apikey](https://aistudio.google.com/apikey), for the X extension.
-2. In Chrome: `chrome://extensions`, turn on **Developer mode**, **Load unpacked**, pick the folder it names.
+It first asks a few questions in one go: how much French you know already (none, a few basic words, or simple
+French, which starts you at Stage 1, 2 or 3), where French should show up (Claude Code, Codex, the Chrome
+extension, a claude.ai or ChatGPT block), whether the extension runs on every site or only ones you turn on, and
+how you'll give it a Gemini key. Skip any question to take the default. Rerunning setup (`/french-weave:setup`)
+asks again and never resets your progress.
+
+Then you do up to three things (your agent tells you when):
+1. Extension: a free Gemini API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey), as a file path or pasted into the extension popup.
+2. Extension: in Chrome, `chrome://extensions`, turn on **Developer mode**, **Load unpacked**, pick the folder it names.
 3. Codex only: at the next `codex` start, choose **Trust all and continue** for the new hook.
 
 **claude.ai or ChatGPT, with Claude Code installed.** Run `/french-weave:export` (or `/french-weave:export --chatgpt`)

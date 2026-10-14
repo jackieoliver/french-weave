@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """French Weave command line: setup, status, word and stage changes. Python 3.9+, standard library only.
 
-  fw.py setup [--gemini-key-file FILE] [--user-data-dir DIR]... [--dry-run]
+  fw.py setup [--gemini-key-file FILE] [--user-data-dir DIR]... [--known-top N] [--sites all|ask] [--dry-run]
                                                      install the state dir, extension copy and native host;
                                                      --user-data-dir also registers the host for a browser run
-                                                     with that --user-data-dir (Chromium looks there)
+                                                     with that --user-data-dir (Chromium looks there);
+                                                     --known-top marks the top N lexicon words known unless
+                                                     already introduced (40: some basics, 150: simple French);
+                                                     --sites: extension on every site (all) or only ones you
+                                                     turn on (ask)
   fw.py status                                       stage, word counts, learning words
   fw.py known WORD...                                mark words as known
   fw.py learn WORD...                                put words back in the learning set (shaky)
@@ -58,6 +62,7 @@ def plan(extra=()):
         'host_launcher': str(home / 'app' / 'fw-host'),
         'host_manifests': [str(d / f'{HOST_NAME}.json') for d in host_dirs(extra)],
         'extension_id': EXTENSION_ID,
+        'codex_cli': shutil.which('codex'),
     }
 
 
@@ -138,7 +143,8 @@ def setup(args):
         if not key:
             sys.exit('The Gemini key file is empty.')
     if args.dry_run:
-        print(json.dumps(dict(info, dry_run=True, gemini_key='would be stored' if key else 'not given'), indent=1))
+        print(json.dumps(dict(info, dry_run=True, gemini_key='would be stored' if key else 'not given',
+                              known_top=args.known_top, sites=args.sites), indent=1))
         if args.codex:
             setup_codex(True)
         return
@@ -164,13 +170,21 @@ def setup(args):
         path = home / 'gemini_key'
         path.write_text(key + '\n')
         path.chmod(0o600)
-    with fwlib.editing() as state:
-        pass  # creates the state on first run, adds new lexicon words on later runs
+    with fwlib.locked():
+        if not (home / 'state.json').exists():  # first run: seed known words before the first learning words
+            fwlib.save_state(fwlib.new_state(known_top=args.known_top))
+    with fwlib.editing() as state:  # later runs: adds new lexicon words, seeds only words not yet introduced
+        fwlib.seed_known(state, args.known_top)
+        if args.sites:
+            state.setdefault('prefs', {})['extension_sites'] = args.sites
     if args.codex:
         setup_codex(False)
     print('French Weave is set up.')
     print(f'  word state:  {home / "state.json"} (Stage {fwlib.stage_for(state)}, '
+          f'{sum(w["status"] == "known" for w in state["words"])} known, '
           f'{sum(w["status"] == "active" for w in state["words"])} learning words)')
+    sites = (state.get('prefs') or {}).get('extension_sites', 'all')
+    print(f'  extension:   {"every site; turn any off from the toolbar" if sites == "all" else "only sites you turn on"}')
     print(f'  native host: {", ".join(info["host_manifests"])}')
     print(f'  Gemini key:  {"stored for the extension" if key or (home / "gemini_key").exists() else "not stored; paste it in the extension popup"}')
     print('Human steps left (Chrome blocks scripts from doing these):')
@@ -331,6 +345,8 @@ def main(argv=None):
     p.add_argument('--gemini-key-file')
     p.add_argument('--user-data-dir', action='append', default=[])
     p.add_argument('--codex', action='store_true')
+    p.add_argument('--known-top', type=int, default=0, metavar='N')
+    p.add_argument('--sites', choices=['all', 'ask'])
     p.add_argument('--dry-run', action='store_true')
     p.set_defaults(run=setup)
     p = sub.add_parser('uninstall')

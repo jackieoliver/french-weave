@@ -132,12 +132,24 @@ def locked(name='state.lock', blocking=True):
 
 # ---- state ----
 
-def new_state(day=None, lexicon=None):
+def new_state(day=None, lexicon=None, known_top=0):
+    """A fresh state; known_top marks the top lexicon words known before the first learning words are picked."""
     day = day or today()
     words = [blank(w) for w in (lexicon or load_lexicon())]
     state = {'schema': 1, 'created': day, 'stage': 1, 'stage_pinned': False, 'paused': False, 'words': words}
+    seed_known(state, known_top, day)
     refill(state, day)
     return state
+
+
+def seed_known(state, n, day=None):
+    """Marks the top n lexicon words known if they aren't introduced yet (queue). Words already learning, shaky or
+    known keep their status, so seeding never resets progress. Returns how many words changed."""
+    day = day or today()
+    seeded = [w for w in state['words'][:max(n, 0)] if w['status'] == 'queue']
+    for w in seeded:
+        set_status(w, 'known', day)
+    return len(seeded)
 
 
 def blank(word):
