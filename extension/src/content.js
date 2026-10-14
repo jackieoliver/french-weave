@@ -120,6 +120,16 @@ function onMutations(records) {
   for (const el of todo) consider(el);
 }
 
+// Hovering a French word until its meaning shows is a peek: you needed the gloss.
+const PEEK_MS = 700;
+let peekTimer = null;
+function onOver(e) {
+  const span = e.target?.closest?.(`span.${SWAP_CLASS}`);
+  clearTimeout(peekTimer);
+  if (!span || span.classList.contains('fw-en')) return;
+  peekTimer = setTimeout(() => span.isConnected && span.matches(':hover') && report(span.dataset.fr, 'peek'), PEEK_MS);
+}
+
 function onClick(e) {
   const span = e.target?.closest?.(`span.${SWAP_CLASS}`);
   if (!span) return;
@@ -175,6 +185,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 document.addEventListener('click', onClick, true);
+document.addEventListener('mouseover', onOver, true);
 
 chrome.storage.local.get(['settings', 'wordState', 'hostKey']).then(({ settings: s, wordState, hostKey }) => {
   settings = withDefaults(s);

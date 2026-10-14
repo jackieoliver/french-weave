@@ -27,23 +27,33 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 LEXICON = PLUGIN_ROOT / 'data' / 'lexicon.csv'
 
 # ---- promotion rules (documented in README "How words advance") ----
-WINDOW = 8              # active words to keep in rotation
-NEW_PER_DAY = 3         # new words per day when refilling (the first fill at setup is not capped)
-SHAKY_BLOCK = 5         # no new words while this many are shaky
-GRADUATE_DAYS = 4       # active -> known after exposure on this many distinct days with no flip since
-SHAKY_DAYS = 7          # shaky -> known after this many days with no new flip
-STAGES = [(150, 3), (40, 2)]  # (known words, stage): first match wins; otherwise Stage 1
+WINDOW = 20             # target number of active (learning) words
+NEW_PER_DAY = 5         # new words per day, including the first day
+SHAKY_BLOCK = 5         # no new words while this many or more are shaky
+GRADUATE_DAYS = 3       # active -> known: exposure days needed, and length of the clean streak
+SHAKY_DAYS = 7          # shaky -> known: days with no new flip, asked or peek
+PEEK_WINDOW = 7         # a known word peeked on 2 different days within this many days becomes shaky
+ASSUMED_WEIGHT = 1      # a day with only opt-in "assumed" exposure (fw.py log-chat-day) counts this much
+STAGES = [(400, 4), (150, 3), (40, 2)]  # (known words, stage): first match wins; otherwise Stage 1
+
 
 # Same spelling as an English word, so French use can't be told apart in English prose: never counted.
 UNMEASURABLE = {'important', 'possible', 'plus', 'comment', 'grand', 'simple', 'long', 'normal', 'excellent',
-                'terrible', 'impossible'}
+                'terrible', 'impossible', 'mars', 'bravo', 'pardon', 'rouge', 'mince', 'sec', 'dire', 'porter',
+                'planter', 'charger', 'lever', 'lancer', 'quitter', 'payer', 'signer', 'proposer', 'copier', 'derrière'}
 DETERMINER = r"(?:le|la|les|l'|un|une|du|de la|ce|cette|mon|ma|ton|ta)\s*"
 CODE = re.compile(r"```.*?```|`[^`\n]*`|https?://\S+", re.S)
 DEDUPE_DAYS = 45
 
 
 def home():
-    return Path(os.environ.get('FRENCH_WEAVE_HOME') or Path.home() / '.french-weave').expanduser()
+    """The state dir: FRENCH_WEAVE_HOME, else the dir this copy was installed into by setup (<home>/app/scripts),
+    else ~/.french-weave."""
+    if os.environ.get('FRENCH_WEAVE_HOME'):
+        return Path(os.environ['FRENCH_WEAVE_HOME']).expanduser()
+    if PLUGIN_ROOT.name == 'app' and (PLUGIN_ROOT.parent / 'state.json').exists():
+        return PLUGIN_ROOT.parent
+    return Path.home() / '.french-weave'
 
 
 def today():
@@ -124,10 +134,15 @@ def locked(name='state.lock', blocking=True):
 
 def new_state(day=None, lexicon=None):
     day = day or today()
-    words = [dict(w, status='queue', added='', changed='', days=[], last_bad='') for w in (lexicon or load_lexicon())]
+    words = [blank(w) for w in (lexicon or load_lexicon())]
     state = {'schema': 1, 'created': day, 'stage': 1, 'stage_pinned': False, 'paused': False, 'words': words}
-    refill(state, day, cap=None)
+    refill(state, day)
     return state
+
+
+def blank(word):
+    """A lexicon entry as a queued word: days = extension seen days, assumed = opt-in unscanned chat days."""
+    return dict(word, status='queue', added='', changed='', days=[], assumed=[], peeks=[], last_bad='')
 
 
 def merge_lexicon(state, lexicon=None):
@@ -135,7 +150,7 @@ def merge_lexicon(state, lexicon=None):
     have = {key(w['fr']) for w in state['words']}
     for w in lexicon or load_lexicon():
         if key(w['fr']) not in have:
-            state['words'].append(dict(w, status='queue', added='', changed='', days=[], last_bad=''))
+            state['words'].append(blank(w))
     return state
 
 
@@ -195,21 +210,27 @@ def stage_for(state):
 
 
 def exposure_days(word, chat=None):
-    """Distinct days the word was seen: extension 'seen' events plus chat replies."""
-    days = set(word.get('days') or [])
-    days.update((chat or {}).get(word['fr'], {}).get('days', []))
-    return sorted(days)
+    """{day: 'seen' | 'assumed'} since the word joined the learning set.
+
+    'seen' (counts 1): extension seen events and the word in a Claude Code or Codex reply (scanned transcripts are
+    genuine exposure). 'assumed' (counts ASSUMED_WEIGHT): opt-in log-chat-day marks for chats that can't be scanned."""
+    since = word.get('added') or '0000'
+    days = {d: 'assumed' for d in word.get('assumed') or [] if d >= since}
+    for d in list(word.get('days') or []) + list((chat or {}).get(word['fr'], {}).get('days', [])):
+        if d >= since:
+            days[d] = 'seen'
+    return dict(sorted(days.items()))
 
 
 def refill(state, day, cap=NEW_PER_DAY):
+    """Fill the learning set up to WINDOW from lexicon order, at most cap new words per day, none while
+    SHAKY_BLOCK or more words are shaky."""
     words = state['words']
     if sum(w['status'] == 'shaky' for w in words) >= SHAKY_BLOCK:
         return 0
-    room = WINDOW - sum(w['status'] == 'active' for w in words)
     last_day, count = state.get('refilled') or ['', 0]
     count = count if last_day == day else 0
-    if cap is not None:
-        room = min(room, cap - count)
+    room = min(WINDOW - sum(w['status'] == 'active' for w in words), cap - count)
     added = 0
     for w in words:
         if added >= room:
@@ -217,9 +238,21 @@ def refill(state, day, cap=NEW_PER_DAY):
         if w['status'] == 'queue':
             set_status(w, 'active', day)
             added += 1
-    if cap is not None:
-        state['refilled'] = [day, count + added]  # the uncapped first fill doesn't use up today's new words
+    state['refilled'] = [day, count + added]
     return added
+
+
+def graduates(word, chat=None):
+    """active -> known: GRADUATE_DAYS of exposure, no flip/asked/peek on the last GRADUATE_DAYS exposure days,
+    and at least one genuinely seen day (assumed days alone never graduate a word)."""
+    days = exposure_days(word, chat)
+    total = sum(1 if kind == 'seen' else ASSUMED_WEIGHT for kind in days.values())
+    if total < GRADUATE_DAYS or len(days) < GRADUATE_DAYS:
+        return False
+    streak = list(days)[-GRADUATE_DAYS]
+    peeks = word.get('peeks') or []
+    clean = (not word['last_bad'] or word['last_bad'] < streak) and not (peeks and peeks[-1] >= streak)
+    return clean and 'seen' in days.values()
 
 
 def promote(state, day=None, chat=None):
@@ -228,34 +261,45 @@ def promote(state, day=None, chat=None):
     if chat is None:
         chat = (read_json(home() / 'exposure.json', {}) or {}).get('words', {})
     for w in state['words']:
-        if w['status'] == 'active':
-            since = max(w['added'], next_day(w['last_bad'])) if w['last_bad'] else w['added']
-            if len([d for d in exposure_days(w, chat) if d >= since]) >= GRADUATE_DAYS:
-                set_status(w, 'known', day)
-        elif w['status'] == 'shaky':
-            if days_between(w['last_bad'] or w['changed'], day) >= SHAKY_DAYS:
-                set_status(w, 'known', day)
+        if w['status'] == 'active' and graduates(w, chat):
+            set_status(w, 'known', day)
+        elif w['status'] == 'shaky' and days_between(w['last_bad'] or w['changed'], day) >= SHAKY_DAYS:
+            set_status(w, 'known', day)
     refill(state, day)
     state['stage'] = stage_for(state)
     return state
 
 
-def next_day(day):
-    return (dt.date.fromisoformat(day) + dt.timedelta(days=1)).isoformat()
+EVENTS = ('seen', 'assumed', 'flip', 'asked', 'peek', 'known', 'active')
 
 
 def apply_event(state, fr, kind, day=None):
-    """Extension and command events: seen, flip, asked, known, active. Returns False for unknown words."""
+    """Extension and command events. Returns False for unknown words or kinds.
+
+    seen / assumed: exposure. flip (clicked back to English) / asked: shaky. peek (hovered for the meaning):
+    blocks graduation of an active word, restarts a shaky word's clock, and a known word peeked on 2 different
+    days within PEEK_WINDOW days becomes shaky. known / active: set directly (commands)."""
     day = day or today()
     w = find(state, fr)
-    if w is None or kind not in ('seen', 'flip', 'asked', 'known', 'active'):
+    if w is None or kind not in EVENTS:
         return False
-    if kind == 'seen':
-        if w['status'] != 'queue' and day not in w['days']:
-            w['days'] = sorted(w['days'] + [day])[-60:]
+    if kind in ('seen', 'assumed'):
+        field = 'days' if kind == 'seen' else 'assumed'
+        if w['status'] != 'queue' and day not in (w.get(field) or []):
+            w[field] = sorted((w.get(field) or []) + [day])[-60:]
     elif kind in ('flip', 'asked'):
         w['last_bad'] = day
         set_status(w, 'shaky', day)
+    elif kind == 'peek':
+        peeks = w.setdefault('peeks', [])
+        if not peeks or peeks[-1] != day:
+            peeks.append(day)
+            del peeks[:-10]
+        if w['status'] == 'shaky':
+            w['last_bad'] = day
+        elif w['status'] == 'known' and len(peeks) >= 2 and days_between(peeks[-2], day) < PEEK_WINDOW:
+            w['last_bad'] = day
+            set_status(w, 'shaky', day)
     elif kind == 'known':
         set_status(w, 'known', day)
     elif kind == 'active':
@@ -269,6 +313,31 @@ def introduced(state):
     order = {'shaky': 0, 'active': 1, 'known': 2}
     words = [w for w in state['words'] if w['status'] in order]
     return sorted(words, key=lambda w: (order[w['status']], w['added']))
+
+
+COLLAPSE_AT = 150      # from this many known words, the brief and exports name a rank band instead of listing them
+EXCEPTIONS_MAX = 30    # most exceptions named on each side of the band
+
+
+def known_band(state):
+    """Compact description of the known set by lexicon rank (the lexicon is in frequency/usefulness order).
+
+    Returns (n, missing, extra): known = words ranked 1..n, except `missing` (ranked <= n but not yet introduced;
+    learning words are listed separately anyway), plus `extra` (known words ranked > n). n minimizes the number
+    of exceptions; ties go to the larger band."""
+    words = state['words']
+    known_after = sum(w['status'] == 'known' for w in words)
+    queue_before = 0
+    best = (known_after, 0)
+    for rank, w in enumerate(words, 1):
+        known_after -= w['status'] == 'known'
+        queue_before += w['status'] == 'queue'
+        if queue_before + known_after <= best[0]:
+            best = (queue_before + known_after, rank)
+    n = best[1]
+    missing = [w['fr'] for w in words[:n] if w['status'] == 'queue']
+    extra = [w['fr'] for w in words[n:] if w['status'] == 'known']
+    return n, missing, extra
 
 
 def version(state):
@@ -295,12 +364,16 @@ def pattern(fr):
     return re.compile(r"(?<![\w'-])" + re.escape(word) + tail)
 
 
-def transcript_root():
-    """Claude Code transcripts: FRENCH_WEAVE_TRANSCRIPTS, else <CLAUDE_CONFIG_DIR or ~/.claude>/projects."""
+def codex_home():
+    return Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex').expanduser()
+
+
+def transcript_roots():
+    """Chat transcripts to scan: FRENCH_WEAVE_TRANSCRIPTS, else Claude Code's projects and Codex's sessions."""
     if os.environ.get('FRENCH_WEAVE_TRANSCRIPTS'):
-        return Path(os.environ['FRENCH_WEAVE_TRANSCRIPTS']).expanduser()
-    base = os.environ.get('CLAUDE_CONFIG_DIR') or str(Path.home() / '.claude')
-    return Path(base).expanduser() / 'projects'
+        return [Path(os.environ['FRENCH_WEAVE_TRANSCRIPTS']).expanduser()]
+    claude = Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude').expanduser() / 'projects'
+    return [claude, codex_home() / 'sessions']
 
 
 class Lines:
@@ -320,7 +393,7 @@ class Lines:
 
 
 def replies(lines):
-    """Yield (day, text) for main-thread assistant replies in Claude Code transcript lines."""
+    """Yield (day, text) for main-thread assistant replies in Claude Code or Codex transcript lines."""
     for line in lines:
         if len(line) > 1_000_000 or '"assistant"' not in line:
             continue
@@ -328,12 +401,15 @@ def replies(lines):
             item = json.loads(line)
         except ValueError:
             continue
-        if item.get('type') != 'assistant' or item.get('isSidechain'):
-            continue
         day = local_day(item.get('timestamp'))
-        for block in item.get('message', {}).get('content') or []:
-            if isinstance(block, dict) and block.get('type') == 'text':
-                yield day, block.get('text', '')
+        if item.get('type') == 'assistant' and not item.get('isSidechain'):  # Claude Code
+            for block in item.get('message', {}).get('content') or []:
+                if isinstance(block, dict) and block.get('type') == 'text':
+                    yield day, block.get('text', '')
+        elif item.get('type') == 'response_item':  # Codex
+            payload = item.get('payload') or {}
+            if payload.get('type') == 'message' and payload.get('role') == 'assistant':
+                yield day, ' '.join(b.get('text', '') for b in payload.get('content') or [] if isinstance(b, dict))
 
 
 def local_day(stamp):
@@ -343,15 +419,15 @@ def local_day(stamp):
         return str(stamp)[:10]
 
 
-def scan(words, index, root=None, start='0000-00-00'):
+def scan(words, index, roots=None, start='0000-00-00'):
     """Fold new transcript lines into the exposure index (mutated and returned)."""
-    root = Path(root) if root else transcript_root()
+    roots = [Path(r) for r in ([roots] if isinstance(roots, (str, Path)) else roots)] if roots else transcript_roots()
     patterns = {fr: pattern(fr) for fr in words if norm(fr) not in UNMEASURABLE}
     counts, offsets, recent = index.setdefault('words', {}), index.setdefault('offsets', {}), index.setdefault('recent', {})
     for fr in patterns:
         counts.setdefault(fr, {'n': 0, 'days': []})
     since = time.mktime(time.strptime(start, '%Y-%m-%d')) if start > '0000' else 0
-    for path in root.rglob('*.jsonl') if root.exists() else []:
+    for path in (p for root in roots if root.exists() for p in root.rglob('*.jsonl')):
         name = str(path)
         try:
             if 'subagents' in path.parts or path.stat().st_mtime < since:

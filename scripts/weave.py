@@ -22,6 +22,8 @@ LOT, SOME = (6, 30), (3, 10)  # chat exposure (distinct days, replies) for the "
 TAIL = 2_000_000  # bytes at the end of a transcript searched for the last reply
 SHORT = 40  # replies with fewer prose words are too short to measure
 RECALL_EVERY = 3
+# Most known words listed per tier, so the brief stays small at Stages 3-4 (hundreds of known words).
+LIMITS = {'rare': 40, 'some': 60, 'lot': 80}
 # French grammar words on no list: several in one reply mean it slipped into French sentences.
 GRAMMAR = set("je tu il elle nous vous ils elles les une des du sont était été suis avez avons ont cette ces notre votre "
               "leur j'ai c'était n'est qu'il".split())
@@ -62,19 +64,27 @@ def brief(state, seen, recall=None):
     entry = lambda w: w['fr'] if w['status'] == 'known' else f'{w["fr"]} = {w["en"]}' + (f', "{w["hint"]}"' if stage <= 2 else '')
     words = sorted(fwlib.introduced(state), key=lambda w: (w['status'] != 'shaky', -seen.get(w['fr'], {}).get('n', 0)))
     swap = lambda w: f'{w["en"]} → {w["fr"]}'
-    group = lambda name, show=entry: '; '.join(show(w) for w in words if tier(w, seen) == name) or 'none'
+    def group(name, show=entry):
+        picked = [w for w in words if tier(w, seen) == name]
+        if name == 'rare':  # least exposure first, so fading words get pushed back in
+            picked.sort(key=lambda w: seen.get(w['fr'], {}).get('n', 0))
+        return '; '.join(show(w) for w in picked[:LIMITS.get(name)]) or 'none'
+    banded = sum(w['status'] == 'known' for w in state['words']) >= fwlib.COLLAPSE_AT
     grammar = ('Every sentence stays an English sentence with French words swapped in, like "The build passes maintenant, '
                'mais the cache is stale, donc I cleared it." Never a French sentence or clause, and no French outside these '
                'lists (no French articles, verbs or numbers); if a sentence starts turning French, rewrite it in English. '
-               if stage < 3 else 'English sentences keep English grammar; about one short, fully French sentence in '
-               f'{5 if stage == 3 else 2.5:g}, guessable from the English around it. ')
+               if stage < 3 else
+               f'About {"one sentence in five" if stage == 3 else "two sentences in five"} should be fully French: short, '
+               'simple and guessable from the English around it, like "Le test passe maintenant." or "C\'est la bonne '
+               'approche." The other sentences stay English with French words swapped in. At this stage use any common '
+               'French word the user would follow, not only the lists, and reach the target in technical replies too. ')
     text = (f'French Weave (Stage {stage}): the user is a native English speaker learning French passively. Write your chat '
             f'reply in English and swap in French words from the lists below: about {target}% of the words in a reply (about '
             f'{round(target * 1.5)} in a 150-word reply), never over {cap}%, at most {per_sentence} in one sentence. '
             f'{grammar}Use a word only where it means exactly what the English word would mean there; where one doesn\'t '
             'fit, use another from the lists instead (pour never after ask or wait, or for a duration; avant, pendant and '
             'après only before a noun; plus means more, never and; dans only for in a place or time; ça only as a pronoun; '
-            'non only as an answer). If a reply runs long on French, cut seen-a-lot words first. Plain English for code, '
+            f'non only as an answer). If a reply runs long on French, cut {"known" if banded else "seen-a-lot"} words first. Plain English for code, '
             'commands, paths, numbers, names, IDs, option letters and steps the user will follow, and no French right before '
             'a path; zero French, and no recall cue, for health, medication, legal, money, safety, emergency, driving or '
             'urgent topics. French goes only in your chat reply: never in files, code, configs, commit or PR text, messages '
@@ -83,12 +93,22 @@ def brief(state, seen, recall=None):
             'earlier in this chat, at most 8, like: (sans = without, "sahn"); nothing to gloss, no footer.\n'
             f'Learning now (use 2 to 4 per reply): {group("learn")}\n'
             f'Rarely seen (pepper in a couple per reply where the sentence makes the meaning obvious): {group("rare")}\n'
-            f'Seen sometimes (about 2 in 3 places one fits): {group("some")}\n'
-            f'Seen a lot, as default swaps (write the French every time the English word has that meaning): {group("lot", swap)}')
+            + (band_line(state) if banded else
+               f'Seen sometimes (about 2 in 3 places one fits): {group("some")}\n'
+               f'Seen a lot, as default swaps (write the French every time the English word has that meaning): {group("lot", swap)}'))
     if recall:
         text += (f'\nIf this reply is longer than a few sentences, open it with "Recall: {recall["fr"]}?" on its own line '
                  f'and end it, after the footer, with: Recall: {recall["fr"]} = {recall["en"]}, "{recall["hint"]}"')
     return text
+
+
+def band_line(state):
+    n, missing, extra = fwlib.known_band(state)
+    cut = lambda xs: ', '.join(xs[:fwlib.EXCEPTIONS_MAX]) + (f' and {len(xs) - fwlib.EXCEPTIONS_MAX} more' if len(xs) > fwlib.EXCEPTIONS_MAX else '')
+    return (f'Known (use freely, never gloss): roughly the {n} most common French words and phrases (ranks 1-{n} of the '
+            'French Weave list, connectors and adverbs first, then everyday nouns, adjectives and verbs)'
+            + (f', except these not learned yet: {cut(missing)}' if missing else '')
+            + (f'; also known: {cut(extra)}' if extra else '') + '.')
 
 
 def last_reply(path):
@@ -112,10 +132,11 @@ def share(text, words):
     total = len(re.findall(r"[^\W\d_]+(?:['-][^\W\d_]+)*", prose))
     french = learning = 0
     rest = prose
-    for word in words:
+    # Longest first, each match removed before the next search: "faire attention" is not also "faire".
+    for word in sorted(words, key=lambda w: -len(w['fr'])):
         if fwlib.norm(word['fr']) not in fwlib.UNMEASURABLE:
             regex = fwlib.pattern(word['fr'])
-            uses = len(regex.findall(prose))
+            uses = len(regex.findall(rest))
             french += uses * len(word['fr'].split())
             learning += uses if word['status'] != 'known' else 0
             rest = regex.sub(' ', rest)
@@ -160,6 +181,73 @@ def next_recall(state, session):
     return pick
 
 
+def process_args(pid):
+    """Command line of a process as a list (Linux /proc, else ps), and its parent pid."""
+    try:
+        with open(f'/proc/{pid}/cmdline', 'rb') as file:
+            args = [a.decode('utf-8', 'replace') for a in file.read().split(b'\0') if a]
+        with open(f'/proc/{pid}/stat') as file:
+            parent = int(file.read().rsplit(')', 1)[1].split()[1])
+        return args, parent
+    except (OSError, ValueError, IndexError):
+        pass
+    try:
+        out = subprocess.run(['ps', '-o', 'ppid=', '-o', 'args=', '-p', str(pid)], capture_output=True, text=True,
+                             timeout=5).stdout.strip()
+        parent, _, args = out.partition(' ')
+        return args.split(), int(parent)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return [], 0
+
+
+def codex_exec(pid=None):
+    """True when a `codex exec` process starts this hook (directly or through a shell)."""
+    pid = pid or os.getppid()
+    for _ in range(3):
+        args, parent = process_args(pid)
+        if args and os.path.basename(args[0]).startswith('codex'):
+            return 'exec' in args[1:] or 'e' in args[1:2]
+        if parent <= 1:
+            break
+        pid = parent
+    return False
+
+
+def interactive(env=None, data=None, exec_check=codex_exec):
+    """False for scripted runs, whose output must never get French.
+
+    Claude Code sets CLAUDE_CODE_ENTRYPOINT=sdk-cli and CLAUDE_CODE_SESSION_ATTENDED=0 for `claude -p` (even when
+    started from inside an interactive session), and cli / 1 for the interactive terminal UI. Codex gives hooks no
+    such variable, so a Codex hook (its input has a turn_id) checks whether `codex exec` started it; the Codex
+    TUI runs hooks from its app-server instead. FRENCH_WEAVE_FORCE=1 weaves anyway (model checks);
+    FRENCH_WEAVE_OFF=1 never weaves."""
+    env = os.environ if env is None else env
+    if env.get('FRENCH_WEAVE_OFF') == '1':
+        return False
+    if env.get('FRENCH_WEAVE_FORCE') == '1':
+        return True
+    if 'turn_id' in (data or {}):
+        return not exec_check()
+    return not (env.get('CLAUDE_CODE_ENTRYPOINT', '').startswith('sdk') or env.get('CLAUDE_CODE_SESSION_ATTENDED') == '0')
+
+
+STALE_EXPORT_DAYS = 7
+
+
+def export_notice(state, now=None):
+    """Once per export: a nudge when a pasted claude.ai / ChatGPT block is over a week behind the word state."""
+    exported = state.get('exported') or {}
+    if not exported.get('at') or exported.get('noticed') or exported.get('version') == fwlib.version(state):
+        return None
+    now = now or time.time()
+    if now - exported['at'] < STALE_EXPORT_DAYS * 86400:
+        return None
+    with fwlib.editing() as fresh:
+        fresh.setdefault('exported', {})['noticed'] = True
+    return ('French Weave: the block you pasted into claude.ai or ChatGPT is over a week behind your word list. '
+            'Run /french-weave:export to refresh it.')
+
+
 def main(argv):
     hook = '--hook' in argv
     data = {}
@@ -168,6 +256,10 @@ def main(argv):
             data = json.load(sys.stdin)
         except ValueError:
             data = {}
+        if not isinstance(data, dict):
+            data = {}
+        if not interactive(data=data):
+            return 0  # scripted run: no brief at all
     try:
         state = fwlib.load_state()
     except Exception as error:  # never block a prompt because of French
@@ -182,8 +274,14 @@ def main(argv):
             text += calibration(reply, state) if reply else ''
         except Exception:
             pass  # no transcript yet or unreadable: the brief alone still helps
-        print(json.dumps({'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit', 'additionalContext': text}},
-                         ensure_ascii=False))
+        out = {'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit', 'additionalContext': text}}
+        try:
+            notice = export_notice(state)
+        except Exception:
+            notice = None
+        if notice:
+            out['systemMessage'] = notice  # shown to the user, outside the brief
+        print(json.dumps(out, ensure_ascii=False))
     else:
         print(text)
     return 0

@@ -11,19 +11,24 @@
   fw.py stage N|auto                                 pin the stage (1-4) or let it follow known words
   fw.py pause | resume                               stop or restart French in chat and on X
   fw.py refresh                                      rescan chat transcripts and apply the promotion rules
+  fw.py setup --codex [--dry-run]                    also add the chat hook to Codex CLI (~/.codex or $CODEX_HOME)
+  fw.py export [--claude-ai | --chatgpt] [--log-day] paste-ready block for claude.ai preferences or ChatGPT
+  fw.py log-chat-day                                 opt-in: count today as exposure for your learning words
   fw.py check                                        verify the state, extension folder and native host
-  fw.py uninstall [--dry-run]                        remove the native host manifests (keeps your word state)
+  fw.py uninstall [--codex] [--dry-run]              remove the native host manifests (and the Codex hook)
 """
 import argparse
 import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fwlib  # noqa: E402
+import export  # noqa: E402
 
 HOST_NAME = 'com.frenchweave.host'
 EXTENSION_ID = 'ckihjnkijacemibkblmjfjgpffflbced'  # fixed by the "key" in extension/manifest.json
@@ -56,6 +61,70 @@ def plan(extra=()):
     }
 
 
+CODEX_MARK = 'french-weave'  # our Codex hook command always contains this (the state dir path)
+
+
+def codex_command():
+    return f'"{sys.executable}" "{fwlib.home() / "app" / "scripts" / "weave.py"}" --hook'
+
+
+def is_ours(handler):
+    command = handler.get('command', '') if isinstance(handler, dict) else ''
+    return 'weave.py' in command and '--hook' in command and str(fwlib.home()) in command
+
+
+def merge_codex_hooks(data, command):
+    """hooks.json with our UserPromptSubmit handler added or updated in place; other hooks untouched."""
+    data = data if isinstance(data, dict) else {}
+    groups = data.setdefault('hooks', {}).setdefault('UserPromptSubmit', [])
+    for group in groups:
+        for handler in group.get('hooks', []):
+            if is_ours(handler):
+                handler['command'] = command  # same place, so Codex keeps the trust if nothing changed
+                return data
+    groups.append({'hooks': [{'type': 'command', 'command': command}]})
+    return data
+
+
+def enable_codex_hooks(text):
+    """config.toml text with `hooks = true` in its [features] table (added if missing)."""
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.strip() == '[features]'), None)
+    if start is None:
+        return text.rstrip('\n') + ('\n\n' if text.strip() else '') + '[features]\nhooks = true\n'
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith('[')), len(lines))
+    for i in range(start + 1, end):
+        if re.match(r'\s*hooks\s*=', lines[i]):
+            lines[i] = 'hooks = true'
+            break
+    else:
+        lines.insert(start + 1, 'hooks = true')
+    return '\n'.join(lines) + '\n'
+
+
+def setup_codex(dry_run):
+    codex = fwlib.codex_home()
+    hooks_path, config_path = codex / 'hooks.json', codex / 'config.toml'
+    data = merge_codex_hooks(fwlib.read_json(hooks_path, {}) if hooks_path.exists() else {}, codex_command())
+    config = enable_codex_hooks(config_path.read_text() if config_path.exists() else '')
+    if dry_run:
+        print(json.dumps({'codex_hooks': str(hooks_path), 'codex_config': str(config_path), 'command': codex_command()},
+                         indent=1))
+        return
+    if hooks_path.exists() and fwlib.read_json(hooks_path) is None:
+        sys.exit(f'{hooks_path} is not valid JSON; fix it, then rerun setup --codex.')
+    codex.mkdir(parents=True, exist_ok=True)
+    for path in (hooks_path, config_path):
+        backup = path.with_name(path.name + '.before-french-weave')
+        if path.exists() and not backup.exists():
+            shutil.copy2(path, backup)
+    fwlib.write_json(hooks_path, data)
+    config_path.write_text(config)
+    print(f'Codex: chat hook in {hooks_path}, hooks enabled in {config_path}.')
+    print('  Human step: start `codex` once; at "Hooks need review" pick "Trust all and continue" (or review first).')
+    print('  Codex never runs a new hook before that. `codex exec` runs stay French-free either way.')
+
+
 def setup(args):
     info = plan(args.user_data_dir)
     if sys.version_info < (3, 9):
@@ -70,6 +139,8 @@ def setup(args):
             sys.exit('The Gemini key file is empty.')
     if args.dry_run:
         print(json.dumps(dict(info, dry_run=True, gemini_key='would be stored' if key else 'not given'), indent=1))
+        if args.codex:
+            setup_codex(True)
         return
     home.mkdir(parents=True, exist_ok=True)
     os.chmod(home, 0o700)
@@ -95,6 +166,8 @@ def setup(args):
         path.chmod(0o600)
     with fwlib.editing() as state:
         pass  # creates the state on first run, adds new lexicon words on later runs
+    if args.codex:
+        setup_codex(False)
     print('French Weave is set up.')
     print(f'  word state:  {home / "state.json"} (Stage {fwlib.stage_for(state)}, '
           f'{sum(w["status"] == "active" for w in state["words"])} learning words)')
@@ -135,6 +208,13 @@ def check(_args):
         report(json.loads(out[4:]).get('ok') is True, f'native host answers: {launcher}')
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         report(False, f'native host answers: {launcher} ({error.__class__.__name__})')
+    hooks = fwlib.read_json(fwlib.codex_home() / 'hooks.json', {}) or {}
+    groups = (hooks.get('hooks') or {}).get('UserPromptSubmit') or []
+    if any(is_ours(h) for g in groups for h in g.get('hooks', [])):
+        config = (fwlib.codex_home() / 'config.toml')
+        enabled = config.exists() and enable_codex_hooks(config.read_text()) == config.read_text().rstrip('\n') + '\n'
+        report(enabled, f'Codex hook in {fwlib.codex_home() / "hooks.json"} with [features] hooks = true '
+                        '(Codex asks you to trust it on first start)')
     has_key = (home / 'gemini_key').exists()
     print(f'{"ok  " if has_key else "note"} Gemini key {"stored by setup" if has_key else "not stored; paste it in the extension popup"}')
     if not ok:
@@ -142,6 +222,16 @@ def check(_args):
 
 
 def uninstall(args):
+    if args.codex:
+        path = fwlib.codex_home() / 'hooks.json'
+        data = fwlib.read_json(path, {}) or {}
+        groups = (data.get('hooks') or {}).get('UserPromptSubmit') or []
+        kept = [g for g in ({**g, 'hooks': [h for h in g.get('hooks', []) if not is_ours(h)]} for g in groups) if g['hooks']]
+        if len(kept) != len(groups) or sum(len(g['hooks']) for g in kept) != sum(len(g.get('hooks', [])) for g in groups):
+            print(('would remove' if args.dry_run else 'removed') + f' the French Weave hook from {path}')
+            if not args.dry_run:
+                data['hooks']['UserPromptSubmit'] = kept
+                fwlib.write_json(path, data)
     for directory in host_dirs():
         path = directory / f'{HOST_NAME}.json'
         if path.exists():
@@ -205,6 +295,30 @@ def pause(value):
     return run
 
 
+def export_cmd(args):
+    with fwlib.editing() as state:
+        logged = export.log_chat_day(state) if args.log_day else 0
+        export.mark_exported(state, 'chatgpt' if args.chatgpt else 'claude-ai')
+    if args.chatgpt:
+        about, respond = export.chatgpt(state)
+        print(f'ChatGPT > Settings > Personalization > Custom instructions. Each field holds {export.CHATGPT_LIMIT} '
+              'characters on every plan.\n')
+        print(f'--- "What would you like ChatGPT to know about you?" ({len(about)} characters) ---\n{about}\n')
+        print(f'--- "How would you like ChatGPT to respond?" ({len(respond)} characters) ---\n{respond}')
+    else:
+        block = export.claude_ai(state)
+        print(f'claude.ai > Settings > Profile > personal preferences. Replace the old French Weave block '
+              f'({len(block)} characters):\n\n{block}')
+    if logged:
+        print(f'\n(Counted today as chat exposure for {logged} learning words.)')
+
+
+def log_chat_day(_args):
+    with fwlib.editing() as state:
+        logged = export.log_chat_day(state)
+    print(f'Counted today as chat exposure for {logged} learning words (never enough on its own to make a word known).')
+
+
 def refresh(_args):
     fwlib.refresh_exposure()
 
@@ -216,9 +330,11 @@ def main(argv=None):
     p = sub.add_parser('setup')
     p.add_argument('--gemini-key-file')
     p.add_argument('--user-data-dir', action='append', default=[])
+    p.add_argument('--codex', action='store_true')
     p.add_argument('--dry-run', action='store_true')
     p.set_defaults(run=setup)
     p = sub.add_parser('uninstall')
+    p.add_argument('--codex', action='store_true')
     p.add_argument('--dry-run', action='store_true')
     p.set_defaults(run=uninstall)
     sub.add_parser('status').set_defaults(run=status)
@@ -233,6 +349,13 @@ def main(argv=None):
     sub.add_parser('pause').set_defaults(run=pause(True))
     sub.add_parser('resume').set_defaults(run=pause(False))
     sub.add_parser('refresh').set_defaults(run=refresh)
+    p = sub.add_parser('export')
+    target = p.add_mutually_exclusive_group()
+    target.add_argument('--claude-ai', action='store_true')
+    target.add_argument('--chatgpt', action='store_true')
+    p.add_argument('--log-day', action='store_true', help='also count today as exposure (see log-chat-day)')
+    p.set_defaults(run=export_cmd)
+    sub.add_parser('log-chat-day').set_defaults(run=log_chat_day)
     args = parser.parse_args(argv)
     args.run(args)
 

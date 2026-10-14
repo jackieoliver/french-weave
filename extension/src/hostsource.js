@@ -57,17 +57,18 @@ export function localDay(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// Queues seen/flip events. A word counts as seen once per day, so scrolling a busy timeline stays cheap.
+// Queues seen/flip/peek events. Seen and peek count once per word per day, so a busy timeline stays cheap.
 export async function queueEvents(storage, events, day = localDay()) {
   const obj = await storage.get([PENDING_KEY, SENT_KEY]);
   const pending = Array.isArray(obj[PENDING_KEY]) ? obj[PENDING_KEY] : [];
   const sent = obj[SENT_KEY]?.day === day ? obj[SENT_KEY] : { day, words: [] };
   for (const e of events || []) {
-    if (!e || typeof e.word !== 'string' || !['seen', 'flip'].includes(e.kind)) continue;
+    if (!e || typeof e.word !== 'string' || !['seen', 'flip', 'peek'].includes(e.kind)) continue;
     const word = e.word.toLowerCase();
-    if (e.kind === 'seen') {
-      if (sent.words.includes(word)) continue;
-      sent.words.push(word);
+    if (e.kind !== 'flip') {
+      const tag = e.kind === 'seen' ? word : `${e.kind}:${word}`;
+      if (sent.words.includes(tag)) continue;
+      sent.words.push(tag);
     }
     pending.push({ word, kind: e.kind, day });
   }

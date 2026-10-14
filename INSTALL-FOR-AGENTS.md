@@ -14,6 +14,11 @@ Send this (fill in nothing yet; you will give the exact folder path at the end):
 >    file containing it, or skip this and paste it into the extension's popup at the end.
 > 2. At the end, in Chrome: open `chrome://extensions`, switch on **Developer mode**, click **Load unpacked**, and pick
 >    the folder I give you. Chrome doesn't let scripts do this part.
+> 3. (Only if you use Codex CLI) The next time you start `codex`, it asks you to review a new hook: choose
+>    **Trust all and continue**.
+
+Leave out item 3 if `codex --version` fails. Don't wait for an answer before starting: do steps 1-4 while the
+person finds the key, and ask for the key file path only when you reach step 3.
 
 Never ask for the key in chat if a file path is possible, and never print the key.
 
@@ -25,6 +30,7 @@ claude --version
 ```
 
 Python 3.9+ (macOS system `python3` is fine) and Claude Code. Nothing else is needed: no pip installs, no Node.
+Also run `codex --version`; if it works, the person uses Codex CLI and setup gets `--codex` below.
 
 ## 2. Install the Claude Code plugin
 
@@ -43,8 +49,14 @@ Find the installed copy and run its setup script. Pass the key file if the perso
 ```sh
 FW="$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins" -path '*french-weave*' -path '*/scripts/fw.py' 2>/dev/null | sort | tail -1)"
 echo "$FW"
-python3 "$FW" setup --gemini-key-file /path/to/key-file   # or without --gemini-key-file
+python3 "$FW" setup --gemini-key-file /path/to/key-file   # add --codex if codex is installed
 ```
+
+Without a key file, run setup without `--gemini-key-file`; the person pastes the key in the extension popup later.
+With `--codex`, setup adds a UserPromptSubmit hook to `~/.codex/hooks.json` (other hooks are kept; backups end in
+`.before-french-weave`) and sets `hooks = true` under `[features]` in `~/.codex/config.toml`. Codex runs a new hook
+only after the person trusts it at the next `codex` start; setup cannot do that for them. No AGENTS.md change is
+needed: the hook carries the rules every turn.
 
 If `find` prints nothing, run setup from a clone of `<repo>` instead (`python3 <clone>/scripts/fw.py setup ...`);
 setup copies what it needs, so the clone can be deleted afterwards.
@@ -76,16 +88,19 @@ Tell the person, in plain English:
 1. The HUMAN Chrome step with the exact folder from `check` (`~/.french-weave/extension` expanded to a full path):
    `chrome://extensions` -> Developer mode on -> Load unpacked -> that folder.
 2. If no key file was given: click the French Weave toolbar icon (puzzle piece menu -> pin it) and paste the Gemini key.
-3. Chat weaving starts in the next Claude Code session they open (hooks load at session start).
-4. Commands: `/french-weave:status`, `/french-weave:known <word>`, `/french-weave:learn <word>`,
-   `/french-weave:stage 1-4|auto`, `/french-weave:pause`, `/french-weave:resume`.
+3. Codex users: at the next `codex` start, choose **Trust all and continue** when it asks about the new hook.
+4. Chat weaving starts in the next Claude Code or Codex session they open (hooks load at session start), and never
+   in `claude -p` or `codex exec` runs.
+5. Commands: `/french-weave:status`, `/french-weave:known <word>`, `/french-weave:learn <word>`,
+   `/french-weave:stage 1-4|auto`, `/french-weave:pause`, `/french-weave:resume`, and `/french-weave:export` for a
+   claude.ai or ChatGPT preferences block.
 
 You are done when `check` is all `ok` and only the HUMAN steps above remain.
 
 ## Uninstall
 
 ```sh
-python3 "$FW" uninstall          # removes the native host manifests; keeps ~/.french-weave
+python3 "$FW" uninstall --codex  # removes the native host manifests and the Codex hook; keeps ~/.french-weave
 claude plugin uninstall french-weave@french-weave
 ```
 

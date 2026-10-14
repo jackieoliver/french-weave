@@ -64,15 +64,17 @@ describe('refresh', () => {
 });
 
 describe('events', () => {
-  it('counts a word as seen once per day, keeps every flip', async () => {
+  it('counts a word as seen or peeked once per day, keeps every flip', async () => {
     const storage = memoryStorage();
-    await queueEvents(storage, [{ word: 'Très', kind: 'seen' }, { word: 'très', kind: 'seen' }, { word: 'et', kind: 'flip' }], '2026-10-01');
+    await queueEvents(storage, [{ word: 'Très', kind: 'seen' }, { word: 'très', kind: 'seen' }, { word: 'et', kind: 'flip' },
+      { word: 'très', kind: 'peek' }, { word: 'très', kind: 'peek' }], '2026-10-01');
     await queueEvents(storage, [{ word: 'très', kind: 'seen' }, { word: 'et', kind: 'flip' }, { word: 'x', kind: 'bogus' }], '2026-10-01');
     await queueEvents(storage, [{ word: 'très', kind: 'seen' }], '2026-10-02');
     const { [PENDING_KEY]: pending } = await storage.get([PENDING_KEY]);
     expect(pending).toEqual([
       { word: 'très', kind: 'seen', day: '2026-10-01' },
       { word: 'et', kind: 'flip', day: '2026-10-01' },
+      { word: 'très', kind: 'peek', day: '2026-10-01' },
       { word: 'et', kind: 'flip', day: '2026-10-01' },
       { word: 'très', kind: 'seen', day: '2026-10-02' },
     ]);

@@ -5,7 +5,7 @@ Messages (JSON, 4-byte native-endian length prefix, one per line of conversation
   {"type": "ping"}                      -> {"ok": true, "host": 1}
   {"type": "state"}                     -> {"ok": true, "version", "stage", "paused", "words": [{fr, en, hint, status}],
                                             "geminiKey"?: stored key if setup saved one}
-  {"type": "events", "events": [{"word", "kind": "seen"|"flip", "day"?}]} -> {"ok": true, "applied": n}
+  {"type": "events", "events": [{"word", "kind": "seen"|"flip"|"peek", "day"?}]} -> {"ok": true, "applied": n}
 """
 import json
 from pathlib import Path
@@ -57,7 +57,7 @@ def handle(message):
         today = fwlib.today()
         with fwlib.editing() as state:
             for event in events[:MAX_EVENTS]:
-                if not isinstance(event, dict) or event.get('kind') not in ('seen', 'flip'):
+                if not isinstance(event, dict) or event.get('kind') not in ('seen', 'flip', 'peek'):
                     continue
                 day = event.get('day') if isinstance(event.get('day'), str) and DAY.match(event['day']) else today
                 if day > today:
