@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>French Weave</title>
+<style>
+  body { width: 250px; margin: 0; padding: 12px 14px; font: 13px/1.4 system-ui, sans-serif; color: #111; background: #fff; }
+  h1 { font-size: 14px; margin: 0 0 10px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 7px 0; }
+  .row > span:first-child { flex: 0 0 auto; }
+  input[type=number], input[type=password], select { width: 130px; box-sizing: border-box; padding: 3px 5px; font: inherit; }
+  input[type=checkbox] { width: 18px; height: 18px; }
+  button { font: inherit; padding: 3px 9px; }
+  #levelInfo, #status, #wordInfo { color: #666; font-size: 12px; }
+  @media (prefers-color-scheme: dark) {
+    body { color: #eee; background: #15181c; }
+    input, select, button { color: #eee; background: #23272e; border: 1px solid #444; }
+    #levelInfo, #status, #wordInfo { color: #aaa; }
+  }
+</style>
+</head>
+<body>
+  <h1>French Weave</h1>
+  <label class="row"><span>On</span><input type="checkbox" id="enabled"></label>
+  <div class="row"><span>Level</span><span id="levelInfo"></span></div>
+  <label class="row"><span>Force level</span>
+    <select id="levelOverride">
+      <option value="0">Auto (Claude Code stage)</option>
+      <option value="1">1</option>
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+    </select>
+  </label>
+  <label class="row"><span>Model</span><select id="model"></select></label>
+  <label class="row"><span>Gemini key</span><input type="password" id="apiKey" placeholder="AIza…" autocomplete="off"></label>
+  <div class="row"><span>Words</span><span id="wordInfo"></span></div>
+  <div class="row"><button id="syncWords">Sync words</button><button id="clearCache">Clear cache</button></div>
+  <div class="row"><span id="status"></span></div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

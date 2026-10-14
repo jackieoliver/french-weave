@@ -1,0 +1,13 @@
+{
+  "name": "french-weave",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "French Weave Chrome extension: swaps a few English words in tweets on X for French.",
+  "scripts": {
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.14.5"
+  }
+}

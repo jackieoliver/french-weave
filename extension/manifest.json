@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "French Weave",
+  "version": "0.1.0",
+  "description": "Swaps a few English words in tweets on X for French, at your French Weave level.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0V8r5wBOrv17b7QXfvtdZjQgrBTK9rLvN33V9OJWpXLKNZZjsW0oDCcbIho+MFMs/i1F5Ovn0IgWT4dmX2Kck7687p/Deet0R3gytQYVMvsMq7oq/9Q2H5o4pxpNC2EEG1cE/4V0s4JOuvItoWZTVo1uukDlpQMA2kN443XeC37gGY2+13wh933/73MyGHgiQTkIltkVj9OwScxcxabRW8nbt0QAZHYK8+pplwvG6HF/gMgY3XC4EPU+lbOSN4GZ+TFeKgsRqtuxGU/rDSw1OgaJsl23f02yU7gqtD54vk2bXxfrX/XsJUPbdCmS0BTubywJijTN7WX6GPi2Iyv7LQIDAQAB",
+  "permissions": ["storage", "alarms", "nativeMessaging"],
+  "host_permissions": ["https://generativelanguage.googleapis.com/*"],
+  "background": { "service_worker": "src/background.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["src/content-loader.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    { "resources": ["src/*.js"], "matches": ["https://x.com/*", "https://twitter.com/*"] }
+  ],
+  "action": { "default_popup": "src/popup.html", "default_title": "French Weave" }
+}

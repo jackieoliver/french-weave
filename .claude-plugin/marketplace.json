@@ -1,0 +1,12 @@
+{
+  "name": "french-weave",
+  "description": "Passive French for people who read a lot of LLM output.",
+  "owner": { "name": "French Weave" },
+  "plugins": [
+    {
+      "name": "french-weave",
+      "source": "./",
+      "description": "Weaves a few French words into Claude's chat replies, at your level, and syncs your words with the French Weave Chrome extension."
+    }
+  ]
+}
