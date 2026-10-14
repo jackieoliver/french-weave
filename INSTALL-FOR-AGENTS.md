@@ -90,7 +90,7 @@ Tell the person, in plain English:
 2. If no key file was given: click the French Weave toolbar icon (puzzle piece menu -> pin it) and paste the Gemini key.
 3. Codex users: at the next `codex` start, choose **Trust all and continue** when it asks about the new hook.
 4. Chat weaving starts in the next Claude Code or Codex session they open (hooks load at session start), and never
-   in `claude -p` or `codex exec` runs.
+   in one-shot `claude -p` or `codex exec` runs (`FRENCH_WEAVE_OFF=1` turns it off anywhere else).
 5. Commands: `/french-weave:status`, `/french-weave:known <word>`, `/french-weave:learn <word>`,
    `/french-weave:stage 1-4|auto`, `/french-weave:pause`, `/french-weave:resume`, and `/french-weave:export` for a
    claude.ai or ChatGPT preferences block.

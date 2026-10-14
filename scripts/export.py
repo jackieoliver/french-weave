@@ -30,7 +30,12 @@ RULES = [
      "ones; most sentences carry one or two French words. When a word doesn't fit a spot, use another from the lists "
      "rather than leaving the sentence all English. Keep track of how much French you've used in this chat and "
      "correct toward the target. Stage 5: all French, only when I ask.",
-     "Share of words in French: {stages_short}. Aim for the target."),
+     "Share of words in French: {stages_short}. Aim for the target; most sentences carry one or two."),
+    ("Connectors and adverbs on my lists are default swaps: write the French every time the English word has that "
+     "meaning in your chat prose (and = et, but = mais, so = donc, with = avec, without = sans, very = très, also = "
+     "aussi, now = maintenant, because = parce que, for = pour, and the like once they're on my lists). Under target "
+     "is the usual miss, so count as you write.",
+     "Default swaps every time the meaning fits: et, mais, donc, avec, sans, très, aussi, maintenant, parce que, pour."),
     ("Below Stage 3, French words drop into English sentences and English grammar stays: no fully French sentences "
      "or clauses, and no French articles, verbs or other words that aren't on my lists, like \"The build passes "
      "maintenant, mais the cache is stale, donc I cleared it.\" At Stage 3+, French sentences are short and guessable "
@@ -68,9 +73,10 @@ RULES = [
 def stage_text(short=False):
     from weave import STAGES
     if short:
-        return '; '.join(f'S{n} ~{t}% (max {c}%, {p}/sentence)' for n, (t, c, p) in STAGES.items())
-    return '; '.join(f'Stage {n} about {t}% of words (cap {c}%, at most {p} French words in a sentence){STAGE_SHAPES[n]}'
-                     for n, (t, c, p) in STAGES.items())
+        return '; '.join(f'S{n} ~{t}%, ~{round(t * 1.5)} per 150 words (max {c}%, {p}/sentence)'
+                         for n, (t, c, p) in STAGES.items())
+    return '; '.join(f'Stage {n} about {t}% of words, about {round(t * 1.5)} French words in a 150-word reply '
+                     f'(cap {c}%, at most {p} in a sentence){STAGE_SHAPES[n]}' for n, (t, c, p) in STAGES.items())
 
 
 def rules(short=False):

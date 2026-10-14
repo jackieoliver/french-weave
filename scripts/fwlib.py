@@ -316,7 +316,7 @@ def introduced(state):
 
 
 COLLAPSE_AT = 150      # from this many known words, the brief and exports name a rank band instead of listing them
-EXCEPTIONS_MAX = 30    # most exceptions named on each side of the band
+EXCEPTIONS_MAX = 20    # most exceptions named on each side of the band
 
 
 def known_band(state):

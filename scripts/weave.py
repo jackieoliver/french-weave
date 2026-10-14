@@ -23,7 +23,7 @@ TAIL = 2_000_000  # bytes at the end of a transcript searched for the last reply
 SHORT = 40  # replies with fewer prose words are too short to measure
 RECALL_EVERY = 3
 # Most known words listed per tier, so the brief stays small at Stages 3-4 (hundreds of known words).
-LIMITS = {'rare': 40, 'some': 60, 'lot': 80}
+LIMITS = {'rare': 30, 'some': 60, 'lot': 80}
 # French grammar words on no list: several in one reply mean it slipped into French sentences.
 GRAMMAR = set("je tu il elle nous vous ils elles les une des du sont était été suis avez avons ont cette ces notre votre "
               "leur j'ai c'était n'est qu'il".split())
@@ -80,7 +80,8 @@ def brief(state, seen, recall=None):
                'French word the user would follow, not only the lists, and reach the target in technical replies too. ')
     text = (f'French Weave (Stage {stage}): the user is a native English speaker learning French passively. Write your chat '
             f'reply in English and swap in French words from the lists below: about {target}% of the words in a reply (about '
-            f'{round(target * 1.5)} in a 150-word reply), never over {cap}%, at most {per_sentence} in one sentence. '
+            f'{round(target * 1.5)} in a 150-word reply{", so most sentences carry one or two" if stage <= 2 else ""}), '
+            f'never over {cap}%, at most {per_sentence} in one sentence. Under target is the usual miss, so count as you write. '
             f'{grammar}Use a word only where it means exactly what the English word would mean there; where one doesn\'t '
             'fit, use another from the lists instead (pour never after ask or wait, or for a duration; avant, pendant and '
             'après only before a noun; plus means more, never and; dans only for in a place or time; ça only as a pronoun; '
@@ -102,11 +103,16 @@ def brief(state, seen, recall=None):
     return text
 
 
+DEFAULT_SWAPS = 15  # in band mode: the top-ranked known words (connectors and adverbs) written in French every time
+
+
 def band_line(state):
     n, missing, extra = fwlib.known_band(state)
+    swaps = [w for w in state['words'] if w['status'] == 'known'][:DEFAULT_SWAPS]
+    defaults = ('Default swaps (write the French every time the English word has that meaning): '
+                + '; '.join(f'{w["en"]} → {w["fr"]}' for w in swaps) + '\n') if swaps else ''
     cut = lambda xs: ', '.join(xs[:fwlib.EXCEPTIONS_MAX]) + (f' and {len(xs) - fwlib.EXCEPTIONS_MAX} more' if len(xs) > fwlib.EXCEPTIONS_MAX else '')
-    return (f'Known (use freely, never gloss): roughly the {n} most common French words and phrases (ranks 1-{n} of the '
-            'French Weave list, connectors and adverbs first, then everyday nouns, adjectives and verbs)'
+    return defaults + (f'Known (use freely, never gloss): roughly the {n} most common French words and phrases'
             + (f', except these not learned yet: {cut(missing)}' if missing else '')
             + (f'; also known: {cut(extra)}' if extra else '') + '.')
 
@@ -213,13 +219,41 @@ def codex_exec(pid=None):
     return False
 
 
-def interactive(env=None, data=None, exec_check=codex_exec):
-    """False for scripted runs, whose output must never get French.
+def is_claude(args):
+    """Claude Code's own process: `claude`, the native build under .../claude/versions/<version>, or node cli.js."""
+    return bool(args) and (os.path.basename(args[0]) == 'claude' or '/claude/versions/' in args[0]
+                           or any(os.path.basename(a) == 'cli.js' for a in args[:2]))
 
-    Claude Code sets CLAUDE_CODE_ENTRYPOINT=sdk-cli and CLAUDE_CODE_SESSION_ATTENDED=0 for `claude -p` (even when
-    started from inside an interactive session), and cli / 1 for the interactive terminal UI. Codex gives hooks no
-    such variable, so a Codex hook (its input has a turn_id) checks whether `codex exec` started it; the Codex
-    TUI runs hooks from its app-server instead. FRENCH_WEAVE_FORCE=1 weaves anyway (model checks);
+
+def claude_args(pid=None):
+    """Command line of the Claude Code process that started this hook (directly or through a shell), or []."""
+    pid = pid or os.getppid()
+    for _ in range(3):
+        args, parent = process_args(pid)
+        if is_claude(args):
+            return args
+        if parent <= 1:
+            break
+        pid = parent
+    return []
+
+
+def one_shot(args):
+    """True for a one-shot scripted `claude -p` run. Chat hosts also use --print (Remote Control, claude.ai/code,
+    desktop and IDE hosts run `claude --print --sdk-url ... --input-format stream-json`), so those weave."""
+    printing = any(a in ('-p', '--print') for a in args)
+    streaming = any(a == '--sdk-url' or a.startswith('--sdk-url=') or a == '--input-format=stream-json' or
+                    (a == '--input-format' and i + 1 < len(args) and args[i + 1] == 'stream-json')
+                    for i, a in enumerate(args))
+    return printing and not streaming
+
+
+def interactive(env=None, data=None, exec_check=codex_exec, args_check=claude_args):
+    """Weave by default; stay silent only in clear one-shot scripted runs, whose output must never get French.
+
+    Claude Code: skip `claude -p` without --sdk-url / --input-format stream-json (see one_shot), and Agent SDK
+    library scripts (CLAUDE_CODE_ENTRYPOINT sdk-ts or sdk-py). Codex (its hook input has a turn_id): skip under
+    `codex exec`; the Codex TUI runs hooks from its app-server instead. FRENCH_WEAVE_FORCE=1 weaves anyway;
     FRENCH_WEAVE_OFF=1 never weaves."""
     env = os.environ if env is None else env
     if env.get('FRENCH_WEAVE_OFF') == '1':
@@ -228,7 +262,9 @@ def interactive(env=None, data=None, exec_check=codex_exec):
         return True
     if 'turn_id' in (data or {}):
         return not exec_check()
-    return not (env.get('CLAUDE_CODE_ENTRYPOINT', '').startswith('sdk') or env.get('CLAUDE_CODE_SESSION_ATTENDED') == '0')
+    if env.get('CLAUDE_CODE_ENTRYPOINT') in ('sdk-ts', 'sdk-py'):
+        return False
+    return not one_shot(args_check())
 
 
 STALE_EXPORT_DAYS = 7

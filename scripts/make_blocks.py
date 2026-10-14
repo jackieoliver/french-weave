@@ -14,7 +14,7 @@ import export  # noqa: E402
 import fwlib  # noqa: E402
 
 PER_LEVEL = 30
-KNOWN_NAMED = 60      # known words named one by one; above this a level block names the rank band
+KNOWN_NAMED = 40      # known words named one by one; above this a level block names the rank band
 CLAUDE_AI_MAX = 6000  # claude.ai doesn't document a limit for personal preferences; stay well inside a few pages
 OUT = fwlib.PLUGIN_ROOT / 'blocks'
 

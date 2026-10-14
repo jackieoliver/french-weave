@@ -272,15 +272,25 @@ class Brief(Home):
         self.assertIn('French Weave', self.run_hook({}))
 
     def test_no_french_in_scripted_runs(self):
-        interactive = {'CLAUDE_CODE_ENTRYPOINT': 'cli', 'CLAUDE_CODE_SESSION_ATTENDED': '1'}
-        scripted = {'CLAUDE_CODE_ENTRYPOINT': 'sdk-cli', 'CLAUDE_CODE_SESSION_ATTENDED': '0'}
-        self.assertIn('French Weave', self.run_hook({}, **interactive))
-        self.assertEqual(self.run_hook({}, **scripted), '')
-        self.assertEqual(self.run_hook({}, CLAUDE_CODE_SESSION_ATTENDED='0'), '')
-        self.assertIn('French Weave', self.run_hook({}, FRENCH_WEAVE_FORCE='1', **scripted))
-        self.assertEqual(self.run_hook({}, FRENCH_WEAVE_OFF='1', **interactive), '')
-        self.assertFalse(weave.interactive({'CLAUDE_CODE_ENTRYPOINT': 'sdk-py'}))
-        self.assertTrue(weave.interactive({}))
+        self.assertIn('French Weave', self.run_hook({}))  # no claude parent here: weave by default
+        self.assertEqual(self.run_hook({}, FRENCH_WEAVE_OFF='1'), '')
+        self.assertEqual(self.run_hook({}, CLAUDE_CODE_ENTRYPOINT='sdk-py'), '')
+        self.assertIn('French Weave', self.run_hook({}, CLAUDE_CODE_ENTRYPOINT='sdk-cli', CLAUDE_CODE_SESSION_ATTENDED='0'))
+        one_shot = ['claude', '-p', '--model', 'haiku', 'Reply OK']
+        remote = ['claude', '--print', '--sdk-url', 'https://example.invalid/v1/code/sessions/x', '--session-id', 'x',
+                  '--input-format', 'stream-json', '--output-format', 'stream-json']
+        self.assertTrue(weave.one_shot(one_shot))
+        self.assertTrue(weave.is_claude(['/home/u/.local/share/claude/versions/2.1.296', '--print']))
+        self.assertTrue(weave.is_claude(['claude', '-p']) and not weave.is_claude(['/bin/sh', '-c', 'x']))
+        self.assertTrue(weave.one_shot(['claude', '--print', '--output-format', 'json', 'x']))
+        self.assertFalse(weave.one_shot(remote))
+        self.assertFalse(weave.one_shot(['claude', '--print', '--input-format=stream-json']))
+        self.assertFalse(weave.one_shot(['claude', '--model', 'opus']))
+        self.assertFalse(weave.interactive({}, args_check=lambda: one_shot))
+        self.assertTrue(weave.interactive({}, args_check=lambda: remote))
+        self.assertTrue(weave.interactive({'CLAUDE_CODE_ENTRYPOINT': 'sdk-cli'}, args_check=lambda: remote))
+        self.assertTrue(weave.interactive({'FRENCH_WEAVE_FORCE': '1'}, args_check=lambda: one_shot))
+        self.assertFalse(weave.interactive({'CLAUDE_CODE_ENTRYPOINT': 'sdk-ts'}, args_check=lambda: []))
 
 
 def grown(known, seed=1):

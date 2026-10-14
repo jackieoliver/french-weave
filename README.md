@@ -87,10 +87,11 @@ French words") plus the exceptions, so a thousand known words still fit in about
 `fw.py log-chat-day` (or `export --log-day`) counts today as exposure for your learning words. It's off by default
 because it's a guess: it never makes a word known on its own; a word still needs one real sighting.
 
-**Only in conversations you read.** In Claude Code the hook stays silent when `CLAUDE_CODE_ENTRYPOINT` is `sdk-*` or
-`CLAUDE_CODE_SESSION_ATTENDED=0` (`claude -p`, Agent SDK); in Codex it stays silent under `codex exec`. Chats driven
-through the SDK, such as some remote-control setups, count as scripted too: set `FRENCH_WEAVE_FORCE=1` there to
-weave anyway, or `FRENCH_WEAVE_OFF=1` anywhere to switch it off. Health, medication, legal, money, safety,
+**Only in conversations you read.** The hook weaves in every chat surface (terminal, desktop, IDE, Remote Control,
+claude.ai/code, the Codex TUI) and stays silent only in one-shot scripted runs: `claude -p` without
+`--sdk-url`/`--input-format stream-json`, Agent SDK scripts (`CLAUDE_CODE_ENTRYPOINT` `sdk-ts` or `sdk-py`) and
+`codex exec`. Set `FRENCH_WEAVE_OFF=1` to switch it off for anything else, or `FRENCH_WEAVE_FORCE=1` to weave in a
+script. Health, medication, legal, money, safety,
 emergency and driving topics get no French at all.
 
 The extension's prompts are built for levels 1-2; at Stage 3-4 it uses the level 2 rules.
