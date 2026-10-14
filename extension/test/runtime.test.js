@@ -1,6 +1,7 @@
 import { test, expect } from 'bun:test';
 import { Window } from 'happy-dom';
 import { hashKey } from '../src/hash.js';
+import { DAILY_MODEL_CALLS } from '../src/quota.js';
 
 // The real worker and content modules together on a plain article page, with a fake native host and Gemini.
 test('runtime: key privacy, native host sync and events, site controls, setup default, stale replies, retries', async () => {
@@ -223,7 +224,7 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     // Past the daily cap, no more Gemini requests until tomorrow.
     const callsBefore = modelCalls;
     const counted = local.modelCalls;
-    local.modelCalls = { ...counted, count: 300 };
+    local.modelCalls = { ...counted, count: DAILY_MODEL_CALLS };
     const capped = win.document.createElement('p');
     capped.textContent = 'She reads late and sleeps in on quiet mornings.';
     win.document.querySelector('main').append(capped); await wait();
