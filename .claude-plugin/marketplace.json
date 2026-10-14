@@ -1,7 +1,9 @@
 {
   "name": "french-weave",
   "description": "Passive French for people who read a lot of LLM output.",
-  "owner": { "name": "French Weave" },
+  "owner": {
+    "name": "Jackie Oliver"
+  },
   "plugins": [
     {
       "name": "french-weave",

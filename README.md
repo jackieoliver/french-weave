@@ -11,7 +11,7 @@ replies (and tweets), at your level, and moves words from learning to known as y
 **Claude Code or Codex.** Tell your agent:
 
 ```
-Set up French Weave from https://github.com/<owner>/<repo>
+Set up French Weave from https://github.com/jackieoliver/french-weave
 ```
 
 Then you do three things (your agent tells you when):
