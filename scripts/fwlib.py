@@ -54,7 +54,7 @@ def home():
     else ~/.french-weave."""
     if os.environ.get('FRENCH_WEAVE_HOME'):
         return Path(os.environ['FRENCH_WEAVE_HOME']).expanduser()
-    if PLUGIN_ROOT.name == 'app' and (PLUGIN_ROOT.parent / 'state.json').exists():
+    if PLUGIN_ROOT.name == 'app' and ((PLUGIN_ROOT / 'fw-host').exists() or (PLUGIN_ROOT.parent / 'state.json').exists()):
         return PLUGIN_ROOT.parent
     return Path.home() / '.french-weave'
 
@@ -179,16 +179,17 @@ def plugin_version(root=None):
 
 def install_copies(root=None, directory=None):
     """Copy the extension, scripts and data into the state dir. Each folder is built next to its target and
-    swapped in, so the native host and Chrome never see a half-copied folder. Records the version in app/VERSION."""
+    swapped in, so the native host and Chrome never see a half-copied folder. Records the version in app/VERSION.
+    Callers hold copies.lock, so pid-named staging folders found here are leftovers from a run that died."""
     root, directory = Path(root or PLUGIN_ROOT), Path(directory or home())
     for name, skip in COPIES:
         source = root / ('extension' if name == 'extension' else name.split('/')[1])
         target = directory / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        fresh, old = target.with_name(target.name + '.new'), target.with_name(target.name + '.old')
-        for leftover in (fresh, old):
-            if leftover.exists():
-                shutil.rmtree(leftover)
+        for leftover in target.parent.glob(target.name + '.*-*'):
+            if re.fullmatch(re.escape(target.name) + r'\.(new|old)-\d+', leftover.name):
+                shutil.rmtree(leftover, ignore_errors=True)
+        fresh, old = (target.with_name(f'{target.name}.{kind}-{os.getpid()}') for kind in ('new', 'old'))
         shutil.copytree(source, fresh, ignore=shutil.ignore_patterns(*skip) if skip else None)
         if target.exists():
             target.rename(old)
@@ -532,8 +533,9 @@ class Lines:
                 yield raw.decode('utf-8', 'replace')
 
 
-def replies(lines):
-    """Yield (day, text) for main-thread assistant replies in Claude Code or Codex transcript lines."""
+def replies(lines, ids=False):
+    """Yield (day, text) for main-thread assistant replies in Claude Code or Codex transcript lines; with ids,
+    (day, text, record id): Claude Code's uuid or Codex's message id, which copies in forked chats keep."""
     for line in lines:
         if len(line) > 1_000_000 or '"assistant"' not in line:
             continue
@@ -545,11 +547,12 @@ def replies(lines):
         if item.get('type') == 'assistant' and not item.get('isSidechain'):  # Claude Code
             for block in item.get('message', {}).get('content') or []:
                 if isinstance(block, dict) and block.get('type') == 'text':
-                    yield day, block.get('text', '')
+                    yield (day, block.get('text', ''), item.get('uuid') or '')[:3 if ids else 2]
         elif item.get('type') == 'response_item':  # Codex
             payload = item.get('payload') or {}
             if payload.get('type') == 'message' and payload.get('role') == 'assistant':
-                yield day, ' '.join(b.get('text', '') for b in payload.get('content') or [] if isinstance(b, dict))
+                text = ' '.join(b.get('text', '') for b in payload.get('content') or [] if isinstance(b, dict))
+                yield (day, text, payload.get('id') or '')[:3 if ids else 2]
 
 
 def local_day(stamp):
@@ -578,12 +581,14 @@ def scan(words, index, roots=None, start='0000-00-00'):
         except OSError:
             continue
         lines = Lines(path, offset)
-        for day, text in replies(lines):
+        for day, text, record in replies(lines, ids=True):
             if day < start or 'French Weave' in text:
                 continue
-            digest = hashlib.sha1(text.encode()).hexdigest()[:16]
+            # Forked and resumed chats copy old replies with their ids (Codex gives the copies new timestamps), so
+            # the id tells a copy from the same words said again; records without one fall back to the text alone.
+            digest = hashlib.sha1(f'{record}\0{text}'.encode() if record else text.encode()).hexdigest()[:16]
             if digest in recent:
-                continue  # forked and resumed chats copy old replies
+                continue
             recent[digest] = day
             prose = norm(CODE.sub(' ', text))
             for fr, regex in patterns.items():

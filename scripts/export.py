@@ -125,10 +125,12 @@ def band_text(state, exceptions=fwlib.EXCEPTIONS_MAX):
             + (f'; also: {cut(extra)}' if extra else ''))
 
 
-def state_line(state, now=None, known_max=KNOWN_LIST_MAX, dates=True, exceptions=fwlib.EXCEPTIONS_MAX, tail=None):
-    """The word-state line: Stage | Active | Shaky | Known | Synced, in the original state-line format."""
+def state_line(state, now=None, known_max=KNOWN_LIST_MAX, dates=True, exceptions=fwlib.EXCEPTIONS_MAX, tail=None,
+               learning_max=None):
+    """The word-state line: Stage | Active | Shaky | Known | Synced, in the original state-line format.
+    learning_max: list at most this many Active and this many Shaky words, the earliest added (ChatGPT)."""
     words = state['words']
-    by_added = lambda xs: sorted(xs, key=lambda w: w['added'])
+    by_added = lambda xs: sorted(xs, key=lambda w: w['added'])[:learning_max]
     active = by_added([w for w in words if w['status'] == 'active'])
     shaky = by_added([w for w in words if w['status'] == 'shaky'])
     known = [w for w in words if w['status'] == 'known']
@@ -171,18 +173,23 @@ def claude_ai(state, now=None, tail=None, known_max=KNOWN_LIST_MAX, dates=True):
 
 
 def chatgpt(state, now=None, limit=CHATGPT_LIMIT, tail=None):
-    """Two ChatGPT custom-instructions fields, each within limit: (about you: the state line without dates, known
-    words trimmed to fit; how to respond: the short rules)."""
+    """Two ChatGPT custom-instructions fields: (about you: the state line without dates, known words trimmed to fit,
+    then learning words; how to respond: the short rules). Raises ValueError when the state line can't fit limit."""
     known = sum(w['status'] == 'known' for w in state['words'])
     if known > KNOWN_LIST_MAX:
         tries = [dict(exceptions=e) for e in range(fwlib.EXCEPTIONS_MAX, -1, -5)]
     else:
         tries = [dict(known_max=k) for k in list(range(known, 0, -10)) + [0]]
+    learning = max(sum(w['status'] == s for w in state['words']) for s in ('active', 'shaky'))
+    tries += [dict(tries[-1], learning_max=n) for n in range(learning - 1, -1, -1)]
+    respond = localize(rules(short=True), state)
+    if len(respond) > limit:
+        raise ValueError(f'the rules need {len(respond)} characters, more than the {limit} a field holds')
     for kwargs in tries:
         line = state_line(state, now, dates=False, tail=tail, **kwargs)
         if len(line) <= limit:
-            break
-    return line, localize(rules(short=True), state)
+            return line, respond
+    raise ValueError(f'the word-state line needs {len(line)} characters, more than the {limit} a field holds')
 
 
 def mark_exported(state, target):

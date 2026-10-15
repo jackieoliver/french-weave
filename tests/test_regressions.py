@@ -273,5 +273,139 @@ class Blocks(unittest.TestCase):
         self.assertRegex(export.state_line(state), self.DATE)
 
 
+class ReviewFindings(Home):
+    """Bugs from the outside review of swap-gloss-check."""
+
+    # Codex config.toml edits were text-based: a commented [features] header or a quoted "hooks" key got a second
+    # table or key (invalid TOML), and an inline features = { ... } table got a duplicate [features] table.
+    def test_codex_config_edits_stay_valid_toml(self):
+        self.assertEqual(fw.enable_codex_hooks('[features] # mine\nother = 1\n'), '[features] # mine\nhooks = true\nother = 1\n')
+        self.assertEqual(fw.enable_codex_hooks('[features]\n"hooks" = false\n[tui]\n'), '[features]\nhooks = true\n[tui]\n')
+        for text in ('features = { memories = true }\n', 'model = "x"\nfeatures.memories = true\n'):
+            self.assertIsNone(fw.enable_codex_hooks(text), text)
+        if fw.tomllib:
+            self.assertIsNone(fw.enable_codex_hooks('[features\n'))  # a result that doesn't parse is never written
+            self.assertTrue(fw.hooks_on('features = { hooks = true }\n'))
+        codex = self.home / 'codex'
+        codex.mkdir()
+        (codex / 'config.toml').write_text('features = { memories = true }\n')
+        out = self.fw('setup', '--codex')
+        self.assertIn('add the line `hooks = true`', out)
+        self.assertEqual((codex / 'config.toml').read_text(), 'features = { memories = true }\n')
+        self.assertTrue((codex / 'config.toml.before-french-weave').exists())
+        self.assertIn('UserPromptSubmit', (codex / 'hooks.json').read_text())
+
+    # README "Other languages" runs ~/.french-weave/app/scripts/fw.py setup --language Spanish, but setup from the
+    # installed copy stopped with "No extension/ folder next to ...".
+    def test_setup_runs_from_the_installed_copy(self):
+        self.fw('setup')
+        state_dir = self.home / 'fw'
+        env = {k: v for k, v in os.environ.items() if k != 'FRENCH_WEAVE_HOME'}  # found from the copy's location
+        env.update(HOME=str(self.home), XDG_CONFIG_HOME='', CODEX_HOME=str(self.home / 'codex'))
+        result = subprocess.run([sys.executable, str(state_dir / 'app' / 'scripts' / 'fw.py'), 'setup', '--language', 'Spanish'],
+                                capture_output=True, text=True, timeout=60, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Spanish, Stage', result.stdout)
+        self.assertEqual((state_dir / 'lexicon.csv').read_text(), (ROOT / 'data' / 'lexicons' / 'spanish.csv').read_text())
+        self.assertEqual(fwlib.read_json(state_dir / 'state.json')['language'], 'Spanish')
+        self.assertTrue((state_dir / 'app' / 'scripts' / 'fw.py').exists())
+        self.assertTrue((state_dir / 'extension' / 'manifest.json').exists())
+        self.assertFalse([p for p in state_dir.rglob('*') if re.search(r'\.(new|old)', p.name)])
+
+    # Setup copied without copies.lock and both callers staged in fixed <name>.new / <name>.old folders, so an
+    # overlapping setup and refresh could delete each other's half-built copy.
+    def test_setup_holds_copies_lock_and_stages_under_unique_names(self):
+        held, staged, real, copytree = [], [], fwlib.install_copies, shutil.copytree
+
+        def probe(*args, **kwargs):
+            with fwlib.locked('copies.lock', blocking=False) as got:
+                held.append(not got)
+            return real(*args, **kwargs)
+
+        def record(source, target, *args, **kwargs):
+            if re.search(r'\.(new|old)', Path(target).name):
+                staged.append(Path(target).name)
+            return copytree(source, target, *args, **kwargs)
+
+        with mock.patch.object(fwlib, 'install_copies', probe), mock.patch.object(fwlib.shutil, 'copytree', record):
+            self.fw('setup')
+        self.assertEqual(held, [True])
+        self.assertTrue(staged and all(name.endswith(f'.new-{os.getpid()}') for name in staged), staged)
+        state_dir = self.home / 'fw'
+        (state_dir / 'extension.new').mkdir()  # an older installer's staging folder: not ours to delete
+        (state_dir / 'app' / 'scripts.old-12345').mkdir()  # left by a run that died
+        with fwlib.locked('copies.lock'):
+            fwlib.install_copies()
+        self.assertTrue((state_dir / 'extension.new').exists())
+        self.assertFalse((state_dir / 'app' / 'scripts.old-12345').exists())
+
+    # The exposure scan deduped on reply text alone, so the same short reply on another day counted once.
+    def test_same_reply_said_again_counts_but_forked_copies_do_not(self):
+        cc = lambda uuid, stamp: json.dumps({'type': 'assistant', 'uuid': uuid, 'timestamp': stamp,
+                                             'message': {'content': [{'type': 'text', 'text': say}]}})
+        cx = lambda mid, stamp: json.dumps({'type': 'response_item', 'timestamp': stamp, 'payload': {
+            'type': 'message', 'role': 'assistant', **({'id': mid} if mid else {}),
+            'content': [{'type': 'output_text', 'text': say}]}})
+        say, root = 'Done, et everything passed.', self.home / 't'
+        (root / 'p').mkdir(parents=True)
+        (root / 'p' / 'a.jsonl').write_text(cc('u1', '2026-10-09T12:00:00Z') + '\n' + cx('m1', '2026-10-10T12:00:00Z') + '\n')
+        index = fwlib.scan(['et'], {}, root, start='2026-09-19')
+        # A fork copies both (Codex gives the copy a new timestamp, keeping its id), then the same words come again.
+        (root / 'p' / 'b.jsonl').write_text('\n'.join([cc('u1', '2026-10-09T12:00:00Z'), cx('m1', '2026-10-12T12:00:00Z'),
+                                                       cc('u2', '2026-10-12T12:00:00Z')]) + '\n')
+        index = fwlib.scan(['et'], index, root, start='2026-09-19')
+        self.assertEqual(index['words']['et'], {'n': 3, 'days': ['2026-10-09', '2026-10-10', '2026-10-12']})
+        # An index from before the fix (text-only keys) still loads, and records without an id still dedupe on text.
+        old = {'recent': {'0123456789abcdef': fwlib.today()}, 'words': {'et': {'n': 4, 'days': ['2026-10-01']}}}
+        (root / 'q').mkdir()
+        (root / 'q' / 'c.jsonl').write_text(cx('', '2026-10-13T12:00:00Z') + '\n' + cx('', '2026-10-13T12:00:00Z') + '\n')
+        index = fwlib.scan(['et'], old, root / 'q', start='2026-09-19')
+        self.assertEqual(index['words']['et']['n'], 5)
+        self.assertIn('0123456789abcdef', index['recent'])
+
+    # Switching language set the state aside but deleted or overwrote lexicon.csv: a custom list was lost, switching
+    # back without the CSV failed, and a customized bundled-language list reverted to the bundled one.
+    def test_switching_language_keeps_the_word_list(self):
+        state_dir, words = self.home / 'fw', 'word,en,hint\n' + ''.join(f'w{i},e{i},h{i}\n' for i in range(30))
+        custom = self.home / 'klingon.csv'
+        custom.write_text(words)
+        self.fw('setup', '--language', 'Klingon', '--lexicon', str(custom))
+        custom.unlink()
+        self.fw('setup', '--language', 'French')
+        self.assertEqual((state_dir / 'lexicon-klingon.csv').read_text(), words)
+        self.assertFalse((state_dir / 'lexicon.csv').exists())
+        self.assertIn('Klingon, Stage', self.fw('setup', '--language', 'Klingon'))
+        self.assertEqual((state_dir / 'lexicon.csv').read_text(), words)
+        self.assertFalse((state_dir / 'lexicon-klingon.csv').exists())
+        mine = self.home / 'spanish.csv'
+        mine.write_text('word,en,hint\npero,but,PEH-roh\ny,and,ee\n')
+        self.fw('setup', '--language', 'Spanish', '--lexicon', str(mine))
+        self.fw('setup', '--language', 'French')
+        self.fw('setup', '--language', 'Spanish')
+        self.assertEqual((state_dir / 'lexicon.csv').read_text(), mine.read_text())
+        self.assertEqual((state_dir / 'lexicon-klingon.csv').read_text(), words)
+
+    # The ChatGPT "about you" field trimmed only known words, so many shaky words overflowed its 1,500 characters.
+    def test_chatgpt_field_never_exceeds_its_limit(self):
+        for n in (50, 100, 300):
+            state = fwlib.new_state('2026-10-01')
+            for w in state['words'][:n]:
+                w.update(status='shaky', changed='2026-10-02', added='2026-10-01')
+            about, respond = export.chatgpt(state)
+            self.assertLessEqual(len(about), export.CHATGPT_LIMIT, n)
+            self.assertTrue(export.parse_state_line(about)['shaky'], n)  # still names the earliest ones
+        with self.assertRaises(ValueError):
+            export.chatgpt(state, limit=100)
+        self.fw('status')
+        state = fwlib.load_state()
+        for w in state['words'][:80]:
+            w.update(status='shaky', changed=fwlib.today(), last_bad=fwlib.today(), added=fwlib.today())
+        fwlib.save_state(state)
+        out = self.fw('export', '--chatgpt')
+        self.assertRegex(out, r'\d+ learning words were left out to fit')
+        for name in ('chatgpt-about.txt', 'chatgpt-respond.txt'):
+            self.assertLessEqual(len((self.home / 'fw' / 'export' / name).read_text().rstrip('\n')), export.CHATGPT_LIMIT)
+
+
 if __name__ == '__main__':
     unittest.main()

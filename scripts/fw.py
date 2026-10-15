@@ -10,8 +10,8 @@
                                                      --sites: extension on every site (all) or only ones you
                                                      turn on (ask)
   fw.py setup --language NAME [--lexicon FILE]       learn another language from a word list (columns word,en,hint;
-                                                     default data/lexicons/<name>.csv); the old language's state is
-                                                     kept and comes back when you switch back
+                                                     default data/lexicons/<name>.csv); the old language's state and
+                                                     word list are kept and come back when you switch back
   fw.py status                                       stage, word counts, learning words
   fw.py known WORD...                                mark words as known
   fw.py learn WORD...                                put words back in the learning set (shaky)
@@ -38,6 +38,11 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fwlib  # noqa: E402
 import export  # noqa: E402
+
+try:
+    import tomllib
+except ImportError:  # Python 3.9 and 3.10: no TOML parser in the standard library
+    tomllib = None
 
 HOST_NAME = 'com.frenchweave.host'
 EXTENSION_ID = 'ckihjnkijacemibkblmjfjgpffflbced'  # fixed by the "key" in extension/manifest.json
@@ -96,20 +101,42 @@ def merge_codex_hooks(data, command):
     return data
 
 
+TABLE = re.compile(r'\s*\[\[?\s*([^\]]*?)\s*\]\]?\s*(#.*)?$')
+HOOKS_KEY = re.compile(r'\s*(hooks|"hooks"|\'hooks\')\s*=')
+CODEX_LINE = 'hooks = true'
+
+
+def hooks_on(text):
+    """Whether config.toml text parses with hooks = true in [features]; None without tomllib (Python 3.9, 3.10)."""
+    if tomllib is None:
+        return None
+    try:
+        return tomllib.loads(text).get('features', {}).get('hooks') is True
+    except (tomllib.TOMLDecodeError, AttributeError):
+        return False
+
+
 def enable_codex_hooks(text):
-    """config.toml text with `hooks = true` in its [features] table (added if missing)."""
+    """config.toml text with `hooks = true` in its [features] table (added if missing), or None when the file
+    can't be edited safely (features as an inline table or dotted keys, or a result that doesn't parse)."""
     lines = text.splitlines()
-    start = next((i for i, line in enumerate(lines) if line.strip() == '[features]'), None)
+    tables = [(i, m.group(1).strip('"\'')) for i, m in ((i, TABLE.match(line)) for i, line in enumerate(lines)) if m]
+    top = lines[:tables[0][0]] if tables else lines
+    if any(re.match(r'\s*["\']?features["\']?\s*[.=]', line) for line in top):
+        return None
+    start = next((i for i, name in tables if name == 'features' and not lines[i].lstrip().startswith('[[')), None)
     if start is None:
-        return text.rstrip('\n') + ('\n\n' if text.strip() else '') + '[features]\nhooks = true\n'
-    end = next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith('[')), len(lines))
-    for i in range(start + 1, end):
-        if re.match(r'\s*hooks\s*=', lines[i]):
-            lines[i] = 'hooks = true'
-            break
+        out = text.rstrip('\n') + ('\n\n' if text.strip() else '') + f'[features]\n{CODEX_LINE}\n'
     else:
-        lines.insert(start + 1, 'hooks = true')
-    return '\n'.join(lines) + '\n'
+        end = next((i for i, _ in tables if i > start), len(lines))
+        for i in range(start + 1, end):
+            if HOOKS_KEY.match(lines[i]):
+                lines[i] = CODEX_LINE
+                break
+        else:
+            lines.insert(start + 1, CODEX_LINE)
+        out = '\n'.join(lines) + '\n'
+    return None if hooks_on(out) is False else out
 
 
 def claude_settings():
@@ -169,10 +196,13 @@ def setup_codex(dry_run):
     codex = fwlib.codex_home()
     hooks_path, config_path = codex / 'hooks.json', codex / 'config.toml'
     data = merge_codex_hooks(fwlib.read_json(hooks_path, {}) if hooks_path.exists() else {}, codex_command())
-    config = enable_codex_hooks(config_path.read_text() if config_path.exists() else '')
+    original = config_path.read_text() if config_path.exists() else ''
+    config = original if hooks_on(original) else enable_codex_hooks(original)
+    manual = (f'  Could not edit {config_path} safely; add the line `{CODEX_LINE}` to its [features] table yourself '
+              '(inside the braces if it is written as features = { ... }).')
     if dry_run:
-        print(json.dumps({'codex_hooks': str(hooks_path), 'codex_config': str(config_path), 'command': codex_command()},
-                         indent=1))
+        print(json.dumps({'codex_hooks': str(hooks_path), 'codex_config': str(config_path), 'command': codex_command(),
+                          'codex_config_edit': 'manual' if config is None else 'automatic'}, indent=1))
         return
     if hooks_path.exists() and fwlib.read_json(hooks_path) is None:
         sys.exit(f'{hooks_path} is not valid JSON; fix it, then rerun setup --codex.')
@@ -182,8 +212,13 @@ def setup_codex(dry_run):
         if path.exists() and not backup.exists():
             shutil.copy2(path, backup)
     fwlib.write_json(hooks_path, data)
-    config_path.write_text(config)
-    print(f'Codex: chat hook in {hooks_path}, hooks enabled in {config_path}.')
+    if config is None:
+        print(f'Codex: chat hook in {hooks_path}.')
+        print(manual)
+    else:
+        if config != original:
+            config_path.write_text(config)
+        print(f'Codex: chat hook in {hooks_path}, hooks enabled in {config_path}.')
     print('  Human step: start `codex` once; at "Hooks need review" pick "Trust all and continue" (or review first).')
     print('  Codex never runs a new hook before that. `codex exec` runs stay French-free either way.')
 
@@ -213,10 +248,13 @@ def named(state):
 
 def set_language(name, lexicon, home):
     """Installs the word list for a language as <home>/lexicon.csv (French: the bundled list) and, when the language
-    changes, sets the current state aside as state-<language>.json and brings back one saved for the new language."""
+    changes, sets the current state and word list aside as state-<language>.json and lexicon-<language>.csv and
+    brings back ones saved for the new language. Word list: --lexicon, else the saved one, else the bundled one."""
     name = ' '.join(name.split())
     bundled = fwlib.PLUGIN_ROOT / 'data' / 'lexicons' / f'{name.lower()}.csv'
-    source = Path(lexicon).expanduser() if lexicon else bundled if bundled.exists() else None
+    saved_list = home / f'lexicon-{name.lower()}.csv'
+    source = (Path(lexicon).expanduser() if lexicon else saved_list if saved_list.exists()
+              else bundled if bundled.exists() else None)
     if source is None and name.lower() != fwlib.DEFAULT_LANGUAGE.lower():
         sys.exit(f'No word list for {name}: pass --lexicon FILE, a CSV with columns word,en,hint (README "Other languages").')
     try:
@@ -228,8 +266,10 @@ def set_language(name, lexicon, home):
     name = fwlib.DEFAULT_LANGUAGE if not source else name
     state = fwlib.load_state(create=False, lock=False)
     old = fwlib.language(state)
-    if state and old != name:
+    if state and old.lower() != name.lower():
         os.replace(home / 'state.json', home / f'state-{old.lower()}.json')
+        if (home / 'lexicon.csv').exists():
+            os.replace(home / 'lexicon.csv', home / f'lexicon-{old.lower()}.csv')
         saved = home / f'state-{name.lower()}.json'
         if saved.exists():
             os.replace(saved, home / 'state.json')
@@ -237,6 +277,8 @@ def set_language(name, lexicon, home):
         shutil.copyfile(source, home / 'lexicon.csv')
     elif (home / 'lexicon.csv').exists():
         (home / 'lexicon.csv').unlink()
+    if saved_list.exists():
+        saved_list.unlink()  # back in use as lexicon.csv, or replaced by --lexicon
     return name, len(words)
 
 
@@ -248,7 +290,8 @@ def setup(args):
     if sys.version_info < (3, 9):
         sys.exit(f'French Weave needs Python 3.9 or newer; this is {info["python_version"]}.')
     root, home = fwlib.PLUGIN_ROOT, fwlib.home()
-    if not (root / 'extension' / 'manifest.json').exists():
+    installed = root.resolve() == (home / 'app').resolve()  # run from the copy setup made: nothing to copy
+    if not installed and not (root / 'extension' / 'manifest.json').exists():
         sys.exit(f'No extension/ folder next to {root / "scripts"}; run setup from a full copy of the repo.')
     key = read_key_file(args.gemini_key_file) if args.gemini_key_file else None
     if args.lexicon and not args.language:
@@ -264,7 +307,9 @@ def setup(args):
         return
     home.mkdir(parents=True, exist_ok=True)
     os.chmod(home, 0o700)
-    fwlib.install_copies(root, home)
+    if not installed:
+        with fwlib.locked('copies.lock'):
+            fwlib.install_copies(root, home)
     launcher = home / 'app' / 'fw-host'
     launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{home / "app" / "scripts" / "fw_host.py"}" "$@"\n')
     launcher.chmod(0o755)
@@ -346,7 +391,9 @@ def check(_args):
     groups = (hooks.get('hooks') or {}).get('UserPromptSubmit') or []
     if any(is_ours(h) for g in groups for h in g.get('hooks', [])):
         config = (fwlib.codex_home() / 'config.toml')
-        enabled = config.exists() and enable_codex_hooks(config.read_text()) == config.read_text().rstrip('\n') + '\n'
+        text = config.read_text() if config.exists() else ''
+        enabled = hooks_on(text)
+        enabled = enable_codex_hooks(text) == text.rstrip('\n') + '\n' if enabled is None else enabled
         report(enabled, f'Codex hook in {fwlib.codex_home() / "hooks.json"} with [features] hooks = true '
                         '(Codex asks you to trust it on first start)')
     has_key = (home / 'gemini_key').exists()
@@ -465,13 +512,21 @@ def export_cmd(args):
         logged = export.log_chat_day(state) if args.log_day else 0
         export.mark_exported(state, 'chatgpt' if args.chatgpt else 'claude-ai')
     if args.chatgpt:
-        about, respond = export.chatgpt(state)
+        try:
+            about, respond = export.chatgpt(state)
+        except ValueError as error:
+            sys.exit(f'No ChatGPT block: {error}. Use the claude.ai block (fw.py export) instead.')
+        parsed = export.parse_state_line(about)
+        left_out = (sum(w['status'] in ('active', 'shaky') for w in state['words'])
+                    - len(parsed.get('active', [])) - len(parsed.get('shaky', [])))
         paths = [save_export('chatgpt-about.txt', about), save_export('chatgpt-respond.txt', respond)]
         print(f'ChatGPT > Settings > Personalization > Custom instructions. Each field holds {export.CHATGPT_LIMIT} '
               'characters on every plan.\n')
         print(f'--- "What would you like ChatGPT to know about you?" ({len(about)} characters) ---\n{about}\n')
         print(f'--- "How would you like ChatGPT to respond?" ({len(respond)} characters) ---\n{respond}')
         print(f'\nAlso saved as {paths[0]} and {paths[1]}.')
+        if left_out:
+            print(f'{left_out} learning words were left out to fit the {export.CHATGPT_LIMIT}-character field.')
     else:
         block = export.claude_ai(state)
         path = save_export('claude-ai.txt', block)
