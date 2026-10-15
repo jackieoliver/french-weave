@@ -77,7 +77,9 @@ function hideTip() {
 }
 function showTip(e) {
   const span = swapFor(e);
-  if (!span || !on() || span.classList.contains('fw-en')) return;
+  if (!span || !on()) return;
+  if (!alive()) { orphan(); return; } // reloaded: no gloss that would vanish when the peek can't be sent
+  if (span.classList.contains('fw-en')) { hideTip(); return; } // English showing: nothing to gloss
   if (!span.classList.contains('fw-tip')) { hideTip(); span.classList.add('fw-tip'); }
   if (e.type !== 'mouseover' || peekTimer) return; // a page can focus a span from script, so focus never counts
   peekTimer = setTimeout(() => {

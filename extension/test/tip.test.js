@@ -43,6 +43,12 @@ test('hover tip is instant and only a dwell on one word records a peek', async (
     const [et, tres] = win.document.querySelectorAll('#a .fw-word');
     expect([et?.textContent, tres?.textContent]).toEqual(['et', 'très']);
 
+    // Script-dispatched hovers show nothing and record nothing.
+    tres.dispatchEvent(new win.MouseEvent('mouseover', { bubbles: true }));
+    expect(tip(tres)).toBe(false);
+    await wait(800);
+    expect(events).toEqual([]);
+
     // No wait: the class is on before the handler returns.
     over(et);
     expect(tip(et)).toBe(true);
@@ -63,9 +69,12 @@ test('hover tip is instant and only a dwell on one word records a peek', async (
     expect(tip(et)).toBe(false);
     await wait(800);
     expect(events).toEqual(['et:flip']);
-    // A word showing English has no gloss to show and records no peek.
-    out(et); over(et);
-    expect(tip(et)).toBe(false);
+    // A word showing English has no gloss to show and records no peek; reaching it hides any other gloss.
+    out(et);
+    tres.dispatchEvent(user(new win.FocusEvent('focusin', { bubbles: true })));
+    expect(tip(tres)).toBe(true);
+    over(et);
+    expect([tip(et), tip(tres)]).toEqual([false, false]);
     await wait(800);
     expect(events).toEqual(['et:flip']);
     out(et);
