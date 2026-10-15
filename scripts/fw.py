@@ -251,7 +251,8 @@ def setup(args):
     if not key and not (home / 'gemini_key').exists():
         print('     Paste a Gemini API key (https://aistudio.google.com/apikey).')
         print('     With a free key, Google may use the page text it is sent to improve its products; a paid key avoids that.')
-    print('Chat weaving runs wherever the plugin is enabled; sessions opened from now on pick it up.')
+    print('Chat weaving and the /french-weave:* commands start in new Claude Code sessions; in an open session, type '
+          '/reload-plugins first.')
 
 
 def check(_args):
@@ -311,6 +312,12 @@ def uninstall(args):
             print(('would remove ' if args.dry_run else 'removed ') + str(path))
             if not args.dry_run:
                 path.unlink()
+        if not args.dry_run:  # setup made these folders even with no Chrome installed; drop them if now empty
+            for folder in (directory, directory.parent):
+                try:
+                    folder.rmdir()
+                except OSError:
+                    break
     print(f'Your word state stays in {fwlib.home()}; delete that folder to start over.')
 
 
@@ -337,6 +344,9 @@ def status(_args):
 
 def mark(kind):
     def run(args):
+        if not any(arg.strip(' ,') for arg in args.words):
+            print(f'No word given. Name one, for example: {"known" if kind == "known" else "learn"} mais')
+            return
         missing, done = [], []
         with fwlib.editing() as state:
             for chunk in (c for arg in args.words for c in arg.split(',')):

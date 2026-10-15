@@ -107,6 +107,8 @@ def brief(state, seen, recall=None):
     if recall:
         text += (f'\nIf this reply is longer than a few sentences, open it with "Recall: {recall["fr"]}?" on its own line '
                  f'and end it, after the footer, with: Recall: {recall["fr"]} = {recall["en"]}, "{recall["hint"]}"')
+    else:  # without this, models repeat the last recall cue on every turn
+        text += '\nNo recall cue in this reply: no "Recall:" lines, even if an earlier reply had one.'
     return fwlib.localize(text, state, CUTS + [('(sans = without, "sahn")', fwlib.gloss_example(state))])
 
 

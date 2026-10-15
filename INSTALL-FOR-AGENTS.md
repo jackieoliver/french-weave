@@ -3,13 +3,17 @@
 You are setting up French Weave for the person you are working with. Follow these steps in order. Run every
 command yourself; the person only does the steps marked HUMAN. Write no French in anything you say during setup.
 
-`<repo>` below is what the person gave you: a GitHub `owner/name`, a git URL, or a local folder path.
+`<repo>` below is what the person gave you: a GitHub `owner/name`, a git URL, or a local folder path. For a GitHub
+link such as `https://github.com/jackieoliver/french-weave`, `<repo>` is `jackieoliver/french-weave`, even if you
+cloned the repo to read these instructions: a plugin installed from a local clone never updates from GitHub and
+depends on that folder staying put.
 
 ## 0. Ask a few questions and list the human steps, in one batch, before you start
 
-Run `codex --version` first: if it fails, leave Codex CLI out of question 2. Then, in Claude Code, send the
-human steps below as a short message and ask all four questions in one AskUserQuestion call (question 2
-multi-select, the default option first with "(default)" in its label). In Codex or anywhere else, send the
+Run `codex --version` first: if it fails, leave Codex CLI out of question 2. Then, in Claude Code, write the
+human steps below, word for word, as the text of the same message that makes the AskUserQuestion call, before
+the call; don't skip them, the person needs them before choosing. Ask all four questions in that one
+AskUserQuestion call (question 2 multi-select, the default option first with "(default)" in its label). In Codex or anywhere else, send the
 human steps and the numbered questions as one chat message. Anyone who skips a question gets the default. If you can't ask at all (a non-interactive run), use every default and say which ones you used.
 
 Human steps (send as written):
@@ -41,7 +45,7 @@ Questions:
    - Only sites I turn on
 4. If you picked the Chrome extension, your Gemini API key:
    - Paste it into the extension's popup at the end (default)
-   - A file that contains it: type its path (in Claude Code, under Other). Never paste the key itself here.
+   - A file that contains it: type its path (in Claude Code, as your own answer under "Type something"). Never paste the key itself here.
 
 Steps 1 and 2 below don't depend on the answers: if you can keep working while the person answers, do them now;
 otherwise do them right after. Never ask for the key in chat, and never print it. If an answer looks like a key
@@ -106,6 +110,7 @@ python3 "$FW" setup --known-top 40 --sites all --gemini-key-file /path/to/key-fi
 ```
 
 Without a key file, run setup without `--gemini-key-file`; the person pastes the key in the extension popup later.
+Use only a key file the person names: never search their disk for one.
 With `--codex`, setup adds a UserPromptSubmit hook to `~/.codex/hooks.json` (other hooks are kept; backups end in
 `.before-french-weave`) and sets `hooks = true` under `[features]` in `~/.codex/config.toml`. Codex runs a new hook
 only after the person trusts it at the next `codex` start; setup cannot do that for them. No AGENTS.md change is
@@ -147,8 +152,10 @@ Tell the person, in plain English (leave out the items for things they didn't pi
 2. Chrome extension, no key file given: click the French Weave toolbar icon (puzzle piece menu -> pin it) and paste
    the Gemini key.
 3. Codex CLI: at the next `codex` start, choose **Trust all and continue** when it asks about the new hook.
-4. Chat weaving starts in the next Claude Code or Codex session they open (hooks load at session start), and never
-   in one-shot `claude -p` or `codex exec` runs (`FRENCH_WEAVE_OFF=1` turns it off anywhere else).
+4. Chat weaving and the `/french-weave:*` commands start in the next Claude Code session they open, or right away
+   in this one after they type `/reload-plugins` (until then the commands answer "Unknown command"); in Codex, at
+   the next session. Never in one-shot `claude -p` or `codex exec` runs (`FRENCH_WEAVE_OFF=1` turns it off
+   anywhere else).
 5. Preferences block: run `python3 "$FW" export` (claude.ai) and `python3 "$FW" export --chatgpt` (ChatGPT) and
    show each block as printed in a code block, with where to paste it; they use whichever applies. Re-export
    about once a week.

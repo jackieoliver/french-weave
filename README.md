@@ -48,7 +48,8 @@ steps it can't do:
    the site's name in the same popup on each site you want.
 4. Codex only: at the next `codex` start, choose **Trust all and continue** for the new hook.
 
-Rerunning `/french-weave:setup` asks again and never resets your progress. Agents: follow
+Chat weaving and the `/french-weave:*` commands start in your next Claude Code session, or in the current one
+after you type `/reload-plugins`. Rerunning `/french-weave:setup` asks again and never resets your progress. Agents: follow
 [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
 
 **claude.ai or ChatGPT, nothing to install.** Open [blocks/level-01.md](blocks/level-01.md) and copy the block

@@ -19,11 +19,12 @@ Leave Codex CLI out of question 2 if `codex_cli` above is null.
 3. "If you picked the Chrome extension, which websites?" Every site; turn any off from the toolbar (default) /
    Only sites I turn on.
 4. "If you picked the Chrome extension, your Gemini API key (free at https://aistudio.google.com/apikey; with a free
-   key Google may use the page text it's sent to improve its products, a paid key avoids that)?" Paste it
-   into the extension's popup at the end (default) / A file that contains it: type its path under Other. Never
-   paste the key itself here.
+   key Google may use the page text it's sent to improve its products, a paid key avoids that)?" Paste it into the
+   extension's popup at the end (default) / A file that contains it: type its path as your own answer ("Type
+   something"). Never paste the key itself here.
 
-Skipped questions get the default. Never ask for the key in chat, and never print it. If the answer to question 4
+Skipped questions get the default. Never ask for the key in chat, and never print it. Use only a key file the person
+names: never search their disk for one, and with no path, leave the key for the popup. If the answer to question 4
 looks like a key rather than a file path (for example it starts with `AIza`), don't run setup with it, don't repeat
 it, and tell them to paste it into the extension popup instead. Then run, with the `source` folder from the plan
 above:
@@ -31,7 +32,8 @@ above:
 `python3 <source>/scripts/fw.py setup $ARGUMENTS` plus:
 - question 1: `--known-top 0`, `--known-top 40` or `--known-top 150`
 - Codex CLI picked: `--codex`
-- Chrome extension picked: `--sites all` or `--sites ask`, and `--gemini-key-file <path>` if they gave a file
+- Chrome extension picked: `--sites all` or `--sites ask` (leave `--sites` out if they skipped question 3, so a
+  rerun keeps their earlier choice), and `--gemini-key-file <path>` if they gave a file
 
 Relay the human steps from the output to the user as a short numbered list, in plain English, leaving out the
 Chrome steps if they didn't pick the extension. If they picked the preferences block, run
