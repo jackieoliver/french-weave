@@ -27,8 +27,10 @@ function waitError(candidates, cooldown, daily, now) {
 
 // daily: Map<model, until ms> for models whose per-day quota is spent (the worker keeps it in storage, since a day
 // outlives the worker); cooldown covers the per-minute limit and overload.
-export async function requestSwaps({ apiKey, model, level, batch, words, language, shownToday, fetchImpl, timeoutMs, cooldown = new Map(), daily = new Map(), now = Date.now }) {
-  const body = buildRequest({ system: buildSystemPrompt(level, words, shownToday, language), user: buildUserContent(batch), schema: RESPONSE_SCHEMA });
+// page: the page title and site, so the model can judge the page's topic, not only each passage's.
+export async function requestSwaps({ apiKey, model, level: chosen, batch, words, language, shownToday, page = '', fetchImpl, timeoutMs, cooldown = new Map(), daily = new Map(), now = Date.now }) {
+  const level = words ? chosen : Math.min(chosen, 2); // the bundled lists stop at Level 2
+  const body = buildRequest({ system: buildSystemPrompt(level, words, shownToday, language), user: buildUserContent(batch, level, page), schema: RESPONSE_SCHEMA });
   const candidates = [model];
   if (FALLBACK_MODEL[model]) candidates.push(FALLBACK_MODEL[model]);
   const blocked = (m) => cooldown.get(m) > now() || daily.get(m) > now();

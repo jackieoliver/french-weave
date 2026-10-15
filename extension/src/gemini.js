@@ -65,7 +65,8 @@ export function parseSwapsResponse(text) {
   const data = JSON.parse(text);
   const out = new Map();
   for (const t of data?.passages || data?.tweets || []) {
-    if (t && typeof t.id === 'string') out.set(t.id, Array.isArray(t.swaps) ? t.swaps : []);
+    // topic "avoid": the model judged the page or passage a zero-language topic; nothing is swapped.
+    if (t && typeof t.id === 'string') out.set(t.id, t.topic !== 'avoid' && Array.isArray(t.swaps) ? t.swaps : []);
   }
   return out;
 }

@@ -2,8 +2,8 @@
 import { profileFor, articlePatterns } from './profile.js';
 import { GENERIC } from './profile-data.js';
 
-// L3/L4 prompts are not built yet; anything above this uses L2 rules.
-export const MAX_BUILT_LEVEL = 2;
+// Levels 3-4 need the plugin's word state; with the bundled lists the prompt stays at Level 2 rules.
+export const MAX_BUILT_LEVEL = 4;
 
 // stage: from the Claude Code plugin's word state (0 when there is none); chosen: after the popup override;
 // effective: what the prompt uses.
@@ -500,9 +500,11 @@ export function sentenceCount(text) {
   return Math.max(1, String(text).split(/[.!?…]+(?:\s|$)|\n+/).filter((s) => wordCount(s) >= 3).length);
 }
 
-// Density ceiling per passage, one use per French word, learning words (active/shaky) kept before known ones.
+// Density ceiling per passage (swaps per sentence by level), one use per French word, learning words
+// (active/shaky) kept before known ones.
+export const CAP_PER_SENTENCE = { 1: 1, 2: 2, 3: 3, 4: 4 };
 export function capSwaps(level, swaps, text, sharedWords) {
-  const max = (level <= 1 ? 1 : 2) * sentenceCount(text);
+  const max = CAP_PER_SENTENCE[Math.min(Math.max(Math.round(Number(level) || 1), 1), MAX_BUILT_LEVEL)] * sentenceCount(text);
   const status = new Map((sharedWords || []).map((w) => [w.fr, w.status]));
   const rank = (s) => (status.get(s.word) && status.get(s.word) !== 'known' ? 0 : 1);
   const used = new Set();

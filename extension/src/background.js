@@ -66,6 +66,13 @@ async function broadcast(type = 'config') {
   await Promise.allSettled(tabs.map((t) => chrome.tabs.sendMessage(t.id, { type, config })));
 }
 
+// "Field Notes (example.org)": the tab's title and site, for the model's page-level topic check.
+function pageLabel(sender) {
+  let host = '';
+  try { host = new URL(sender.url).hostname; } catch { /* no site */ }
+  return [String(sender.tab?.title || '').slice(0, 200), host && `(${host})`].filter(Boolean).join(' ');
+}
+
 async function swaps(msg, sender) {
   const ctx = await context();
   if (msg.revision !== ctx.revision || !activeOn(ctx, sender.url)) return { results: {}, stale: true };
@@ -88,7 +95,7 @@ async function swaps(msg, sender) {
       const daily = await spentToday(chromeStorage); // a spent daily quota outlives the worker, so it is kept in storage
       try {
         return await requestSwaps({ apiKey: apiKey || hostKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, language: wordState?.language, fetchImpl,
-          shownToday: await shownToday(chromeStorage), cooldown, daily, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
+          shownToday: await shownToday(chromeStorage), cooldown, daily, page: pageLabel(sender), batch: misses.map((i) => ({ id: i.key, text: i.text })) });
       } finally {
         await saveSpent(chromeStorage, daily);
       }
