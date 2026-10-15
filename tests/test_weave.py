@@ -628,7 +628,7 @@ class Languages(Home):
         self.assertFalse(hits('dan', 'dance'))
 
     def test_brief_and_exports_name_the_language(self):
-        # French fills every profile slot (data/profiles/french.json); Spanish here has no profile, so the slots stay empty.
+        # French fills every profile slot (data/profiles/french.json); Spanish fills them from data/profiles/spanish.json.
         prof = fwlib.profile('French')
         french = weave.brief(dict(self.state(), language=None, words=fwlib.new_state('2026-10-01')['words']), {})
         for old in (prof['examples']['swap_sentence'], prof['sense_notes']['brief'], '(sans = without, "sahn")'):
@@ -644,7 +644,7 @@ class Languages(Home):
             for text in texts:
                 self.assertNotRegex(text, r'French(?! [Ww]eave)|maintenant|pour never|\bsans\b')
             self.assertTrue(all('Spanish' in text for text in texts[:2] + [texts[3]]))
-            self.assertIn('(y = and, "ee")', texts[0] + texts[1])
+            self.assertIn('(sin = without, "seen")', texts[0] + texts[1])  # the Spanish profile's gloss example
             self.assertLessEqual(max(map(len, texts[2:])), export.CHATGPT_LIMIT)
         self.assertIn('most common Spanish words', weave.brief(self.state(4, 180), {}))
 

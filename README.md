@@ -195,11 +195,13 @@ list; the hook, the commands, `export` and the extension then weave that languag
 python3 ~/.french-weave/app/scripts/fw.py setup --language Spanish --lexicon ~/spanish.csv
 ```
 
-(or `/french-weave:setup --language Spanish --lexicon ~/spanish.csv`). Starter lists of 40-60 words for Spanish,
-Japanese and Indonesian are in [`data/lexicons/`](data/lexicons/); with one of those, `--language Japanese` alone is
-enough. Setup copies the list to `~/.french-weave/lexicon.csv`. Switching language sets the old one's progress and
+(or `/french-weave:setup --language Spanish --lexicon ~/spanish.csv`). A Spanish list of about 1,000 ranked words
+(Latin American Spanish, with a profile) and starter lists of 40-60 words for Japanese and Indonesian are in
+[`data/lexicons/`](data/lexicons/); with one of those, `--language Spanish` alone is enough. Setup copies the list to `~/.french-weave/lexicon.csv`. Switching language sets the old one's progress and
 word list aside (`state-<language>.json`, `lexicon-<language>.csv`); `setup --language French` brings French back.
-The starter lists were drafted with AI and not yet checked by a native speaker; corrections are welcome.
+These lists were drafted with AI and not yet checked by a native speaker; corrections are welcome. The Spanish
+list's order uses word frequencies from [wordfreq](https://github.com/rspeer/wordfreq) by Robyn Speer (data CC BY-SA
+4.0), used only to rank the rows.
 
 The list is a CSV with the header `word,en,hint` (`fr` works too), most useful words first: connectors and adverbs,
 then everyday nouns, adjectives and verbs.

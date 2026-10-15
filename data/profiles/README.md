@@ -46,3 +46,13 @@ it reads (see `french.json`).
 | `extension.adjective_example` | `["a big win", "a grand win"]`: an adjective swap that keeps English word order |
 | `extension.level_examples` | `{"1": pairs, "2": pairs}`: typical swaps for the extension's built-in level lists (French only today) |
 | `extension.synonyms` | Extra English synonyms for the extension's gloss check, `{"gloss": ["variant", ...]}` |
+
+## Word list sources
+
+JSON has no comments, so sources are noted here.
+
+- `spanish.json` and `data/lexicons/spanish.csv` (Latin American Spanish, 1,047 rows): the words, glosses and sound
+  hints were written by hand (drafted with AI, not yet checked by a native speaker). Spanish and English frequencies
+  from [wordfreq](https://github.com/rspeer/wordfreq) 3.1.1 (Robyn Speer; data CC BY-SA 4.0) were used only to order
+  the rows and to set the `scan` column; no wordfreq data is copied into the list. `exposure.same_as_english` repeats
+  the rows marked `scan = no`, so a copy of the list without that column still keeps them out of chat exposure.
