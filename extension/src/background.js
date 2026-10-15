@@ -80,6 +80,7 @@ async function swaps(msg, sender) {
     await hostCheck;
     if ((await context()).revision !== ctx.revision) return { results, stale: true };
   }
+  let usedKey = '';
   try {
     const fresh = await modelCall(async () => {
       if ((await context()).revision !== ctx.revision) return null;
@@ -87,6 +88,7 @@ async function swaps(msg, sender) {
         throw Object.assign(new Error(`Daily limit of ${DAILY_MODEL_CALLS} model calls reached; French resumes tomorrow`), { kind: 'local' });
       }
       const { wordState, apiKey, hostKey } = await store.get(['wordState', 'apiKey', 'hostKey']);
+      usedKey = apiKey || hostKey || '';
       const fetchImpl = async (...args) => { await countCall(chromeStorage); return fetch(...args); };
       const daily = await spentToday(chromeStorage); // a spent daily quota outlives the worker, so it is kept in storage
       try {
@@ -103,16 +105,19 @@ async function swaps(msg, sender) {
       return { results: { ...results, ...fresh.results } };
     }).finally(() => void showBadge());
   } catch (e) {
-    const error = await failed(e);
+    const error = await failed(e, usedKey);
     return { results, error, retryAfterMs: e?.retryAfterMs };
   }
 }
 
 // Every candidate model failed (after the engine's own fallback). Stores what the popup and badge need; a wait
 // with no request of its own (every model cooling down) keeps the code and case of the request that started it.
-async function failed(e) {
-  const keys = Object.values(await store.get(['apiKey', 'hostKey'])).filter((k) => typeof k === 'string' && k.length >= 8);
+async function failed(e, usedKey) {
+  const { apiKey, hostKey } = await store.get(['apiKey', 'hostKey']);
+  const keys = [apiKey, hostKey, usedKey].filter((k) => typeof k === 'string' && k.length >= 8);
   const error = keys.reduce((text, k) => text.split(k).join('[key]'), String(e?.message || 'Model request failed')).slice(0, 500);
+  // A key pasted while this request was out: its refusal says nothing about the new key.
+  if (e?.kind === 'key' && usedKey && usedKey !== (apiKey || hostKey)) return error;
   const now = Date.now();
   await locked(async () => {
     const { modelStatus: prev } = await store.get('modelStatus');

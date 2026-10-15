@@ -183,6 +183,13 @@ describe('model error notice', () => {
       expect(data.modelStatus.error).toBe('');
       expect(badge.text).toBe('NEW');
 
+      // A refusal of the old key that lands after a new key was pasted doesn't bring the error back.
+      gemini = async () => { await dispatch({ type: 'save', apiKey: 'synthetic-new-key-987654321' }, popupSender); return badKey(); };
+      await ask('A quiet passage and a garden with a book.');
+      expect(data.modelStatus.error).toBe('');
+      expect(badge.text).toBe('NEW');
+      await dispatch({ type: 'save', apiKey: KEY }, popupSender);
+
       // Whatever an error message says, the key in it is never stored or shown.
       gemini = () => { throw new Error(`proxy refused ${KEY}`); };
       const leaky = await ask('One more quiet passage and a book to read.');
