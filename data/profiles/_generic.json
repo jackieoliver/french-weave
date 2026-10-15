@@ -15,6 +15,17 @@
   "sense_notes": {"brief": "", "export": "", "export_short": ""},
   "drift_words": [],
   "plural_nouns": true,
+  "english": {
+    "phrases": ["right now", "just now", "now and then", "as well", "as well as", "might as well", "at all", "after all",
+      "all right", "as long as", "so far", "so that"],
+    "contexts": [
+      "[*] of",
+      "[before|after|since] i|you|he|she|we|they|it|there|someone|everyone|people|*ing",
+      "[it's|that's|there's] finally|already|just|never|ever|really|actually|not|still|also|now? been|got|gotten|had|done|gone|become|come|taken|seen|made|happened|given",
+      "[like] ,|\"|“|#",
+      "[like] really|totally|literally|so|very|just|actually|basically|super"
+    ]
+  },
   "exposure": {
     "same_as_english": [],
     "not_followed_by": {}

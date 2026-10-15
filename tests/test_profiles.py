@@ -83,6 +83,18 @@ class Profiles(unittest.TestCase):
             stale.write_text('// old\n')
             self.assertIn('out of date', '\n'.join(make_profiles.check(fwlib.PLUGIN_ROOT / 'data' / 'profiles', stale)))
 
+    def test_english_never_split_rules_live_once_in_the_generic_profile(self):
+        generic = make_profiles.load(fwlib.PLUGIN_ROOT / 'data' / 'profiles')['_generic']
+        english = generic['english']
+        self.assertIn('right now', english['phrases'])
+        self.assertIn('[*] of', english['contexts'])
+        self.assertEqual(make_profiles.english_problems(english), [])
+        self.assertEqual(fwlib.profile('Spanish')['english'], english)  # every language gets the same block
+        own = {'language': 'Spanish', 'english': {'phrases': ['por favor'], 'contexts': []}}
+        self.assertIn('shared by every language', '\n'.join(make_profiles.problems(own, generic)))
+        bad = make_profiles.english_problems({'phrases': ['now'], 'contexts': ['before i', '[a] [b] c', '[x]']})
+        self.assertEqual(len(bad), 4)
+
     def test_reading_schema_defaults_off(self):
         reading = fwlib.profile('French')['script']['reading']
         self.assertEqual(reading, {'early': 'none', 'late': 'none', 'late_from_stage': 0, 'late_only_with': '',

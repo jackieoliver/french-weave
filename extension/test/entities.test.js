@@ -31,7 +31,7 @@ describe('accents from the model', () => {
     const out = validateSwaps(2, [
       { o: 'very', f: 'tr\u0080s' }, { o: 'very', f: 'trÃ¨s' }, { o: 'very', f: 'tr\\x80s' }, { o: 'very', f: 'tr&#232;s' },
       { o: 'and', f: 'lumière' }, { o: 'really', f: 'très' }, { o: 'AND', f: 'et' }, { o: 'problems', f: 'le problème' },
-    ], undefined, 'French', stats);
+    ], undefined, 'French', { stats });
     expect(out.map((s) => s.f)).toEqual(['très']);
     expect(stats).toEqual({ malformed: 3, notListed: 1, gloss: 1, allCaps: 1, plural: 1 });
   });

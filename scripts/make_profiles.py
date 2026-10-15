@@ -48,6 +48,8 @@ def problems(data, generic, path=()):
             out.append(f'{where}: must be one of {", ".join(CHOICES[path + (key,)])}')
     if path:
         return out
+    if 'english' in data and data.get('language'):
+        out.append('english: the never-split rules are shared by every language; edit them in _generic.json')
     examples, extension = data.get('examples') or {}, data.get('extension') or {}
     pairs = list(examples.get('default_swaps') or []) + [p for v in (extension.get('level_examples') or {}).values() for p in v]
     pairs += [p for p in (extension.get('filler_example'), extension.get('adjective_example')) if p is not None]
@@ -73,6 +75,18 @@ def problems(data, generic, path=()):
     return out
 
 
+def english_problems(english):
+    """What is wrong with _generic.json's english block (data/profiles/README.md, English never-split rules)."""
+    out = [f'english.phrases: needs two or more words: {p!r}' for p in english.get('phrases', [])
+           if not isinstance(p, str) or len(p.split()) < 2]
+    for pattern in english.get('contexts', []):
+        tokens = pattern.split() if isinstance(pattern, str) else []
+        targets = [t for t in tokens if t.startswith('[') and t.endswith(']') and len(t) > 2]
+        if len(targets) != 1 or len(tokens) < 2:
+            out.append(f'english.contexts: needs one [swap] token and at least one word around it: {pattern!r}')
+    return out
+
+
 def render(profiles):
     generic = profiles[GENERIC]
     others = {name: data for name, data in profiles.items() if name != GENERIC}
@@ -87,6 +101,7 @@ def check(directory=None, out=OUT):
     """Problems with the profiles and the extension's copy, as a list of strings (empty when all is well)."""
     profiles = load(directory)
     found = [] if GENERIC in profiles else [f'{GENERIC}.json is missing']
+    found += [f'{GENERIC}.json: {p}' for p in english_problems(profiles.get(GENERIC, {}).get('english') or {})]
     for name, data in profiles.items():
         if name == GENERIC:
             continue

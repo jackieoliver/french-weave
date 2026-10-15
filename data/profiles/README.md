@@ -51,6 +51,20 @@ it reads (see `french.json`).
 | `extension.level_examples` | `{"1": pairs, "2": pairs}`: typical swaps for the extension's built-in level lists (French only today) |
 | `extension.synonyms` | Extra English synonyms for the extension's gloss check, `{"gloss": ["variant", ...]}` |
 
+## English never-split rules
+
+English is the source text in every language, so `_generic.json` holds one `english` block that the extension's
+swap check applies to all of them (a language profile can't override it; `make_profiles.py` says so). It keeps
+swaps out of fixed English phrases whose meaning differs from their words. Keep it small: each entry costs real
+swaps wherever it matches.
+
+| Field | What it is |
+| --- | --- |
+| `english.phrases` | Fixed phrases a swap may cover whole or stay out of, never cut into: `right now` keeps "now" English, `might as well` keeps "as well" English |
+| `english.contexts` | Patterns of space-separated tokens around the swap. Exactly one token is the swap in brackets: `[*]` any swap, `[before\|after]` a swap whose English is one of those words. The other tokens are the words right before or after it: alternatives with `\|`, `*ing` any word ending in "ing", `#` a number, punctuation as itself (`,`, `"`), and a trailing `?` makes a token optional. `[*] of` keeps every swap away from a dangling "of" (a lot of, because of, instead of); `[before\|after\|since] i\|you\|...\|*ing` keeps them before a noun only; `[it's\|that's\|there's] ... been\|got\|...` skips "it's" meaning "it has"; the `[like]` ones skip filler "like" |
+
+Besides these, a swap is never kept when its last word repeats the next English word ("there is a" -> "il y a a").
+
 ## Word list sources
 
 JSON has no comments, so sources are noted here.

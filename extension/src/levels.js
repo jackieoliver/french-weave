@@ -1,5 +1,6 @@
 // Level schedule, word lists, and guards. Pure: no DOM, no chrome APIs.
 import { profileFor, articlePatterns } from './profile.js';
+import { GENERIC } from './profile-data.js';
 
 // L3/L4 prompts are not built yet; anything above this uses L2 rules.
 export const MAX_BUILT_LEVEL = 2;
@@ -363,12 +364,95 @@ export function decodeEntities(s) {
 const MALFORMED = /&#?[a-z\d]+;|[\u0000-\u001f\u007f-\u009f\ufffd]|\\(?:x[\da-f]{2}|u[\da-f]{4})|[ÃÂ][\u0080-\u00bf]/i;
 export const malformed = (s) => MALFORMED.test(s);
 
+// English never-split rules (data/profiles/_generic.json "english", documented in data/profiles/README.md): English is
+// the source in every language, so one small list keeps swaps out of fixed phrases whose meaning differs ("right now",
+// "might as well"), off a dangling "of" ("beaucoup of", "porque of"), off "before"/"after" + clause, "it's" meaning
+// "it has", and filler "like".
+const tokenize = (s) => [...String(s).replace(/[’‘`]/g, "'").toLowerCase()
+  .matchAll(/[\p{L}\p{N}]+(?:'[\p{L}\p{N}]+)*|[^\s\p{L}\p{N}]/gu)].map((m) => m[0]);
+
+function tokenTest(src) {
+  const optional = src.length > 1 && src.endsWith('?');
+  const alts = (optional ? src.slice(0, -1) : src).split('|');
+  const test = (tok) => tok !== undefined && alts.some((a) => (a === '#' ? /^\p{N}/u.test(tok)
+    : a.length > 1 && a.startsWith('*') ? /^\p{L}/u.test(tok) && tok.length > a.length + 1 && tok.endsWith(a.slice(1))
+      : a === tok));
+  return { optional, test };
+}
+
+export function compileEnglish(english = {}) {
+  const phrases = (english.phrases || []).map(tokenize);
+  const contexts = (english.contexts || []).map((pattern) => {
+    const parts = pattern.trim().split(/\s+/);
+    const at = parts.findIndex((p) => /^\[.+\]$/.test(p));
+    const target = parts[at].slice(1, -1);
+    return {
+      target: target === '*' ? null : target.split('|').map((t) => tokenize(t).join(' ')),
+      before: parts.slice(0, at).reverse().map(tokenTest),
+      after: parts.slice(at + 1).map(tokenTest),
+    };
+  });
+  return { phrases, contexts };
+}
+const ENGLISH = compileEnglish(GENERIC.english);
+
+function seq(tests, toks, pos, dir) {
+  if (!tests.length) return true;
+  const [t, ...rest] = tests;
+  if (t.test(toks[pos]) && seq(rest, toks, pos + dir, dir)) return true;
+  return t.optional && seq(rest, toks, pos, dir);
+}
+
+const find = (toks, part, from = 0, to = toks.length) => {
+  const out = [];
+  for (let i = from; part.length && i + part.length <= to; i++) if (part.every((t, k) => toks[i + k] === t)) out.push(i);
+  return out;
+};
+
+// Why a swap of English o (into f) at tokens [s, e) breaks the English around it, or ''.
+function splitAt(toks, s, e, f, rules) {
+  const o = toks.slice(s, e).join(' ');
+  for (const phrase of rules.phrases) {
+    for (const p of find(toks, phrase)) {
+      const end = p + phrase.length;
+      if (s < end && p < e && !(s <= p && e >= end)) return `phrase "${phrase.join(' ')}"`;
+    }
+  }
+  for (const c of rules.contexts) {
+    if ((!c.target || c.target.includes(o)) && seq(c.before, toks, s - 1, -1) && seq(c.after, toks, e, 1)) return 'context';
+  }
+  // "there is a growing gap" -> "il y a a growing gap": the replacement ends with the next English word.
+  const ft = tokenize(f);
+  if (ft.length && (ft.at(-1) === toks[e] || ft[0] === toks[s - 1])) return 'repeat';
+  return '';
+}
+
+// The swap's place in the passage (text; ctx narrows it, as text.js locate does), checked against the rules. With no
+// text, ctx stands in. A swap that can't be found is left to the page, which won't place it.
+export function breaksEnglish(o, f, ctx = '', text = '', rules = ENGLISH) {
+  const toks = tokenize(text || ctx);
+  const ot = tokenize(o);
+  let starts = find(toks, ot);
+  const ct = text && ctx ? tokenize(ctx) : [];
+  const around = ct.length >= ot.length ? find(toks, ct) : [];
+  if (around.length === 1) {
+    const inside = find(toks, ot, around[0], around[0] + ct.length);
+    if (inside.length) starts = inside;
+  }
+  for (const s of starts) {
+    const why = splitAt(toks, s, s + ot.length, f, rules);
+    if (why) return why;
+  }
+  return '';
+}
+
 // Fail closed: keep only swaps whose French is on the list (the plugin's word state, else the level's bundled list)
 // and whose English matches that word's gloss.
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
 // language: the word state's language (its profile gives the articles and extra synonyms); bundled lists are French.
-// stats: an optional object that counts dropped swaps by reason (malformed, allCaps, notListed, gloss, plural).
-export function validateSwaps(level, swaps, sharedWords, language = 'French', stats = null) {
+// stats: an optional object that counts dropped swaps by reason (malformed, allCaps, notListed, gloss, plural, idiom).
+// text: the passage, for the English never-split rules (ctx stands in without it).
+export function validateSwaps(level, swaps, sharedWords, language = 'French', { stats = null, text = '' } = {}) {
   if (!Array.isArray(swaps)) return [];
   const lang = sharedWords ? language || 'French' : 'French';
   const articles = articlesFor(lang);
@@ -398,12 +482,14 @@ export function validateSwaps(level, swaps, sharedWords, language = 'French', st
     // possessive) stays outside the swap, use the bare noun.
     const bare = articles.definite ? exactFr(hit.canon).replace(articles.definite, '') : exactFr(hit.canon);
     if (bare !== exactFr(hit.canon) && !/^the\s/i.test(o) && idx.exact.has(bare)) hit = idx.exact.get(bare);
+    const ctx = typeof s.ctx === 'string' ? decodeEntities(s.ctx).trim() : '';
+    if (breaksEnglish(o, hit.canon, ctx, text)) { drop('idiom'); continue; }
     out.push({
       o,
       f: matchCase(hit.canon, o),
       g: hit.en,
       h: hit.hint,
-      ctx: typeof s.ctx === 'string' ? decodeEntities(s.ctx).trim() : '',
+      ctx,
       ...(sharedWords ? { word: hit.word, ...(hit.status ? { status: hit.status } : {}) } : {}),
     });
   }

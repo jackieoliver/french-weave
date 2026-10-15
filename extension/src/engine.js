@@ -42,7 +42,7 @@ export async function requestSwaps({ apiKey, model, level, batch, words, languag
       const dropped = {}; // swaps the validator dropped, by reason (malformed: broken accents the model sent)
       for (const { id, text } of batch) {
         if (!byId.has(id)) throw new Error('Incomplete model response');
-        results[id] = capSwaps(level, validateSwaps(level, byId.get(id), words, language, dropped), text, words);
+        results[id] = capSwaps(level, validateSwaps(level, byId.get(id), words, language, { stats: dropped, text }), text, words);
       }
       return { results, model: m, errors, dropped };
     } catch (e) {
