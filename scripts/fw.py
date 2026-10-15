@@ -32,6 +32,7 @@ from pathlib import Path
 import platform
 import re
 import shutil
+import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -378,20 +379,46 @@ def pause(value):
     return run
 
 
+def copy_to_clipboard(text):
+    """Best effort: pbcopy (macOS), wl-copy or xclip (Linux). True when one of them took the text."""
+    for cmd in (['pbcopy'], ['wl-copy'], ['xclip', '-selection', 'clipboard']):
+        if shutil.which(cmd[0]):
+            try:
+                subprocess.run(cmd, input=text, text=True, check=True, timeout=5,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return True
+            except (OSError, subprocess.SubprocessError):
+                continue
+    return False
+
+
+def save_export(name, text):
+    """Blocks copied out of a terminal pick up line breaks and indentation, so each one is also saved as a file."""
+    path = fwlib.home() / 'export' / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text + '\n', encoding='utf-8')
+    return path
+
+
 def export_cmd(args):
     with fwlib.editing() as state:
         logged = export.log_chat_day(state) if args.log_day else 0
         export.mark_exported(state, 'chatgpt' if args.chatgpt else 'claude-ai')
     if args.chatgpt:
         about, respond = export.chatgpt(state)
+        paths = [save_export('chatgpt-about.txt', about), save_export('chatgpt-respond.txt', respond)]
         print(f'ChatGPT > Settings > Personalization > Custom instructions. Each field holds {export.CHATGPT_LIMIT} '
               'characters on every plan.\n')
         print(f'--- "What would you like ChatGPT to know about you?" ({len(about)} characters) ---\n{about}\n')
         print(f'--- "How would you like ChatGPT to respond?" ({len(respond)} characters) ---\n{respond}')
+        print(f'\nAlso saved as {paths[0]} and {paths[1]}.')
     else:
         block = export.claude_ai(state)
+        path = save_export('claude-ai.txt', block)
         print(f'claude.ai > Settings > Profile > personal preferences. Replace the old French Weave block '
               f'({len(block)} characters):\n\n{block}')
+        copied = args.copy and copy_to_clipboard(block)
+        print(f'\n{"Copied to your clipboard, and a" if copied else "A"}lso saved as {path}.')
     if logged:
         print(f'\n(Counted today as chat exposure for {logged} learning words.)')
 
@@ -441,6 +468,7 @@ def main(argv=None):
     target.add_argument('--claude-ai', action='store_true')
     target.add_argument('--chatgpt', action='store_true')
     p.add_argument('--log-day', action='store_true', help='also count today as exposure (see log-chat-day)')
+    p.add_argument('--copy', action='store_true', help='also copy the claude.ai block to the clipboard')
     p.set_defaults(run=export_cmd)
     sub.add_parser('log-chat-day').set_defaults(run=log_chat_day)
     args = parser.parse_args(argv)
