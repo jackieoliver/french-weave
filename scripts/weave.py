@@ -336,6 +336,9 @@ def main(argv):
             if fwlib.marketplace_source() and fwlib.auto_update() is None:
                 update += (' Later updates can install themselves: type /plugin, open Marketplaces, pick french-weave '
                            'and turn on auto-update.')
+            if fwlib.narration_off() is None and fwlib.claude_home().is_dir():
+                update += (' Run /french-weave:setup again to turn off Claude Code\'s mid-turn narration, whose rewritten '
+                           'notes drop the French and sometimes come out entirely in French.')
             notice = f'{update}\n{notice}' if notice else update
         if notice:
             out['systemMessage'] = notice  # shown to the user, outside the brief
