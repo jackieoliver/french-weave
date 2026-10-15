@@ -19,12 +19,13 @@ export function errorKind({ status, daily, timeout, network, keyRejected } = {})
 }
 
 // One plain line with the HTTP code and when it retries; '' when the last request worked.
-export function modelErrorText(modelStatus) {
+export function modelErrorText(modelStatus, now = Date.now()) {
   const s = modelStatus || {};
   if (!s.error) return '';
   const code = s.httpStatus;
   switch (s.kind) {
-    case 'daily': return `Daily Gemini limit reached (${code || 429})${s.retryAt ? `; resumes about ${clockTime(s.retryAt)}` : ''}`;
+    case 'daily': return `Daily Gemini limit reached (${code || 429})${!s.retryAt ? '' : s.retryAt > now
+      ? `; resumes about ${clockTime(s.retryAt)}` : '; should work again with the next page'}`;
     case 'rate': return `Gemini rate limit (${code || 429}). Retrying shortly.`;
     case 'key': return `Gemini rejected the key (${code}). Paste a new one below.`;
     case 'busy': return `Gemini is busy (${code || 'timed out'}). Retrying.`;

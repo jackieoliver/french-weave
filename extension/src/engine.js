@@ -53,7 +53,7 @@ export async function requestSwaps({ apiKey, model, level, batch, words, languag
       if (wait && e?.daily) daily.set(m, now() + wait);
       errors.push(`${m}: ${timeout ? 'timeout' : e?.message || e}`);
       failures.push({ status: e?.status, googleStatus: e?.googleStatus, keyRejected: e?.keyRejected, daily: e?.daily, timeout,
-        network: e?.name === 'TypeError' && !e?.status });
+        network: !!e?.network });
     }
   }
   if (candidates.every((m) => daily.get(m) > now())) {

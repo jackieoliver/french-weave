@@ -21,12 +21,18 @@ export function buildRequest({ system, user, schema, thinkingLevel = THINKING_LE
 
 // Returns Map<id, swaps[]> from the model's JSON. Throws on HTTP error, timeout, or unparseable output.
 export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, body, timeoutMs = 20000 }) {
-  const res = await fetchImpl(`${API_BASE}${model}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  let res;
+  try {
+    res = await fetchImpl(`${API_BASE}${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (e) {
+    if (e?.name === 'TypeError') e.network = true; // fetch found no server to answer; a timeout is a TimeoutError
+    throw e;
+  }
   if (!res.ok) {
     const error = new Error(`HTTP ${res.status}`);
     error.status = res.status;

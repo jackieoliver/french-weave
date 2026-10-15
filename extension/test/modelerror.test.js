@@ -45,6 +45,9 @@ describe('model error notice', () => {
     expect((await shown(lite, () => fail(500, 'INTERNAL'))).text).toBe('Gemini is busy (500). Retrying.');
     expect((await shown(lite, () => { throw new DOMException('signal timed out', 'TimeoutError'); })).text).toBe('Gemini is busy (timed out). Retrying.');
     expect((await shown(lite, () => { throw new TypeError('Failed to fetch'); })).text).toBe("Can't reach Gemini.");
+    // A TypeError after Google answered is not a connection problem.
+    const broken = await shown(lite, () => ({ ok: true, status: 200, json: async () => { throw new TypeError('body stream already read'); } }));
+    expect(broken.text).toBe('Gemini request failed: gemini-3.5-flash-lite: body stream already read');
     const minute = await shown(lite, perMinute);
     expect(minute.text).toBe('Gemini rate limit (429). Retrying shortly.');
     expect(minute.err.googleStatus).toBe('RESOURCE_EXHAUSTED');
@@ -52,6 +55,9 @@ describe('model error notice', () => {
     expect(day.err).toMatchObject({ kind: 'daily', status: 429, googleStatus: 'RESOURCE_EXHAUSTED' });
     expect(day.text).toBe(`Daily Gemini limit reached (429); resumes about ${clockTime(day.err.resumeAt)}`);
     expect(day.text).toMatch(/^Daily Gemini limit reached \(429\); resumes about \d{1,2}:\d{2}/);
+    // Once the resume time has passed, an old time would read as tomorrow's.
+    expect(modelErrorText({ error: day.err.message, kind: 'daily', httpStatus: 429, retryAt: day.err.resumeAt }, day.err.resumeAt + 1))
+      .toBe('Daily Gemini limit reached (429); should work again with the next page');
     // A refused key is refused for every model, so it wins over the other model's failure.
     expect((await shown('gemini-3.8-flash', (m) => (m === 'gemini-3.8-flash' ? badKey() : fail(503, 'UNAVAILABLE')))).text).toMatch(/^Gemini rejected the key \(400\)/);
     expect((await shown('gemini-3.8-flash', (m) => (m === 'gemini-3.8-flash' ? fail(503, 'UNAVAILABLE') : perMinute()))).text).toBe('Gemini rate limit (429). Retrying shortly.');
@@ -171,6 +177,18 @@ describe('model error notice', () => {
       // The popup on a site that is off: the site line says so, and the model error has its own line.
       const off = await openPopup();
       expect(off).toEqual({ site: 'off.example', operation: 'Off on this site', modelError: 'Gemini rejected the key (400). Paste a new one below.' });
+
+      // Pasting a new key clears the key error; the next request says whether it works.
+      await dispatch({ type: 'save', apiKey: KEY }, popupSender);
+      expect(data.modelStatus.error).toBe('');
+      expect(badge.text).toBe('NEW');
+
+      // Whatever an error message says, the key in it is never stored or shown.
+      gemini = () => { throw new Error(`proxy refused ${KEY}`); };
+      const leaky = await ask('One more quiet passage and a book to read.');
+      expect(data.modelStatus.error).toBe('gemini-3.5-flash-lite: proxy refused [key]');
+      expect(JSON.stringify([data.modelStatus, leaky, badge])).not.toContain(KEY);
+      expect(badge.text).toBe('!');
 
       // A wait with no request of its own keeps the code of the request that started it.
       gemini = () => perMinute();

@@ -199,9 +199,13 @@ async function save(msg) {
     if (typeof msg.apiKey === 'string') {
       if (msg.apiKey.length > 500) throw new Error('Key is too long');
       patch.apiKey = msg.apiKey.trim();
+      // A new key answers "Gemini rejected the key"; the next request says whether it works.
+      const { modelStatus } = await store.get('modelStatus');
+      if (modelStatus?.kind === 'key') patch.modelStatus = { at: Date.now(), error: '' };
     }
     await store.set(patch);
   });
+  await showBadge();
   await broadcast();
   return { ok: true };
 }
