@@ -15,6 +15,17 @@ const send = (message) => chrome.runtime.sendNativeMessage(HOST, message);
 const ALARM = 'sync';
 const SYNC_MINUTES = 30; // word statuses change at most a few times a day
 const FLUSH_DELAY_MS = 10000;
+// A pause from Claude Code (fw.py pause) has to stop page text going to Gemini within minutes, not at the next
+// 30-minute sync: before a model call, the word state is re-read from the native host when the last read is older.
+export const HOST_CHECK_MS = 2 * 60000;
+let hostChecked = 0;
+let hostCheck = null;
+function recheckHost() {
+  if (!hostCheck && Date.now() - hostChecked >= HOST_CHECK_MS) {
+    hostCheck = syncWords().catch(() => {}).finally(() => { hostCheck = null; });
+  }
+  return hostCheck;
+}
 const cooldown = new Map(); // model -> rate-limit cooldown end; worker memory is enough
 
 const serial = () => {
@@ -64,13 +75,17 @@ async function swaps(msg, sender) {
   const results = await cache.getMany(items.map((i) => i.key));
   const misses = items.filter((i) => !(i.key in results));
   if (!misses.length) return { results };
+  if (recheckHost()) {
+    await hostCheck;
+    if ((await context()).revision !== ctx.revision) return { results, stale: true };
+  }
   try {
     const fresh = await modelCall(async () => {
       if ((await context()).revision !== ctx.revision) return null;
       if (await callsToday(chromeStorage) >= DAILY_MODEL_CALLS) throw new Error(`Daily limit of ${DAILY_MODEL_CALLS} model calls reached; French resumes tomorrow`);
       const { wordState, apiKey, hostKey } = await store.get(['wordState', 'apiKey', 'hostKey']);
       const fetchImpl = async (...args) => { await countCall(chromeStorage); return fetch(...args); };
-      return requestSwaps({ apiKey: apiKey || hostKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, fetchImpl,
+      return requestSwaps({ apiKey: apiKey || hostKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, language: wordState?.language, fetchImpl,
         shownToday: await shownToday(chromeStorage), cooldown, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
     });
     return await locked(async () => {
@@ -106,6 +121,7 @@ async function record(msg, sender) {
 
 // A new word-state version clears the decision cache, because cached swaps were chosen against the old list.
 async function syncWords() {
+  hostChecked = Date.now();
   await flush();
   const res = await refresh({ storage: chromeStorage, send });
   if (res.changed) await locked(() => cache.clear());
@@ -147,7 +163,31 @@ async function status() {
   const config = await context();
   const data = await store.get(['wordState', 'apiKey', 'hostKey', 'modelStatus']);
   return { config, words: data.wordState?.words?.length || 0, fetchedAt: data.wordState?.fetchedAt || 0,
-    pastedKey: !!data.apiKey, hostKey: !!data.hostKey, modelStatus: data.modelStatus || null };
+    pastedKey: !!data.apiKey, hostKey: !!data.hostKey, modelStatus: data.modelStatus || null,
+    update: await checkUpdate() };
+}
+
+// An update replaces this folder on disk (setup, or the Claude Code hook after a plugin update), but Chrome keeps
+// running the loaded copy. Compare the manifest on disk with the running one and reload from disk by ourselves,
+// once per disk version, after any model call in flight and pending storage writes. If the running copy still
+// differs after that (or reload fails), mark the toolbar icon so the user can reload by hand.
+export const RELOADED_KEY = 'reloadedFor';
+async function checkUpdate() {
+  try {
+    const disk = await (await fetch(chrome.runtime.getURL('manifest.json'), { cache: 'no-store' })).json();
+    const waiting = disk.version && disk.version !== chrome.runtime.getManifest().version ? String(disk.version) : '';
+    if (waiting && (await store.get(RELOADED_KEY))[RELOADED_KEY] !== waiting) {
+      await store.set({ [RELOADED_KEY]: waiting });
+      try {
+        await locked(() => modelCall(() => chrome.runtime.reload()));
+        return waiting; // normally not reached: the worker is gone
+      } catch { /* fall back to the badge */ }
+    }
+    await chrome.action.setBadgeText({ text: waiting ? 'NEW' : '' });
+    return waiting;
+  } catch {
+    return '';
+  }
 }
 
 // Pages may only ask for config, swaps and events; everything else is popup-only.
@@ -156,7 +196,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   const popup = sender.url === chrome.runtime.getURL('src/popup.html');
   const page = sender.tab && /^https?:\/\//.test(sender.url || '');
   const handlers = {
-    config: context,
+    config: () => { if (page) void recheckHost(); return context(); }, // a page load also notices a pause or resume
     swaps: () => swaps(msg, sender),
     event: () => record(msg, sender),
     status, syncWords, clearCache,
@@ -197,8 +237,13 @@ chrome.permissions.onRemoved.addListener(permissionsChanged);
 function arm() {
   chrome.alarms.create(ALARM, { periodInMinutes: SYNC_MINUTES });
   void syncWords().catch(() => {});
+  void checkUpdate();
 }
 chrome.runtime.onInstalled.addListener(arm);
 chrome.runtime.onStartup.addListener(arm);
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === ALARM) void syncWords().catch(() => {}); });
+chrome.alarms.onAlarm.addListener((a) => {
+  if (a.name !== ALARM) return;
+  void syncWords().catch(() => {});
+  void checkUpdate();
+});
 void ready.then(registerSites).catch(() => {});

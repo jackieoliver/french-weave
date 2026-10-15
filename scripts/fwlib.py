@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import tempfile
 import time
 import unicodedata
@@ -25,6 +26,7 @@ except ImportError:  # Windows: no locking (untested platform)
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 LEXICON = PLUGIN_ROOT / 'data' / 'lexicon.csv'
+DEFAULT_LANGUAGE = 'French'  # another language: setup --language NAME --lexicon FILE (README "Other languages")
 
 # ---- promotion rules (documented in README "How words advance") ----
 WINDOW = 20             # target number of active (learning) words
@@ -42,6 +44,7 @@ UNMEASURABLE = {'important', 'possible', 'plus', 'comment', 'grand', 'simple', '
                 'terrible', 'impossible', 'mars', 'bravo', 'pardon', 'rouge', 'mince', 'sec', 'dire', 'porter',
                 'planter', 'charger', 'lever', 'lancer', 'quitter', 'payer', 'signer', 'proposer', 'copier', 'derrière'}
 DETERMINER = r"(?:le|la|les|l'|un|une|du|de la|ce|cette|mon|ma|ton|ta)\s*"
+NO_SPACES = re.compile('[\u0e00-\u0e7f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]')  # Thai, kana, CJK
 CODE = re.compile(r"```.*?```|`[^`\n]*`|https?://\S+", re.S)
 DEDUPE_DAYS = 45
 
@@ -51,7 +54,7 @@ def home():
     else ~/.french-weave."""
     if os.environ.get('FRENCH_WEAVE_HOME'):
         return Path(os.environ['FRENCH_WEAVE_HOME']).expanduser()
-    if PLUGIN_ROOT.name == 'app' and (PLUGIN_ROOT.parent / 'state.json').exists():
+    if PLUGIN_ROOT.name == 'app' and ((PLUGIN_ROOT / 'fw-host').exists() or (PLUGIN_ROOT.parent / 'state.json').exists()):
         return PLUGIN_ROOT.parent
     return Path.home() / '.french-weave'
 
@@ -72,16 +75,48 @@ def key(fr):
     return re.sub(r'\s+', ' ', norm(fr))
 
 
-def load_lexicon(path=LEXICON):
-    with open(path, encoding='utf-8', newline='') as file:
-        rows = [r for r in csv.DictReader(file) if (r.get('fr') or '').strip()]
+def lexicon_path():
+    """The word list: <state dir>/lexicon.csv when setup installed one for another language, else the French list."""
+    custom = home() / 'lexicon.csv'
+    return custom if custom.exists() else LEXICON
+
+
+def language(state=None):
+    return (state or {}).get('language') or DEFAULT_LANGUAGE
+
+
+def load_lexicon(path=None):
+    """Rows of fr (or word), en, hint; an optional scan column set to no keeps a word out of exposure counting
+    (it is also an English word, like "solo")."""
+    with open(path or lexicon_path(), encoding='utf-8-sig', newline='') as file:
+        rows = [r for r in csv.DictReader(file) if (r.get('fr') or r.get('word') or '').strip()]
     seen, out = set(), []
     for r in rows:
-        k = key(r['fr'])
-        if k not in seen:
-            seen.add(k)
-            out.append({'fr': r['fr'].strip(), 'en': r['en'].strip(), 'hint': r['hint'].strip()})
+        word = (r.get('fr') or r.get('word')).strip()
+        if key(word) not in seen:
+            seen.add(key(word))
+            out.append({'fr': word, 'en': (r.get('en') or '').strip(), 'hint': (r.get('hint') or '').strip(),
+                        **({'scan': False} if (r.get('scan') or '').strip().lower() == 'no' else {})})
     return out
+
+
+def localize(text, state, cuts=()):
+    """Brief or export text for the state's language: French-only examples cut or replaced, then French -> the name."""
+    if language(state) == DEFAULT_LANGUAGE:
+        return text
+    for old, new in cuts:
+        text = text.replace(old, new)
+    return re.sub(r'French(?! [Ww]eave)', language(state), text)
+
+
+def gloss_example(state):
+    """The footer example, from the first word of the list: (sans = without, "sahn")."""
+    w = (state.get('words') or [{'fr': 'sans', 'en': 'without', 'hint': 'sahn'}])[0]
+    return f'({w["fr"]} = {w["en"]}, "{w["hint"]}")'
+
+
+def measurable(word):
+    return norm(word['fr']) not in UNMEASURABLE and word.get('scan', True)
 
 
 # ---- files ----
@@ -130,6 +165,62 @@ def locked(name='state.lock', blocking=True):
             fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+# ---- installed copies ----
+
+# Setup copies these into the state dir: the plugin cache path changes on every update, Chrome needs fixed paths.
+COPIES = (('extension', ('test', 'node_modules', 'package.json', 'bun.lock')),
+          ('app/scripts', ('__pycache__',)), ('app/data', ()))
+
+
+def plugin_version(root=None):
+    data = read_json((root or PLUGIN_ROOT) / '.claude-plugin' / 'plugin.json', {}) or {}
+    return str(data.get('version') or '')
+
+
+def install_copies(root=None, directory=None):
+    """Copy the extension, scripts and data into the state dir. Each folder is built next to its target and
+    swapped in, so the native host and Chrome never see a half-copied folder. Records the version in app/VERSION.
+    Callers hold copies.lock, so pid-named staging folders found here are leftovers from a run that died."""
+    root, directory = Path(root or PLUGIN_ROOT), Path(directory or home())
+    for name, skip in COPIES:
+        source = root / ('extension' if name == 'extension' else name.split('/')[1])
+        target = directory / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        for leftover in target.parent.glob(target.name + '.*-*'):
+            if re.fullmatch(re.escape(target.name) + r'\.(new|old)-\d+', leftover.name):
+                shutil.rmtree(leftover, ignore_errors=True)
+        fresh, old = (target.with_name(f'{target.name}.{kind}-{os.getpid()}') for kind in ('new', 'old'))
+        shutil.copytree(source, fresh, ignore=shutil.ignore_patterns(*skip) if skip else None)
+        if target.exists():
+            target.rename(old)
+        fresh.rename(target)
+        if old.exists():
+            shutil.rmtree(old)
+    version = plugin_version(root)
+    if version:
+        (directory / 'app' / 'VERSION').write_text(version + '\n')
+
+
+def refresh_copies():
+    """After a plugin update, bring the copies setup made up to this plugin's version. Does nothing before setup
+    has run, when running from the copies themselves (Codex, the native host), or when they're current.
+    Returns the new version when it copied, else ''."""
+    app = home() / 'app'
+    version = plugin_version()
+    if not version or not app.is_dir() or PLUGIN_ROOT.resolve() == app.resolve():
+        return ''
+    try:
+        if (app / 'VERSION').read_text().strip() == version:
+            return ''
+    except OSError:
+        pass  # copies from before 0.2.1 have no VERSION
+    with locked('copies.lock', blocking=False) as got:
+        if not got:
+            return ''  # another session is copying right now
+        install_copies()
+    return version
+
+
 # ---- state ----
 
 def new_state(day=None, lexicon=None, known_top=0):
@@ -143,12 +234,20 @@ def new_state(day=None, lexicon=None, known_top=0):
 
 
 def seed_known(state, n, day=None):
-    """Marks the top n lexicon words known if they aren't introduced yet (queue). Words already learning, shaky or
-    known keep their status, so seeding never resets progress. Returns how many words changed."""
+    """Marks the top n lexicon words known if they aren't introduced yet: still queued, or picked as learning words
+    today with nothing recorded (the first chat prompt, `/french-weave:setup` included, creates the state just
+    before setup runs). Words with any progress keep their status, so seeding never resets progress. Today's
+    new-word allowance is handed back for the picks it undoes. Returns how many words changed."""
     day = day or today()
-    seeded = [w for w in state['words'][:max(n, 0)] if w['status'] == 'queue']
+    fresh = lambda w: (w['status'] == 'active' and w.get('added') == day and
+                       not (w.get('days') or w.get('assumed') or w.get('peeks') or w.get('last_bad')))
+    seeded = [w for w in state['words'][:max(n, 0)] if w['status'] == 'queue' or fresh(w)]
+    undone = sum(map(fresh, seeded))
     for w in seeded:
         set_status(w, 'known', day)
+    last_day, count = state.get('refilled') or ['', 0]
+    if undone and last_day == day:
+        state['refilled'] = [day, max(0, count - undone)]
     return len(seeded)
 
 
@@ -175,7 +274,10 @@ def load_state(create=True, lock=True):
     if not create:
         return None
     with locked() if lock else contextlib.nullcontext():
-        if not path.exists():
+        current = read_json(path)
+        if not (isinstance(current, dict) and isinstance(current.get('words'), list)):
+            if path.exists():  # unreadable or not a word state: keep it for the user and start over
+                path.rename(path.with_name('state.json.bad-' + time.strftime('%Y%m%d-%H%M%S')))
             write_json(path, new_state())
     return read_json(path)
 
@@ -360,13 +462,15 @@ def version(state):
 def public_state(state):
     """What the extension gets: stage, pause flag, and the words in use."""
     return {'version': version(state), 'stage': stage_for(state), 'paused': bool(state.get('paused')),
-            'words': [{k: w[k] for k in ('fr', 'en', 'hint', 'status')} for w in introduced(state)]}
+            'language': language(state), 'words': [{k: w[k] for k in ('fr', 'en', 'hint', 'status')} for w in introduced(state)]}
 
 
 # ---- chat exposure from Claude Code transcripts ----
 
 def pattern(fr):
     word = norm(fr)
+    if NO_SPACES.search(word):  # written without spaces between words: no word boundaries to look for
+        return re.compile(re.escape(word))
     noun = re.match(r"(?:le |la |les |l')(.+)", word)
     if noun:
         noun = noun.group(1)
@@ -380,12 +484,37 @@ def codex_home():
     return Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex').expanduser()
 
 
+def claude_home():
+    return Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude').expanduser()
+
+
+MARKETPLACE = 'french-weave'
+
+
+def marketplace_source():
+    """Where Claude Code installed this marketplace from ({'source': 'github', 'repo': ...}), or None."""
+    known = read_json(claude_home() / 'plugins' / 'known_marketplaces.json', {}) or {}
+    entry = known.get(MARKETPLACE) if isinstance(known, dict) else None
+    return entry.get('source') if isinstance(entry, dict) and isinstance(entry.get('source'), dict) else None
+
+
+def auto_update():
+    """True or False when Claude Code auto-updates this marketplace by a setting or the /plugin toggle, else None
+    (off: Claude Code's default for marketplaces outside Anthropic's)."""
+    settings = read_json(claude_home() / 'settings.json', {}) or {}
+    entry = (settings.get('extraKnownMarketplaces') or {}).get(MARKETPLACE) if isinstance(settings, dict) else None
+    if isinstance(entry, dict) and 'autoUpdate' in entry:
+        return bool(entry['autoUpdate'])
+    known = read_json(claude_home() / 'plugins' / 'known_marketplaces.json', {}) or {}
+    entry = known.get(MARKETPLACE) if isinstance(known, dict) else None
+    return bool(entry['autoUpdate']) if isinstance(entry, dict) and 'autoUpdate' in entry else None
+
+
 def transcript_roots():
     """Chat transcripts to scan: FRENCH_WEAVE_TRANSCRIPTS, else Claude Code's projects and Codex's sessions."""
     if os.environ.get('FRENCH_WEAVE_TRANSCRIPTS'):
         return [Path(os.environ['FRENCH_WEAVE_TRANSCRIPTS']).expanduser()]
-    claude = Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude').expanduser() / 'projects'
-    return [claude, codex_home() / 'sessions']
+    return [claude_home() / 'projects', codex_home() / 'sessions']
 
 
 class Lines:
@@ -404,8 +533,9 @@ class Lines:
                 yield raw.decode('utf-8', 'replace')
 
 
-def replies(lines):
-    """Yield (day, text) for main-thread assistant replies in Claude Code or Codex transcript lines."""
+def replies(lines, ids=False):
+    """Yield (day, text) for main-thread assistant replies in Claude Code or Codex transcript lines; with ids,
+    (day, text, record id): Claude Code's uuid or Codex's message id, which copies in forked chats keep."""
     for line in lines:
         if len(line) > 1_000_000 or '"assistant"' not in line:
             continue
@@ -417,11 +547,12 @@ def replies(lines):
         if item.get('type') == 'assistant' and not item.get('isSidechain'):  # Claude Code
             for block in item.get('message', {}).get('content') or []:
                 if isinstance(block, dict) and block.get('type') == 'text':
-                    yield day, block.get('text', '')
+                    yield (day, block.get('text', ''), item.get('uuid') or '')[:3 if ids else 2]
         elif item.get('type') == 'response_item':  # Codex
             payload = item.get('payload') or {}
             if payload.get('type') == 'message' and payload.get('role') == 'assistant':
-                yield day, ' '.join(b.get('text', '') for b in payload.get('content') or [] if isinstance(b, dict))
+                text = ' '.join(b.get('text', '') for b in payload.get('content') or [] if isinstance(b, dict))
+                yield (day, text, payload.get('id') or '')[:3 if ids else 2]
 
 
 def local_day(stamp):
@@ -450,12 +581,14 @@ def scan(words, index, roots=None, start='0000-00-00'):
         except OSError:
             continue
         lines = Lines(path, offset)
-        for day, text in replies(lines):
+        for day, text, record in replies(lines, ids=True):
             if day < start or 'French Weave' in text:
                 continue
-            digest = hashlib.sha1(text.encode()).hexdigest()[:16]
+            # Forked and resumed chats copy old replies with their ids (Codex gives the copies new timestamps), so
+            # the id tells a copy from the same words said again; records without one fall back to the text alone.
+            digest = hashlib.sha1(f'{record}\0{text}'.encode() if record else text.encode()).hexdigest()[:16]
             if digest in recent:
-                continue  # forked and resumed chats copy old replies
+                continue
             recent[digest] = day
             prose = norm(CODE.sub(' ', text))
             for fr, regex in patterns.items():
@@ -479,7 +612,7 @@ def refresh_exposure():
             return False
         state = load_state()
         path = home() / 'exposure.json'
-        index = scan([w['fr'] for w in state['words']], read_json(path, {}) or {}, start=state.get('created', '0000-00-00'))
+        index = scan([w['fr'] for w in state['words'] if w.get('scan', True)], read_json(path, {}) or {}, start=state.get('created', '0000-00-00'))
         write_json(path, index)
     with editing():
         pass  # promotion runs on save

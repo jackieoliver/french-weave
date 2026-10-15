@@ -88,7 +88,11 @@ function wordMatches(text, needle, from, to) {
     .filter((i) => {
       const before = i === 0 ? '' : text[i - 1];
       const after = text[i + needle.length] ?? '';
-      return (!before || !WORD_CHAR.test(before)) && (!after || !WORD_CHAR.test(after));
+      // A contraction or hyphenated compound is one word to the reader: never swap "Here" in "Here's"
+      // ("Ici's") or "now" in "now-frozen".
+      const joinedAfter = /['’-]/.test(after) && WORD_CHAR.test(text[i + needle.length + 1] ?? '');
+      const joinedBefore = /['’-]/.test(before) && i > 1 && WORD_CHAR.test(text[i - 2]);
+      return (!before || !WORD_CHAR.test(before)) && (!after || !WORD_CHAR.test(after)) && !joinedAfter && !joinedBefore;
     })
     .map((i) => ({ start: i, end: i + needle.length }));
 }

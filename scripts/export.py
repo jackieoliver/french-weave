@@ -70,6 +70,26 @@ RULES = [
      "\"word?\" = translate. \"quiz\" = ask me 3 recent words. \"easier\"/\"harder\" = one stage. Never comment on the method."),
 ]
 
+# French-only examples and sense notes in RULES: (text, replacement for another language, given the state). A test
+# checks each still occurs in the rules, so the French wording can change without silently leaking into others.
+SWAPS = lambda state, n=10: (state.get('words') or [])[:n]
+CUTS = [
+    ("(and = et, but = mais, so = donc, with = avec, without = sans, very = très, also = aussi, now = maintenant, because "
+     "= parce que, for = pour, and the like once they're on my lists)",
+     lambda st: '(' + ', '.join(f'{w["en"]} = {w["fr"]}' for w in SWAPS(st)) + ", and the like once they're on my lists)"),
+    ("et, mais, donc, avec, sans, très, aussi, maintenant, parce que, pour.", lambda st: ', '.join(w['fr'] for w in SWAPS(st)) + '.'),
+    (', like "The build passes maintenant, mais the cache is stale, donc I cleared it."', lambda st: '.'),
+    (': pour never follows ask, wait or look and never marks a duration; avant, pendant and après go before nouns, never '
+     'clauses; plus means "more", never "and"; dans only for in a place or time; ça only as a pronoun; non only as an '
+     'answer; pas du tout is "not at all", never a plain "not"; tout le monde means people', lambda st: ''),
+    (': pour not after ask/wait or for durations; avant/pendant/après before nouns; plus = more.', lambda st: '.'),
+    ('(sans = without, "sahn")', fwlib.gloss_example),
+]
+
+
+def localize(text, state):
+    return fwlib.localize(text, state, [(old, new(state)) for old, new in CUTS])
+
 
 def stage_text(short=False):
     from weave import STAGES
@@ -100,15 +120,17 @@ def band_text(state, exceptions=fwlib.EXCEPTIONS_MAX):
     "common French words up to about the N-th most frequent"."""
     n, missing, extra = fwlib.known_band(state)
     cut = lambda xs: ', '.join(xs[:exceptions]) + (f' and {len(xs) - exceptions} more' if len(xs) > exceptions else '')
-    return (f'common French words up to about the {ordinal(n)} most frequent'
+    return (f'common {fwlib.language(state)} words up to about the {ordinal(n)} most frequent'
             + (f', except (not learned yet): {cut(missing)}' if missing else '')
             + (f'; also: {cut(extra)}' if extra else ''))
 
 
-def state_line(state, now=None, known_max=KNOWN_LIST_MAX, dates=True, exceptions=fwlib.EXCEPTIONS_MAX, tail=None):
-    """The word-state line: Stage | Active | Shaky | Known | Synced, in the original state-line format."""
+def state_line(state, now=None, known_max=KNOWN_LIST_MAX, dates=True, exceptions=fwlib.EXCEPTIONS_MAX, tail=None,
+               learning_max=None):
+    """The word-state line: Stage | Active | Shaky | Known | Synced, in the original state-line format.
+    learning_max: list at most this many Active and this many Shaky words, the earliest added (ChatGPT)."""
     words = state['words']
-    by_added = lambda xs: sorted(xs, key=lambda w: w['added'])
+    by_added = lambda xs: sorted(xs, key=lambda w: w['added'])[:learning_max]
     active = by_added([w for w in words if w['status'] == 'active'])
     shaky = by_added([w for w in words if w['status'] == 'shaky'])
     known = [w for w in words if w['status'] == 'known']
@@ -118,8 +140,8 @@ def state_line(state, now=None, known_max=KNOWN_LIST_MAX, dates=True, exceptions
                   else ', '.join(w['fr'] for w in known[:known_max]) or 'none')
     if 0 <= known_max < len(known) <= KNOWN_LIST_MAX:  # trimmed listing (ChatGPT)
         shown = ', '.join(w['fr'] for w in known[:known_max])
-        known_text = (f'{shown} and {len(known) - known_max} more of the most common French words' if shown
-                      else f'the {len(known)} most common French words')
+        known_text = (f'{shown} and {len(known) - known_max} more of the most common {fwlib.language(state)} words' if shown
+                      else f'the {len(known)} most common {fwlib.language(state)} words')
     stamp = time.strftime('%Y-%m-%dT%H:%MZ', time.gmtime(time.time() if now is None else now))
     return (f'French weave state{" (re-export about weekly)" if tail is None else ""} — Stage: {fwlib.stage_for(state)}'
             f' | Active (use most; gloss in footer): {listing([entry(w, w["added"]) for w in active])}'
@@ -139,30 +161,35 @@ def parse_state_line(line):
         if name in ('active', 'shaky'):
             out[name] = [] if body == 'none' else [entry.match(e).groups()[:3] for e in body.split('; ')]
         elif name == 'known':
-            out['known'] = [] if body == 'none' else body if body.startswith('common French words') else body.split(', ')
+            out['known'] = [] if body == 'none' else body if body.startswith('common ') else body.split(', ')
         elif name == 'synced':
             out['synced'] = body
     return out
 
 
-def claude_ai(state, now=None, tail=None, known_max=KNOWN_LIST_MAX):
+def claude_ai(state, now=None, tail=None, known_max=KNOWN_LIST_MAX, dates=True):
     """Personal preferences for claude.ai (Settings > Profile): the rules, then the state line."""
-    return rules() + '\n\n' + state_line(state, now, tail=tail, known_max=known_max)
+    return localize(rules(), state) + '\n\n' + state_line(state, now, tail=tail, known_max=known_max, dates=dates)
 
 
 def chatgpt(state, now=None, limit=CHATGPT_LIMIT, tail=None):
-    """Two ChatGPT custom-instructions fields, each within limit: (about you: the state line without dates, known
-    words trimmed to fit; how to respond: the short rules)."""
+    """Two ChatGPT custom-instructions fields: (about you: the state line without dates, known words trimmed to fit,
+    then learning words; how to respond: the short rules). Raises ValueError when the state line can't fit limit."""
     known = sum(w['status'] == 'known' for w in state['words'])
     if known > KNOWN_LIST_MAX:
         tries = [dict(exceptions=e) for e in range(fwlib.EXCEPTIONS_MAX, -1, -5)]
     else:
         tries = [dict(known_max=k) for k in list(range(known, 0, -10)) + [0]]
+    learning = max(sum(w['status'] == s for w in state['words']) for s in ('active', 'shaky'))
+    tries += [dict(tries[-1], learning_max=n) for n in range(learning - 1, -1, -1)]
+    respond = localize(rules(short=True), state)
+    if len(respond) > limit:
+        raise ValueError(f'the rules need {len(respond)} characters, more than the {limit} a field holds')
     for kwargs in tries:
         line = state_line(state, now, dates=False, tail=tail, **kwargs)
         if len(line) <= limit:
-            break
-    return line, rules(short=True)
+            return line, respond
+    raise ValueError(f'the word-state line needs {len(line)} characters, more than the {limit} a field holds')
 
 
 def mark_exported(state, target):

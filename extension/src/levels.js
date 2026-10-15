@@ -196,6 +196,7 @@ export function normalizeFr(s) {
 }
 
 const ARTICLE_RE = /^(?:(?:les|le|la|une|un|des)\s+|l')/i;
+const DEFINITE_RE = /^(?:(?:les|le|la)\s+|l')/i;
 export const exactFr = (s) => String(s).normalize('NFC').toLowerCase().replace(/[’‘`]/g, "'").replace(/\s+/g, ' ').trim();
 
 const indexCache = new Map();
@@ -230,7 +231,59 @@ export function matchCase(fr, original) {
   return fr;
 }
 
-// Fail closed: keep only swaps whose French is on the list (the plugin's word state, else the level's bundled list).
+// The English a swap replaces must be one of the word's glosses, or a plain inflection of one, so a model
+// slip like "to start" -> donc is dropped instead of shown.
+const EN_LEAD_RE = /^(?:the|a|an|to)\s+/;
+const cleanEn = (s) => String(s).toLowerCase().replace(/[’‘`]/g, "'").replace(/\(.*?\)/g, ' ')
+  .replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
+
+// Everyday English variants of a gloss, including the synonyms the prompt itself asks the model to use
+// (prompt.js: "big"/"large"/"huge" -> grand, "other"/"another"/"else" -> autre, "I think" -> je pense que, ...).
+const SYNONYMS = {
+  big: ['large', 'huge'],
+  only: ['single'],
+  other: ['another', 'else'],
+  'i think that': ['i think'],
+  okay: ['ok'],
+  'thank you': ['thanks'],
+  'a little': ['a bit', 'a little bit'],
+  'a lot': ['lots', 'a lot of', 'lots of', 'much', 'so much'],
+  maybe: ['perhaps', 'possibly'],
+  also: ['too', 'as well'],
+  'too much': ['too', 'too many'],
+  difficult: ['hard'],
+  actually: ['in fact'],
+  but: ['however'],
+  'there is': ["there's", 'there are'],
+  'there are': ["there's", 'there is'],
+  "it's": ['it is', 'this is', "that's", 'that is'],
+  'this is': ["it's", 'it is', "that's", 'that is'],
+  hello: ['hi'],
+};
+
+export function glossMatches(original, en) {
+  const forms = new Set();
+  for (const alt of String(en).split(/\s*[/;,]\s*/)) {
+    const g = cleanEn(alt);
+    if (!g) continue;
+    for (const f of [g, g.replace(EN_LEAD_RE, '')]) {
+      forms.add(f);
+      for (const syn of SYNONYMS[f] || []) forms.add(syn);
+    }
+  }
+  const t = cleanEn(original);
+  if (!t) return false;
+  for (const c of new Set([t, t.replace(EN_LEAD_RE, '')])) {
+    if (forms.has(c)) return true;
+    for (const [suffix, stem] of [['ies', 'y'], ['es', ''], ['s', ''], ['ed', ''], ['ed', 'e'], ['ing', ''], ['ing', 'e']]) {
+      if (c.endsWith(suffix) && forms.has(c.slice(0, -suffix.length) + stem)) return true;
+    }
+  }
+  return false;
+}
+
+// Fail closed: keep only swaps whose French is on the list (the plugin's word state, else the level's bundled list)
+// and whose English matches that word's gloss.
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
 export function validateSwaps(level, swaps, sharedWords) {
   if (!Array.isArray(swaps)) return [];
@@ -240,8 +293,12 @@ export function validateSwaps(level, swaps, sharedWords) {
     if (!s || typeof s.o !== 'string' || typeof s.f !== 'string') continue;
     const o = s.o.trim();
     if (!o || !s.f.trim()) continue;
-    const hit = idx.exact.get(exactFr(s.f)) || idx.folded.get(normalizeFr(s.f));
-    if (!hit) continue;
+    let hit = idx.exact.get(exactFr(s.f)) || idx.folded.get(normalizeFr(s.f));
+    if (!hit || !glossMatches(o, hit.en)) continue;
+    // "my problem" -> "my le problème", "the answer" -> "the la réponse": when the English article (or a
+    // possessive) stays outside the swap, use the bare noun.
+    const bare = exactFr(hit.canon).replace(DEFINITE_RE, '');
+    if (bare !== exactFr(hit.canon) && !/^the\s/i.test(o) && idx.exact.has(bare)) hit = idx.exact.get(bare);
     out.push({
       o,
       f: matchCase(hit.canon, o),

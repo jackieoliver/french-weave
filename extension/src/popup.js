@@ -25,6 +25,8 @@ function ago(t) {
 
 async function refresh() {
   status = await send({ type: 'status' });
+  $('update').hidden = !status.update;
+  $('updateVersion').textContent = status.update || '';
   const c = status.config;
   const s = c.settings; // newSitesEnabled resolved: popup choice, else setup's answer, else on
   const all = await chrome.permissions.contains({ origins: ALL_SITES });
@@ -35,7 +37,7 @@ async function refresh() {
   $('siteName').textContent = host || 'This page (not a website)';
   $('grantSites').hidden = all || !s.newSitesEnabled;
   $('accessNote').textContent = s.newSitesEnabled
-    ? (all ? 'On for every site except the ones you turn off. Webmail, AI chat and local addresses start off.' : 'Chrome needs your OK before it can run on other sites.')
+    ? (all ? 'On for every site except the ones you turn off. Webmail, messaging, AI chat, banking, health, government and local addresses start off.' : 'Chrome needs your OK before it can run on other sites.')
     : 'Off on sites until you turn them on here.';
   const { stage, chosen } = resolveLevel(s, c.stage);
   $('levelInfo').textContent = `L${chosen}${stage && chosen !== stage ? ` (Claude Code stage ${stage})` : ''}${chosen > MAX_BUILT_LEVEL ? ` · L${MAX_BUILT_LEVEL} rules for now` : ''}`;
@@ -126,6 +128,10 @@ $('clearCache').addEventListener('click', () => run(async () => {
 
 void run(async () => {
   [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  try { const u = new URL(tab?.url); if (/^https?:$/.test(u.protocol)) host = u.hostname; } catch { /* internal tab */ }
+  try { const u = new URL(tab?.url); if (/^https?:$/.test(u.protocol)) host = u.hostname.replace(/\.$/, ""); } catch { /* internal tab */ }
   await refresh();
+});
+
+$('openExtensions').addEventListener('click', () => {
+  void chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
 });

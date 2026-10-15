@@ -13,6 +13,18 @@ function tweet(inner) {
 }
 const S = (swap) => ({ g: swap.g || 'and', h: swap.h || 'ay', ctx: '', ...swap });
 
+describe('contractions and compounds', () => {
+  test('never swaps part of a contraction or hyphenated word', () => {
+    const el = tweet("<span>Here's the plan: the now-frozen dough waits here and well-known cooks agree.</span>");
+    const f = flatten(el);
+    expect(locate(f, 'Here', '')).toBeNull();
+    expect(locate(f, 'now', '')).toBeNull();
+    expect(locate(f, 'well', '')).toBeNull();
+    expect(locate(f, 'here', '')).not.toBeNull();
+    expect(locate(f, 'and', '')).not.toBeNull();
+  });
+});
+
 describe('flatten', () => {
   test('collapses whitespace and keeps a map back to raw offsets', () => {
     const el = tweet('<span>one\n\ntwo  three</span>');
@@ -186,5 +198,20 @@ describe('revert and toggle', () => {
     expect(toggle(span)).toBe(false);
     expect(span.textContent).toBe('et');
     expect(el.querySelectorAll('.fw-word').length).toBe(1);
+  });
+});
+
+describe('what leaves the page', () => {
+  test('link and inline code text go to the model as context but are never touched, and the privacy note says so', async () => {
+    const el = tweet('<span>Run </span><code>git commit and push</code><span> and then read </span><a href="/x">the docs and notes</a><span> now.</span>');
+    const f = flatten(el);
+    expect(f.text).toBe('Run git commit and push and then read the docs and notes now.');
+    expect(f.segs.filter((s) => s.node && s.ok).map((s) => s.node.data)).toEqual(['Run ', ' and then read ', ' now.']);
+    expect(applySwaps(el, [S({ o: 'and', f: 'et', ctx: 'push and then' })])).toBe(1);
+    expect(el.querySelector('code').textContent).toBe('git commit and push');
+    expect(el.querySelector('a').textContent).toBe('the docs and notes');
+    const note = await Bun.file(new URL('../src/popup.html', import.meta.url)).text();
+    expect(note).not.toMatch(/links, code[^.]*skipped/i);
+    expect(note).toContain('Links and inline code go with their sentence but are never changed');
   });
 });

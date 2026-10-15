@@ -33,7 +33,7 @@ def block(level, levels, lexicon):
     stage = fwlib.stage_for(state)
     nxt = f'level-{level + 1:02d}.md' if level < levels else None
     tail = f'Level {level} of {levels}' + (f' (next: {nxt})' if nxt else '')
-    claude = export.claude_ai(state, tail=tail, known_max=KNOWN_NAMED)
+    claude = export.claude_ai(state, tail=tail, known_max=KNOWN_NAMED, dates=False)  # a fixed date reads as a score
     about, respond = export.chatgpt(state, tail=tail)
     first, last = (level - 1) * PER_LEVEL + 1, min(level * PER_LEVEL, len(lexicon))
     known = f'words ranked 1-{first - 1}' if first > 1 else 'none yet'
@@ -54,7 +54,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
-    lexicon = fwlib.load_lexicon()
+    lexicon = fwlib.load_lexicon(fwlib.LEXICON)  # the blocks are French, whatever this machine is set up for
     levels = -(-len(lexicon) // PER_LEVEL)
     stale, worst = [], [0, 0, 0]
     for level in range(1, levels + 1):
