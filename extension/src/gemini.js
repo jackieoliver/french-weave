@@ -36,7 +36,7 @@ export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, 
     try { detail = await res.text(); } catch { /* status alone is enough */ }
     const delay = Number(/"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(detail)?.[1] || res.headers?.get?.('retry-after'));
     if (delay > 0) error.retryAfterMs = Math.min(delay, 86400) * 1000;
-    Object.assign(error, quotaFailure(detail));
+    Object.assign(error, quotaFailure(detail), googleError(detail));
     if (error.daily && !error.retryAfterMs) error.retryAfterMs = DAILY_RECHECK_MS;
     throw error;
   }
@@ -59,6 +59,20 @@ export function quotaFailure(detail) {
   if (!any) return {};
   const limit = Number(day?.quotaValue);
   return { quotaId: String(any.quotaId), ...(day ? { daily: true } : {}), ...(limit > 0 ? { dailyLimit: limit } : {}) };
+}
+
+// Google's status word (RESOURCE_EXHAUSTED, PERMISSION_DENIED) and whether the body blames the key
+// (reason API_KEY_INVALID, or a 400 that says "API key not valid"). Only these short fixed words are kept, never the
+// body's text, so nothing stored or shown can carry the key.
+export function googleError(detail) {
+  let body = null;
+  try { body = JSON.parse(detail); } catch { return {}; }
+  const out = {};
+  const word = String(body?.error?.status || '');
+  if (/^[A-Z_]{1,40}$/.test(word)) out.googleStatus = word;
+  const details = Array.isArray(body?.error?.details) ? body.error.details : [];
+  if (details.some((d) => /^API_KEY_/.test(String(d?.reason || ''))) || /API key/i.test(String(body?.error?.message || ''))) out.keyRejected = true;
+  return out;
 }
 
 export function parseSwapsResponse(text) {
