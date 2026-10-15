@@ -336,6 +336,10 @@ function pluralEntry(idx, hit, o, synonyms, articles, fold) {
   return null;
 }
 
+// ALL-CAPS English is emphasis or an acronym ("ALL" meaning all of you, US, IT): a lower-case swap would drop the
+// emphasis and often the sense, so it stays English. OK is written in capitals anyway.
+export const allCaps = (o) => /\p{Lu}.*\p{Lu}/su.test(o) && !/\p{Ll}/u.test(o) && !/^O\.?K\.?$/.test(o);
+
 // Fail closed: keep only swaps whose French is on the list (the plugin's word state, else the level's bundled list)
 // and whose English matches that word's gloss.
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
@@ -353,7 +357,7 @@ export function validateSwaps(level, swaps, sharedWords, language = 'French') {
   for (const s of swaps) {
     if (!s || typeof s.o !== 'string' || typeof s.f !== 'string') continue;
     const o = s.o.trim();
-    if (!o || !s.f.trim()) continue;
+    if (!o || !s.f.trim() || allCaps(o)) continue;
     let hit = idx.exact.get(exactFr(s.f)) || idx.folded.get(fold(s.f));
     const match = hit ? glossMatch(o, hit.en, synonyms) : '';
     if (!match) continue;

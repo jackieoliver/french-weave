@@ -127,7 +127,13 @@ describe('validateSwaps', () => {
   });
   test('matches capitalization of the original', () => {
     expect(validateSwaps(1, [{ o: 'And', f: 'et' }])[0].f).toBe('Et');
-    expect(validateSwaps(1, [{ o: 'AND', f: 'et' }])[0].f).toBe('et');
+    // ALL-CAPS English (emphasis, acronyms) stays English instead of turning lower case; OK is always in capitals.
+    expect(validateSwaps(1, [{ o: 'AND', f: 'et' }])).toEqual([]);
+    expect(validateSwaps(2, [{ o: 'ALL', f: 'tout' }])).toEqual([]);
+    expect(validateSwaps(2, [{ o: 'I THINK', f: 'je pense que' }])).toEqual([]);
+    expect(validateSwaps(1, [{ o: 'VERY', f: 'très' }, { o: 'Very', f: 'très' }]).map((x) => x.f)).toEqual(['Très']);
+    const ok = [{ fr: "d'accord", en: 'okay / agreed', hint: 'da-kor', status: 'active' }];
+    expect(validateSwaps(2, [{ o: 'OK', f: "d'accord" }], ok)[0].f).toBe("d'accord");
     expect(validateSwaps(1, [{ o: 'Because', f: 'parce que' }])[0].f).toBe('Parce que');
     expect(matchCase("l'idée", 'The idea')).toBe("L'idée");
     // The pronoun I is always capitalized, so it never capitalizes the swap (text.js does at a sentence start).
