@@ -42,6 +42,8 @@ class AutoUpdate(unittest.TestCase):
         path.write_text(json.dumps({'french-weave': {'source': GITHUB, **entry}}))
 
     def fw(self, *argv):
+        if argv[0] == 'setup':
+            argv += ('--keep-narration',)  # narration's own settings edit has its tests in test_narration.py
         with mock.patch.object(Path, 'home', return_value=self.home), \
                 mock.patch('sys.stdout', new=io.StringIO()) as out:
             fw.main(list(argv))
