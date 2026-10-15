@@ -34,6 +34,16 @@ describe('siteOn edge hosts', () => {
   test('a trailing dot is the same site', () => {
     expect(siteOn(settings, 'example.com.')).toBe(true);
   });
+  // 0.2.1 regression: a popup choice saved for "example.com" was ignored for "Example.COM" and "example.com.".
+  test('uppercase and trailing-dot hostnames find the popup choice and the off-by-default list', () => {
+    expect(siteOn(settings, 'Example.COM')).toBe(true);
+    expect(siteOn(settings, 'EXAMPLE.com.')).toBe(true);
+    const every = cleanSettings({ newSitesEnabled: true, siteOverrides: { 'news.example.org': false } });
+    expect(siteOn(every, 'News.Example.ORG')).toBe(false);
+    expect(siteOn(every, 'MAIL.GOOGLE.COM')).toBe(false);
+    expect(siteOn(every, 'Mail.Google.Com.')).toBe(false);
+    expect(siteOn(every, 'WWW.Example.COM')).toBe(true);
+  });
   test('inherited property names are not overrides', () => {
     expect(siteOn(settings, 'constructor')).toBe(false);
     expect(siteOn(settings, '__proto__')).toBe(false);

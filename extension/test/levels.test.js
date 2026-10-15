@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'bun:test';
+import { readFileSync } from 'fs';
 import {
   resolveLevel, L1_WORDS, L2_WORDS, validateSwaps, glossMatches, wordCount, isZeroFrench, normalizeFr, matchCase,
 } from '../src/levels.js';
@@ -132,5 +133,36 @@ describe('glossMatches', () => {
     expect(glossMatches('to start', 'so')).toBe(false);
     expect(glossMatches('soon', 'so')).toBe(false);
     expect(glossMatches('', 'so')).toBe(false);
+  });
+});
+
+describe('gloss check across every word list', () => {
+  // CSV rows of the plugin lexicon and the starter lists (word or fr, en, ...); quoted fields allowed.
+  const csv = (name) => readFileSync(new URL(`../../data/${name}`, import.meta.url), 'utf8').replace(/^﻿/, '').trim()
+    .split('\n').slice(1).map((line) => line.match(/("[^"]*"|[^,]*)(?:,|$)/g).map((c) => c.replace(/,$/, '').replace(/^"|"$/g, '')))
+    .map(([fr, en]) => ({ fr, en, hint: '', status: 'active' }));
+  const lists = { bundled: L2_WORDS, lexicon: csv('lexicon.csv'), spanish: csv('lexicons/spanish.csv'),
+    japanese: csv('lexicons/japanese.csv'), indonesian: csv('lexicons/indonesian.csv') };
+  const alternatives = (en) => en.split(/\s*[/;,]\s*/).filter((a) => a.trim());
+  // 0.2.1 regression (gloss check with synonyms): a too-strict check dropped right swaps. Each word's own gloss passes.
+  test('every gloss alternative of every word is accepted for that word', () => {
+    for (const [name, words] of Object.entries(lists)) {
+      expect(words.length).toBeGreaterThan(20);
+      const dropped = words.flatMap((w) => alternatives(w.en).filter((alt) => !glossMatches(alt, w.en)).map((alt) => `${name}: ${w.fr} <- ${alt}`));
+      expect(dropped).toEqual([]);
+    }
+  });
+  // Issue #1 generalized: a model pairing a word with another word's English (wrong sense) is dropped.
+  test("another word's gloss is rejected unless the two glosses share an alternative", () => {
+    for (const [name, words] of Object.entries(lists)) {
+      const wrong = [];
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i], other = words[(i + 7) % words.length];
+        const shared = alternatives(other.en).some((alt) => glossMatches(alt, w.en) && glossMatches(alternatives(w.en)[0], other.en));
+        const english = alternatives(other.en)[0];
+        if (!shared && glossMatches(english, w.en)) wrong.push(`${name}: ${w.fr} (${w.en}) <- ${english}`);
+      }
+      expect(wrong).toEqual([]);
+    }
   });
 });
