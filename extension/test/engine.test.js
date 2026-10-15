@@ -82,6 +82,23 @@ describe('engine', () => {
     await requestSwaps(args);
     expect(models.slice(3)).toEqual(['gemini-3.8-flash', 'gemini-3.5-flash-lite']);
   });
+  test('a daily-quota 429 (retry in hours) keeps that model off for the whole delay, not just 10 minutes', async () => {
+    let clock = 0;
+    const cooldown = new Map();
+    const models = [];
+    const fetchImpl = async (url) => {
+      const m = url.split('/').pop().split(':')[0];
+      models.push(m);
+      if (m === 'gemini-3.8-flash') return { ok: false, status: 429, text: async () => '{"error":{"details":[{"retryDelay":"24281s"}]}}' };
+      return geminiReply([{ id: 'a', swaps: [] }]);
+    };
+    const args = { apiKey: 'K', model: 'gemini-3.8-flash', level: 1, batch: [{ id: 'a', text: 'x' }], fetchImpl, cooldown, now: () => clock };
+    await requestSwaps(args);
+    expect(cooldown.get('gemini-3.8-flash')).toBe(24281000);
+    clock = 3600000; // an hour later the quota is still spent: no wasted request
+    await requestSwaps(args);
+    expect(models).toEqual(['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.5-flash-lite']);
+  });
   test('caps density per sentence, one use per word, learning words kept before known filler', async () => {
     const words = [
       { fr: 'grand', en: 'big', hint: 'grahn', status: 'active' },

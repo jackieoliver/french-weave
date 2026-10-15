@@ -30,11 +30,12 @@ export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, 
   if (!res.ok) {
     const error = new Error(`HTTP ${res.status}`);
     error.status = res.status;
-    // 429 bodies carry RetryInfo ("retryDelay": "36s"); fall back to Retry-After.
+    // 429 bodies carry RetryInfo ("retryDelay": "36s"); fall back to Retry-After. A free-tier daily quota says
+    // hours (gemini-3.8-flash allows 20 requests a day), so honor up to a day instead of retrying every 10 minutes.
     let detail = '';
     try { detail = await res.text(); } catch { /* status alone is enough */ }
     const delay = Number(/"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(detail)?.[1] || res.headers?.get?.('retry-after'));
-    if (delay > 0) error.retryAfterMs = Math.min(delay, 600) * 1000;
+    if (delay > 0) error.retryAfterMs = Math.min(delay, 86400) * 1000;
     throw error;
   }
   const data = await res.json();

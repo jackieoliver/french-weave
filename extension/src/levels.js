@@ -196,6 +196,7 @@ export function normalizeFr(s) {
 }
 
 const ARTICLE_RE = /^(?:(?:les|le|la|une|un|des)\s+|l')/i;
+const DEFINITE_RE = /^(?:(?:les|le|la)\s+|l')/i;
 export const exactFr = (s) => String(s).normalize('NFC').toLowerCase().replace(/[’‘`]/g, "'").replace(/\s+/g, ' ').trim();
 
 const indexCache = new Map();
@@ -287,8 +288,12 @@ export function validateSwaps(level, swaps, sharedWords) {
     if (!s || typeof s.o !== 'string' || typeof s.f !== 'string') continue;
     const o = s.o.trim();
     if (!o || !s.f.trim()) continue;
-    const hit = idx.exact.get(exactFr(s.f)) || idx.folded.get(normalizeFr(s.f));
+    let hit = idx.exact.get(exactFr(s.f)) || idx.folded.get(normalizeFr(s.f));
     if (!hit || !glossMatches(o, hit.en)) continue;
+    // "my problem" -> "my le problème", "the answer" -> "the la réponse": when the English article (or a
+    // possessive) stays outside the swap, use the bare noun.
+    const bare = exactFr(hit.canon).replace(DEFINITE_RE, '');
+    if (bare !== exactFr(hit.canon) && !/^the\s/i.test(o) && idx.exact.has(bare)) hit = idx.exact.get(bare);
     out.push({
       o,
       f: matchCase(hit.canon, o),

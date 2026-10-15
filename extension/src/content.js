@@ -27,8 +27,29 @@ const CHURN_WINDOW_MS = 60000;
 let churn = new WeakMap(); // element -> { text, asks: [ms], paints: [ms], live }
 const TIP_DELAY_MS = 700; // a beat to recall the word before the meaning appears
 let tipTimer = null;
-const send = (msg) => chrome.runtime.sendMessage(msg);
-const on = () => config?.hasKey && !config.paused && siteEnabled(config.settings, location.href) && hasSiteAccess(location.href, config.origins);
+// After the extension reloads itself for an update, this copy is cut off from the worker. It then goes quiet:
+// no more requests or errors, woven words stay as they are, and a page reload brings in the new copy.
+let orphaned = false;
+const alive = () => { try { return !orphaned && !!chrome.runtime?.id; } catch { return false; } };
+function orphan() {
+  if (orphaned) return;
+  orphaned = true;
+  generation++;
+  observer?.disconnect(); observer = null;
+  near?.disconnect(); visible?.disconnect();
+  clearTimeout(timer); timer = null; clearInterval(navTimer); hideTip();
+  pending.clear(); inflight.clear();
+}
+const send = (msg) => {
+  if (!alive()) { orphan(); return Promise.reject(new Error('French Weave was reloaded')); }
+  try {
+    return chrome.runtime.sendMessage(msg).catch((e) => { if (!alive()) orphan(); throw e; });
+  } catch (e) {
+    orphan();
+    return Promise.reject(e);
+  }
+};
+const on = () => !orphaned && config?.hasKey && !config.paused && siteEnabled(config.settings, location.href) && hasSiteAccess(location.href, config.origins);
 const targets = () => selector(location.href);
 // Only real user input on spans this extension made; pages can't forge flips, peeks or seen events.
 const swapFor = (e) => {
@@ -136,7 +157,7 @@ async function flush() {
     memo.set(i.key, swaps);
     if (p) for (const el of p.els) paint(el, i.key);
   }
-  if (result?.stale) { update(await send({ type: 'config' })); return; }
+  if (result?.stale) { try { update(await send({ type: 'config' })); } catch { /* reloaded or gone */ } return; }
   if ([...pending.keys()].some((k) => !inflight.has(k))) timer = setTimeout(flush, 50);
 }
 function track(root) {
@@ -220,7 +241,7 @@ document.addEventListener('visibilitychange', seenVisible);
 window.addEventListener('online', () => { void send({ type: 'config' }).then((c) => update(c, true)).catch(() => {}); });
 // SPA navigation can reuse DOM nodes without changing their text.
 let page = location.href;
-setInterval(() => {
+const navTimer = setInterval(() => {
   if (page !== location.href) { page = location.href; if (config) update(config, true); }
 }, 1000);
 void send({ type: 'config' }).then(update).catch(() => {});

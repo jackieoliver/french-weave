@@ -467,7 +467,11 @@ def pause(value):
     def run(_args):
         with fwlib.editing() as state:
             state['paused'] = value
-        print('French Weave paused: no French in chat or on websites until you resume (pasted claude.ai or ChatGPT blocks stay as they are).' if value else 'French Weave resumed.')
+        print('French Weave paused: no French in chat or on websites until you resume (pasted claude.ai or ChatGPT blocks '
+              'stay as they are). Chat stops now; the Chrome extension stops within about 2 minutes, before it sends any '
+              'more page text (the On switch in its toolbar popup turns it off at once).' if value else
+              'French Weave resumed. The Chrome extension picks this up on the next page you open after about 2 minutes, or '
+              'right away from Sync words in its popup.')
     return run
 
 

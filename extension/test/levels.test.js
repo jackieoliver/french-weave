@@ -36,6 +36,14 @@ describe('word lists', () => {
 });
 
 describe('validateSwaps', () => {
+  test('an English article left outside the swap gets the bare noun, never a double article', () => {
+    const f = (o, fr) => validateSwaps(1, [{ o, f: fr, ctx: '' }])[0]?.f;
+    expect(f('problem', 'le problème')).toBe('problème'); // "my problem", "a solved problem"
+    expect(f('answer', 'la réponse')).toBe('réponse'); // "The answer is"
+    expect(f('idea', "l'idée")).toBe('idée');
+    expect(f('the problem', 'le problème')).toBe('le problème');
+    expect(f('The answer', 'la réponse')).toBe('La réponse');
+  });
   test('keeps list words, canonicalizes accents, fills gloss and hint from the list', () => {
     const out = validateSwaps(1, [{ o: 'very', f: 'tres', g: 'x', h: 'y', ctx: 'is very good' }]);
     expect(out).toEqual([{ o: 'very', f: 'très', g: 'very', h: 'treh', ctx: 'is very good' }]);

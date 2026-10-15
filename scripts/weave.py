@@ -331,8 +331,8 @@ def main(argv):
         except Exception:
             notice = None
         if updated:
-            update = (f'French Weave updated to {updated}. If you use the Chrome extension, click the reload arrow on '
-                      'French Weave in chrome://extensions (its toolbar icon shows NEW until you do).')
+            update = (f'French Weave updated to {updated}. The Chrome extension reloads itself within about 30 minutes, '
+                      'or right away when you open its toolbar popup.')
             if fwlib.marketplace_source() and fwlib.auto_update() is None:
                 update += (' Later updates can install themselves: type /plugin, open Marketplaces, pick french-weave '
                            'and turn on auto-update.')

@@ -180,7 +180,7 @@ class HookResilience(Home):
         version = json.loads((ROOT / '.claude-plugin' / 'plugin.json').read_text())['version']
         first = json.loads(self.hook({'session_id': 's'}))
         self.assertIn(f'French Weave updated to {version}', first.get('systemMessage', ''))
-        self.assertIn('chrome://extensions', first['systemMessage'])
+        self.assertIn('reloads itself', first['systemMessage'])  # the extension reloads from disk; no chrome://extensions step
         self.assertEqual((app / 'VERSION').read_text().strip(), version)
         manifest = json.loads((self.home / 'fw' / 'extension' / 'manifest.json').read_text())
         self.assertEqual(manifest['version'], json.loads((ROOT / 'extension' / 'manifest.json').read_text())['version'])

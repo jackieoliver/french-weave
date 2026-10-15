@@ -178,9 +178,9 @@ claude plugin update french-weave@french-weave
 
 Then start a new Claude Code session and send any message: the hook sees the new version and refreshes
 `~/.french-weave/extension` and the copy the Codex hook runs from, keeping all progress (rerunning setup does the
-same). Tell the person to click the reload arrow on French Weave in `chrome://extensions`; until they do, its
-toolbar icon shows NEW. Without Claude Code: `git pull` in a clone, `python3 <clone>/scripts/fw.py setup`, then the
-same reload.
+same). The Chrome extension reloads itself from that folder within about 30 minutes, or right away when the
+person opens its toolbar popup; if its icon still shows NEW after that, they click the reload arrow on French Weave in
+`chrome://extensions`. Without Claude Code: `git pull` in a clone, then `python3 <clone>/scripts/fw.py setup`.
 
 ## Uninstall
 
