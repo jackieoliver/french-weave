@@ -1,7 +1,7 @@
 // Gemini generateContent call. No chrome APIs; fetch is injectable for tests.
 export const MODELS = {
-  'gemini-3.8-flash': 'Gemini 3.8 Flash',
   'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
+  'gemini-3.8-flash': 'Gemini 3.8 Flash',
 };
 export const FALLBACK_MODEL = { 'gemini-3.8-flash': 'gemini-3.5-flash-lite' };
 export const THINKING_LEVEL = 'low';

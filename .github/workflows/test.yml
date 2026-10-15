@@ -16,6 +16,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         python: ['3.9', '3.12']
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,6 +31,7 @@ jobs:
 
   extension:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: extension
@@ -50,6 +52,7 @@ jobs:
 
   version:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:

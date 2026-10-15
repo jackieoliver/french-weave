@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'bun:test';
 import { buildRequest, callGemini, parseSwapsResponse, API_BASE } from '../src/gemini.js';
-import { requestSwaps } from '../src/engine.js';
+import { requestSwaps, timeoutFor } from '../src/engine.js';
+import { DEFAULT_SETTINGS } from '../src/settings.js';
 import { createCache, memoryStorage } from '../src/cache.js';
 import { hashKey } from '../src/hash.js';
 
@@ -35,6 +36,14 @@ describe('gemini', () => {
 });
 
 describe('engine', () => {
+  test('QA 2026-10-15: Flash-Lite is the default, and a model with a fallback waits 8 s, not 20', () => {
+    expect(DEFAULT_SETTINGS.model).toBe('gemini-3.5-flash-lite');
+    const both = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+    expect(timeoutFor('gemini-3.8-flash', both, undefined)).toBe(8000);
+    expect(timeoutFor('gemini-3.5-flash-lite', both, undefined)).toBeUndefined();
+    expect(timeoutFor('gemini-3.5-flash-lite', ['gemini-3.5-flash-lite'], 20000)).toBe(20000);
+    expect(timeoutFor('gemini-3.8-flash', both, 5000)).toBe(5000);
+  });
   test('validates swaps per level and falls back to Lite once when 3.8 fails', async () => {
     const models = [];
     const fetchImpl = async (url) => {

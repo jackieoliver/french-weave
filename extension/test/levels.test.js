@@ -137,6 +137,12 @@ describe('glossMatches', () => {
     expect(glossMatches('so,', 'so')).toBe(true);
     expect(glossMatches('it’s', "it's")).toBe(true);
   });
+  test('QA 2026-10-15: right synonyms the gloss check used to drop', () => {
+    for (const [o, en] of [['too', 'also'], ['as well', 'also'], ['hard', 'difficult'], ['in fact', 'actually'], ['However', 'but'], ['possibly', 'maybe'], ['too', 'too much']]) {
+      expect(glossMatches(o, en)).toBe(true);
+    }
+    expect(glossMatches('sure', 'of course')).toBe(false); // "I'm not sure" is not bien sûr
+  });
   test('rejects English that is not a gloss', () => {
     expect(glossMatches('to start', 'so')).toBe(false);
     expect(glossMatches('soon', 'so')).toBe(false);
