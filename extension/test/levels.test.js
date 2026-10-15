@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import {
-  resolveLevel, L1_WORDS, L2_WORDS, validateSwaps, wordCount, isZeroFrench, normalizeFr, matchCase,
+  resolveLevel, L1_WORDS, L2_WORDS, validateSwaps, glossMatches, wordCount, isZeroFrench, normalizeFr, matchCase,
 } from '../src/levels.js';
 
 describe('level', () => {
@@ -45,6 +45,11 @@ describe('validateSwaps', () => {
     expect(validateSwaps(1, [{ o: 'and' }, null, { f: 'et' }, { o: '  ', f: 'et' }])).toEqual([]);
     expect(validateSwaps(1, 'nope')).toEqual([]);
   });
+  test('drops a swap whose English is not the word\'s gloss (issue #1: "to start" -> donc)', () => {
+    expect(validateSwaps(1, [{ o: 'to start', f: 'donc' }])).toEqual([]);
+    expect(validateSwaps(1, [{ o: 'So', f: 'donc' }])[0].f).toBe('Donc');
+    expect(validateSwaps(1, [{ o: 'really', f: 'très' }])).toEqual([]);
+  });
   test('accepts the bare noun and keeps accents', () => {
     const [s] = validateSwaps(1, [{ o: 'problem', f: 'probleme' }]);
     expect(s.f).toBe('problème');
@@ -85,5 +90,29 @@ describe('guards', () => {
     expect(isZeroFrench('call 911 in an emergency')).toBe(true);
     expect(isZeroFrench('shipped the new onboarding flow today')).toBe(false);
     expect(isZeroFrench('the taxi was late again')).toBe(false);
+  });
+});
+
+describe('glossMatches', () => {
+  test('matches any slash alternative, with or without a leading article', () => {
+    expect(glossMatches('still', 'again / still')).toBe(true);
+    expect(glossMatches('home', 'the house / home')).toBe(true);
+    expect(glossMatches('the house', 'the house / home')).toBe(true);
+    expect(glossMatches('house', 'the house / home')).toBe(true);
+    expect(glossMatches('free', 'free (no cost)')).toBe(true);
+  });
+  test('accepts plain inflections and ignores case and punctuation', () => {
+    expect(glossMatches('Problems', 'the problem')).toBe(true);
+    expect(glossMatches('starting', 'to start')).toBe(true);
+    expect(glossMatches('started', 'to start')).toBe(true);
+    expect(glossMatches('making', 'to make')).toBe(true);
+    expect(glossMatches('cities', 'the city')).toBe(true);
+    expect(glossMatches('so,', 'so')).toBe(true);
+    expect(glossMatches('it’s', "it's")).toBe(true);
+  });
+  test('rejects English that is not a gloss', () => {
+    expect(glossMatches('to start', 'so')).toBe(false);
+    expect(glossMatches('soon', 'so')).toBe(false);
+    expect(glossMatches('', 'so')).toBe(false);
   });
 });

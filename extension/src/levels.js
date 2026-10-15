@@ -230,7 +230,31 @@ export function matchCase(fr, original) {
   return fr;
 }
 
-// Fail closed: keep only swaps whose French is on the list (the plugin's word state, else the level's bundled list).
+// The English a swap replaces must be one of the word's glosses, or a plain inflection of one, so a model
+// slip like "to start" -> donc is dropped instead of shown.
+const EN_LEAD_RE = /^(?:the|a|an|to)\s+/;
+const cleanEn = (s) => String(s).toLowerCase().replace(/[’‘`]/g, "'").replace(/\(.*?\)/g, ' ')
+  .replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
+
+export function glossMatches(original, en) {
+  const forms = new Set();
+  for (const alt of String(en).split(/\s*[/;,]\s*/)) {
+    const g = cleanEn(alt);
+    if (g) forms.add(g).add(g.replace(EN_LEAD_RE, ''));
+  }
+  const t = cleanEn(original);
+  if (!t) return false;
+  for (const c of new Set([t, t.replace(EN_LEAD_RE, '')])) {
+    if (forms.has(c)) return true;
+    for (const [suffix, stem] of [['ies', 'y'], ['es', ''], ['s', ''], ['ed', ''], ['ed', 'e'], ['ing', ''], ['ing', 'e']]) {
+      if (c.endsWith(suffix) && forms.has(c.slice(0, -suffix.length) + stem)) return true;
+    }
+  }
+  return false;
+}
+
+// Fail closed: keep only swaps whose French is on the list (the plugin's word state, else the level's bundled list)
+// and whose English matches that word's gloss.
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
 export function validateSwaps(level, swaps, sharedWords) {
   if (!Array.isArray(swaps)) return [];
@@ -241,7 +265,7 @@ export function validateSwaps(level, swaps, sharedWords) {
     const o = s.o.trim();
     if (!o || !s.f.trim()) continue;
     const hit = idx.exact.get(exactFr(s.f)) || idx.folded.get(normalizeFr(s.f));
-    if (!hit) continue;
+    if (!hit || !glossMatches(o, hit.en)) continue;
     out.push({
       o,
       f: matchCase(hit.canon, o),
