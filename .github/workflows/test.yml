@@ -61,9 +61,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      # Versions must agree everywhere; a pull request, or a push to main, that changes a file the plugin ships
-      # must bump .claude-plugin/plugin.json (`claude plugin update` only delivers when that version changes).
-      - name: Versions agree, and shipped changes bump the version
+      # Versions must agree everywhere and never go down. A pull request, or a push to main, that changes a file the
+      # plugin ships without bumping .claude-plugin/plugin.json gets a warning, not a failure: features land under the
+      # old version and the release PR bumps it once (`claude plugin update` only delivers when that version changes).
+      - name: Versions agree, and unreleased shipped changes are flagged
         env:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}

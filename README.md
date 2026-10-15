@@ -241,7 +241,7 @@ tests/            python tests, live model checks, extension end-to-end check
 
 ```sh
 python3 -m unittest discover -s tests            # hook, rules, exports, native host, setup, Codex merge
-python3 tests/check_version_bump.py --base origin/main   # shipped files changed? then the version must change
+python3 tests/check_version_bump.py --base origin/main   # shipped files changed? warns until a release bumps the version (--release: fail)
 python3 scripts/make_blocks.py                   # regenerate blocks/ after changing the rules or lexicon
 cd extension && bun install && bun test           # extension (happy-dom)
 python3 tests/model_eval.py --out /tmp/fw-eval    # live check via claude -p, isolated from your own config
