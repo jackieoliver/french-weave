@@ -147,7 +147,7 @@ Tell the person, in plain English (leave out the items for things they didn't pi
 1. Chrome extension: the HUMAN Chrome step with the exact folder from `check` (`~/.french-weave/extension` expanded
    to a full path): `chrome://extensions` -> Developer mode on -> Load unpacked -> that folder. Then the French
    Weave toolbar icon (puzzle piece menu -> pin it): every-site mode, click **Allow all websites** (Chrome asks
-   once; until then it only runs on X); only-sites-I-turn-on mode, tick the box next to the site's name on each site
+   once; until then it only runs on x.com); only-sites-I-turn-on mode, tick the box next to the site's name on each site
    they want.
 2. Chrome extension, no key file given: click the French Weave toolbar icon (puzzle piece menu -> pin it) and paste
    the Gemini key.

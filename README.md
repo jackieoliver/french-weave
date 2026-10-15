@@ -43,7 +43,7 @@ steps it can't do:
 1. Extension: get a Gemini API key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). A free key
    lets Google use the page text it's sent to improve its products; see [What leaves your machine](#what-leaves-your-machine).
 2. Extension: open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, pick the folder it names.
-3. Extension: click the French Weave toolbar icon, then **Allow all websites** (until then it only runs on X), and
+3. Extension: click the French Weave toolbar icon, then **Allow all websites** (until then it only runs on x.com), and
    paste the key if you didn't give setup a key file. If you chose only sites you turn on, tick the box next to
    the site's name in the same popup on each site you want.
 4. Codex only: at the next `codex` start, choose **Trust all and continue** for the new hook.

@@ -245,7 +245,7 @@ def setup(args):
     print(f'  2. Click "Load unpacked" and pick: {home / "extension"}')
     print('  3. Pin the French Weave toolbar icon (puzzle piece menu) and click it:')
     if sites == 'all':
-        print('     click "Allow all websites" (Chrome asks once; until then it runs only on X).')
+        print('     click "Allow all websites" (Chrome asks once; until then it runs only on x.com).')
     else:
         print("     on each site you want, tick the box next to the site's name (Chrome asks for that site).")
     if not key and not (home / 'gemini_key').exists():
