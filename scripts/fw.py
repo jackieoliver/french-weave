@@ -178,6 +178,28 @@ def enable_auto_update(dry_run):
     return 'on (Claude Code checks after you start a session; turn off in /plugin, Marketplaces, french-weave)'
 
 
+def turn_off_narration(dry_run):
+    """Turns off Claude Code's mid-turn narration (its server rewrites some progress notes into short updates of its
+    own) with the CLAUDE_CODE_THINKING_DISPLAY_UPDATES env setting, unless the person already set it. Those rewrites
+    ignore the weave: in one person's chats they dropped every French word in 399 of 408 notes and wrote 6 entirely in
+    French. Returns the line for the setup summary, or None when Claude Code isn't set up on this computer."""
+    if not fwlib.claude_home().is_dir():
+        return None
+    path, settings = claude_settings()
+    if settings is None:
+        return f'left alone ({path} is not valid JSON)'
+    env = settings.get('env', {})
+    if not isinstance(env, dict):
+        return f'left alone ("env" in {path} is not an object)'
+    if fwlib.NARRATION_ENV in env:
+        return 'off' if fwlib.narration_off() else 'on (your choice)'
+    if not dry_run:
+        settings['env'] = {**env, fwlib.NARRATION_ENV: '0'}
+        write_claude_settings(path, settings)
+    return (f'off (its rewrites of mid-turn notes drop the French; to undo, delete {fwlib.NARRATION_ENV} from "env" '
+            f'in {path})')
+
+
 def setup_codex(dry_run):
     codex = fwlib.codex_home()
     hooks_path, config_path = codex / 'hooks.json', codex / 'config.toml'
@@ -290,6 +312,9 @@ def setup(args):
         updates = None if args.no_auto_update else enable_auto_update(True)
         if updates:
             print(f'updates: {updates}')
+        narration = None if args.keep_narration else turn_off_narration(True)
+        if narration:
+            print(f'narration: {narration}')
         return
     home.mkdir(parents=True, exist_ok=True)
     os.chmod(home, 0o700)
@@ -321,6 +346,7 @@ def setup(args):
     if args.codex:
         setup_codex(False)
     updates = None if args.no_auto_update else enable_auto_update(False)
+    narration = None if args.keep_narration else turn_off_narration(False)
     print('French Weave is set up.')
     print(f'  word state:  {home / "state.json"} ({named(state)}Stage {fwlib.stage_for(state)}, '
           f'{sum(w["status"] == "known" for w in state["words"])} known, '
@@ -331,6 +357,8 @@ def setup(args):
     print(f'  Gemini key:  {"stored for the extension" if key or (home / "gemini_key").exists() else "not stored; paste it in the extension popup"}')
     if updates:
         print(f'  updates:     {updates}')
+    if narration:
+        print(f'  narration:   {narration}')
     print('Human steps left (Chrome blocks scripts from doing these):')
     print('  1. Open chrome://extensions and switch on Developer mode (top right).')
     print(f'  2. Click "Load unpacked" and pick: {home / "extension"}')
@@ -550,6 +578,7 @@ def main(argv=None):
     p.add_argument('--language', metavar='NAME')
     p.add_argument('--lexicon', metavar='FILE')
     p.add_argument('--no-auto-update', action='store_true', help="leave Claude Code's plugin auto-update setting alone")
+    p.add_argument('--keep-narration', action='store_true', help="leave Claude Code's mid-turn narration setting alone")
     p.add_argument('--dry-run', action='store_true')
     p.set_defaults(run=setup)
     p = sub.add_parser('uninstall')
