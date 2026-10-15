@@ -1,6 +1,7 @@
 import { resolveLevel, MAX_BUILT_LEVEL } from './levels.js';
 import { MODELS } from './gemini.js';
 import { siteEnabled, siteOn, hasSiteAccess } from './settings.js';
+import { modelErrorText } from './modelerror.js';
 
 const $ = (id) => document.getElementById(id);
 const ALL_SITES = ['http://*/*', 'https://*/*'];
@@ -53,7 +54,9 @@ async function refresh() {
     : c.paused ? 'Paused from Claude Code'
     : host && !siteEnabled(s, tab.url) ? 'Off on this site'
     : host && !hasSiteAccess(tab.url, c.origins) ? 'This site needs your OK'
-    : status.modelStatus?.error || 'On';
+    : 'On';
+  // Gemini failures get their own line, shown on every site (also ones that are off), apart from the site status.
+  $('modelError').textContent = modelErrorText(status.modelStatus);
   const list = $('siteList');
   list.replaceChildren();
   for (const [name, enabled] of Object.entries(s.siteOverrides)) {

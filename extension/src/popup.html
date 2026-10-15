@@ -18,7 +18,7 @@
   #siteName { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #siteList { max-height: 95px; overflow: auto; }
   #siteList .row { margin: 4px 0; }
-  #notice:empty { display: none; }
+  #notice:empty, #modelError:empty { display: none; }
   summary { cursor: pointer; margin: 6px 0; }
   @media (prefers-color-scheme: dark) {
     body { color: #eee; background: #15181c; }
@@ -31,6 +31,7 @@
 <body>
   <div class="row"><h1>French Weave</h1><label>On <input type="checkbox" id="enabled"></label></div>
   <div id="operation" class="small" role="status"></div>
+  <div id="modelError" class="small error" role="status"></div>
   <div id="update" class="small" hidden>Update <span id="updateVersion"></span> didn't load by itself: click the
     reload arrow on French Weave in the extensions page. <button id="openExtensions">Open extensions page</button></div>
   <section>

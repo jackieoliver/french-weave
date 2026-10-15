@@ -2,6 +2,7 @@
 import { buildSystemPrompt, buildUserContent, RESPONSE_SCHEMA } from './prompt.js';
 import { buildRequest, callGemini, FALLBACK_MODEL } from './gemini.js';
 import { validateSwaps, capSwaps } from './levels.js';
+import { clockTime, errorKind } from './modelerror.js';
 
 // cooldown: Map<model, until ms>. Rate-limited or overloaded models are skipped until then, so the
 // free tier's per-minute limit does not cost every batch a failed request before the fallback.
@@ -11,8 +12,7 @@ export const PRIMARY_TIMEOUT_MS = 8000;
 export const timeoutFor = (m, models, timeoutMs) =>
   models.length > 1 && m === models[0] ? Math.min(timeoutMs || 20000, PRIMARY_TIMEOUT_MS) : timeoutMs;
 
-// "5:00 PM" or "17:00", the reader's own clock.
-export const clockTime = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+export { clockTime };
 
 // Every candidate is cooling down. When each one has spent its daily quota, say so and when it comes back, instead
 // of a "retrying shortly" that would be wrong for hours.
@@ -21,7 +21,8 @@ function waitError(candidates, cooldown, daily, now) {
   const allDaily = candidates.every((m) => daily.get(m) > now);
   const error = new Error(allDaily ? `Daily Gemini limit reached; resumes about ${clockTime(until)}` : 'Model rate limit; retrying shortly');
   error.retryAfterMs = Math.max(1000, until - now);
-  if (allDaily) Object.assign(error, { daily: true, resumeAt: until });
+  // A wait without a request has no HTTP code of its own; the worker keeps the one from the request that started it.
+  Object.assign(error, allDaily ? { daily: true, resumeAt: until, status: 429, kind: 'daily' } : { kind: 'wait' });
   return error;
 }
 
@@ -34,6 +35,7 @@ export async function requestSwaps({ apiKey, model, level, batch, words, languag
   const blocked = (m) => cooldown.get(m) > now() || daily.get(m) > now();
   const models = candidates.filter((m) => !blocked(m));
   const errors = [];
+  const failures = [];
   if (!models.length) throw waitError(candidates, cooldown, daily, now());
   for (const m of models) {
     try {
@@ -50,10 +52,17 @@ export async function requestSwaps({ apiKey, model, level, batch, words, languag
       if (wait) cooldown.set(m, now() + wait);
       if (wait && e?.daily) daily.set(m, now() + wait);
       errors.push(`${m}: ${timeout ? 'timeout' : e?.message || e}`);
+      failures.push({ status: e?.status, googleStatus: e?.googleStatus, keyRejected: e?.keyRejected, daily: e?.daily, timeout,
+        network: e?.name === 'TypeError' && !e?.status });
     }
   }
-  if (candidates.every((m) => daily.get(m) > now())) throw waitError(candidates, cooldown, daily, now());
+  if (candidates.every((m) => daily.get(m) > now())) {
+    throw Object.assign(waitError(candidates, cooldown, daily, now()), { googleStatus: failures.at(-1)?.googleStatus });
+  }
   const error = new Error(errors.join('; '));
+  // Every candidate failed. A refused key is refused for every model, so it wins; otherwise the last model's failure.
+  const failure = failures.find((f) => errorKind(f) === 'key') || failures.at(-1) || {};
+  Object.assign(error, { kind: errorKind({ ...failure, daily: false }), status: failure.status, googleStatus: failure.googleStatus });
   const until = candidates.map((m) => cooldown.get(m) || 0).filter((t) => t > now());
   if (until.length === candidates.length) error.retryAfterMs = Math.max(1000, Math.min(...until) - now());
   throw error;

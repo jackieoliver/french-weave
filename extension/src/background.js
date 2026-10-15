@@ -8,6 +8,7 @@ import { resolveLevel, exactFr, isZeroFrench, wordCount } from './levels.js';
 import { hashKey } from './hash.js';
 import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from './hostsource.js';
 import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent } from './quota.js';
+import { modelErrorText } from './modelerror.js';
 
 const store = chrome.storage.local;
 const cache = createCache(chromeStorage);
@@ -82,7 +83,9 @@ async function swaps(msg, sender) {
   try {
     const fresh = await modelCall(async () => {
       if ((await context()).revision !== ctx.revision) return null;
-      if (await callsToday(chromeStorage) >= DAILY_MODEL_CALLS) throw new Error(`Daily limit of ${DAILY_MODEL_CALLS} model calls reached; French resumes tomorrow`);
+      if (await callsToday(chromeStorage) >= DAILY_MODEL_CALLS) {
+        throw Object.assign(new Error(`Daily limit of ${DAILY_MODEL_CALLS} model calls reached; French resumes tomorrow`), { kind: 'local' });
+      }
       const { wordState, apiKey, hostKey } = await store.get(['wordState', 'apiKey', 'hostKey']);
       const fetchImpl = async (...args) => { await countCall(chromeStorage); return fetch(...args); };
       const daily = await spentToday(chromeStorage); // a spent daily quota outlives the worker, so it is kept in storage
@@ -98,12 +101,51 @@ async function swaps(msg, sender) {
       await cache.setMany(fresh.results);
       await store.set({ modelStatus: { at: Date.now(), error: '', model: fresh.model } });
       return { results: { ...results, ...fresh.results } };
-    });
+    }).finally(() => void showBadge());
   } catch (e) {
-    const error = e?.message || 'Model request failed';
-    await store.set({ modelStatus: { at: Date.now(), error } });
+    const error = await failed(e);
     return { results, error, retryAfterMs: e?.retryAfterMs };
   }
+}
+
+// Every candidate model failed (after the engine's own fallback). Stores what the popup and badge need; a wait
+// with no request of its own (every model cooling down) keeps the code and case of the request that started it.
+async function failed(e) {
+  const keys = Object.values(await store.get(['apiKey', 'hostKey'])).filter((k) => typeof k === 'string' && k.length >= 8);
+  const error = keys.reduce((text, k) => text.split(k).join('[key]'), String(e?.message || 'Model request failed')).slice(0, 500);
+  const now = Date.now();
+  await locked(async () => {
+    const { modelStatus: prev } = await store.get('modelStatus');
+    const wait = e?.kind === 'wait';
+    const kind = wait ? (prev?.error && prev.kind !== 'local' && prev.kind) || 'rate' : e?.kind || 'other';
+    const same = prev?.error && prev.kind === kind ? prev : {}; // a daily limit read from storage has no body of its own
+    const retryAt = e?.resumeAt || (e?.retryAfterMs ? now + e.retryAfterMs : 0);
+    await store.set({ modelStatus: { at: now, error, kind, retryAt,
+      httpStatus: (wait ? same.httpStatus : e?.status) || 0,
+      googleStatus: (wait ? same.googleStatus : e?.googleStatus) || (kind === 'daily' && same.googleStatus) || '' } });
+  });
+  await showBadge();
+  return error;
+}
+
+// Toolbar badge: a red "!" while the last model request failed, cleared by the next success; otherwise "NEW" while
+// an update waits for a reload. No system notifications: free keys run out often, and a pop-up each time would nag.
+export const BADGE_ERROR = { text: '!', color: '#c5221f' };
+export const BADGE_NEW = { text: 'NEW', color: '#1a73e8' };
+let updateWaiting = null; // set by checkUpdate; null until it has run in this worker
+async function showBadge() {
+  try {
+    const { modelStatus } = await store.get('modelStatus');
+    const problem = modelErrorText(modelStatus);
+    if (!problem && updateWaiting === null) { await checkUpdate(); return; }
+    const badge = problem ? BADGE_ERROR : updateWaiting ? BADGE_NEW : null;
+    await chrome.action.setBadgeText({ text: badge?.text || '' });
+    if (badge) {
+      await chrome.action.setBadgeBackgroundColor?.({ color: badge.color });
+      await chrome.action.setBadgeTextColor?.({ color: '#ffffff' });
+    }
+    await chrome.action.setTitle?.({ title: problem ? `French Weave: ${problem}` : 'French Weave' });
+  } catch { /* the badge is a hint; never let it break a reply */ }
 }
 
 const flush = () => locked(() => flushEvents({ storage: chromeStorage, send }));
@@ -188,7 +230,8 @@ async function checkUpdate() {
         return waiting; // normally not reached: the worker is gone
       } catch { /* fall back to the badge */ }
     }
-    await chrome.action.setBadgeText({ text: waiting ? 'NEW' : '' });
+    updateWaiting = waiting;
+    await showBadge();
     return waiting;
   } catch {
     return '';
