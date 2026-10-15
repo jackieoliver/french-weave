@@ -178,20 +178,6 @@ def enable_auto_update(dry_run):
     return 'on (Claude Code checks after you start a session; turn off in /plugin, Marketplaces, french-weave)'
 
 
-def disable_auto_update(dry_run):
-    """Drops the setting enable_auto_update added; left behind, it would add the marketplace back after removal."""
-    path, settings = claude_settings()
-    extra = (settings or {}).get('extraKnownMarketplaces')
-    if not isinstance(extra, dict) or fwlib.MARKETPLACE not in extra:
-        return
-    print(('would remove' if dry_run else 'removed') + f' the {fwlib.MARKETPLACE} marketplace setting from {path}')
-    if not dry_run:
-        del extra[fwlib.MARKETPLACE]
-        if not extra:
-            del settings['extraKnownMarketplaces']
-        write_claude_settings(path, settings)
-
-
 def setup_codex(dry_run):
     codex = fwlib.codex_home()
     hooks_path, config_path = codex / 'hooks.json', codex / 'config.toml'
@@ -413,7 +399,6 @@ def uninstall(args):
             if not args.dry_run:
                 data['hooks']['UserPromptSubmit'] = kept
                 fwlib.write_json(path, data)
-    disable_auto_update(args.dry_run)
     for directory in host_dirs():
         path = directory / f'{HOST_NAME}.json'
         if path.exists():

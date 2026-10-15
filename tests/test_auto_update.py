@@ -101,17 +101,14 @@ class AutoUpdate(unittest.TestCase):
         self.assertIn('not valid JSON', self.fw('setup'))
         self.assertEqual(self.settings.read_text(), '{"model": "opus",}')
 
-    def test_uninstall_removes_the_setting(self):
-        # Left behind, extraKnownMarketplaces would register the marketplace again after `marketplace remove`.
+    def test_uninstall_leaves_claude_settings_alone(self):
+        # Claude Code writes this entry on `marketplace add` and drops it on `marketplace remove` (checked live with
+        # 2.1.300); removing it from uninstall would unregister a plugin the person kept.
         self.known()
-        self.settings.parent.mkdir(parents=True, exist_ok=True)
-        self.settings.write_text(json.dumps({'extraKnownMarketplaces': {'other': {'source': GITHUB}}}))
         self.fw('setup')
+        before = self.settings.read_text()
         self.fw('uninstall')
-        self.assertEqual(json.loads(self.settings.read_text()), {'extraKnownMarketplaces': {'other': {'source': GITHUB}}})
-        self.settings.write_text(json.dumps({'extraKnownMarketplaces': {'french-weave': {'source': GITHUB}}}))
-        self.fw('uninstall')
-        self.assertEqual(json.loads(self.settings.read_text()), {})
+        self.assertEqual(self.settings.read_text(), before)
 
 
 if __name__ == '__main__':
