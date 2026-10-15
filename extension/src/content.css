@@ -12,7 +12,7 @@
   text-decoration-color: rgba(64, 140, 255, 0.9);
   text-decoration-thickness: 1.5px;
 }
-/* The gloss appears after a short dwell (content.js adds .fw-tip), giving a moment to recall first. */
+/* The gloss shows as soon as the pointer or focus reaches a word (content.js adds .fw-tip). */
 .fw-word.fw-tip::after {
   content: attr(data-tip);
   position: absolute;

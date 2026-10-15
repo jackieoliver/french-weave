@@ -1,5 +1,5 @@
 // Content script: watch readable text (tweets on X, prose elsewhere), ask the background for swaps, paint them,
-// handle the delayed gloss, click/Enter flip and seen/peek/flip events. Every async reply belongs to one config generation.
+// show the gloss on hover or focus, handle click/Enter flip and seen/peek/flip events. Every async reply belongs to one config generation.
 import { flatten, applySwaps, revert, toggle, isSwap, swapWord, SWAP_CLASS } from './text.js';
 import { hashKey } from './hash.js';
 import { siteEnabled, hasSiteAccess } from './settings.js';
@@ -25,8 +25,10 @@ const MAX_RETRIES = 3;
 const CHURN = { asks: 3, paints: 6 }; // new texts needing a model call / repaints, per element per window
 const CHURN_WINDOW_MS = 60000;
 let churn = new WeakMap(); // element -> { text, asks: [ms], paints: [ms], live }
-const TIP_DELAY_MS = 700; // a beat to recall the word before the meaning appears
-let tipTimer = null;
+// The gloss shows at once, but only a pointer that stays on the word this long counts as a peek, so passing the
+// mouse over a word on the way somewhere else doesn't hold it back.
+const PEEK_DWELL_MS = 700;
+let peekTimer = null;
 // After the extension reloads itself for an update, this copy is cut off from the worker. It then goes quiet:
 // no more requests or errors, woven words stay as they are, and a page reload brings in the new copy.
 let orphaned = false;
@@ -68,21 +70,20 @@ function record(span, event) {
     if (!r?.ok && daily) seen.delete(id);
   }).catch(() => { if (daily) seen.delete(id); });
 }
-// The gloss appears only after a short dwell; reaching it counts as a peek (the reader needed the meaning).
+// The gloss shows on the same event that brings the pointer or focus to a word; a dwell counts as a peek.
 function hideTip() {
-  clearTimeout(tipTimer); tipTimer = null;
+  clearTimeout(peekTimer); peekTimer = null;
   for (const el of document.querySelectorAll(`.${SWAP_CLASS}.fw-tip`)) el.classList.remove('fw-tip');
 }
-function armTip(e) {
+function showTip(e) {
   const span = swapFor(e);
-  if (!span || !on() || span.classList.contains('fw-tip')) return;
-  hideTip();
-  tipTimer = setTimeout(() => {
-    tipTimer = null;
-    if (!span.isConnected || span.classList.contains('fw-en')) return;
-    span.classList.add('fw-tip');
-    if (e.type === 'mouseover') record(span, 'peek'); // a page can focus a span from script, so focus never counts
-  }, TIP_DELAY_MS);
+  if (!span || !on() || span.classList.contains('fw-en')) return;
+  if (!span.classList.contains('fw-tip')) { hideTip(); span.classList.add('fw-tip'); }
+  if (e.type !== 'mouseover' || peekTimer) return; // a page can focus a span from script, so focus never counts
+  peekTimer = setTimeout(() => {
+    peekTimer = null;
+    if (span.isConnected && span.classList.contains('fw-tip')) record(span, 'peek');
+  }, PEEK_DWELL_MS);
 }
 function disarmTip(e) {
   const span = swapFor(e);
@@ -232,8 +233,8 @@ chrome.runtime.onMessage.addListener((msg) => {
 });
 document.addEventListener('click', reveal, true);
 document.addEventListener('keydown', reveal, true);
-document.addEventListener('mouseover', armTip, true);
-document.addEventListener('focusin', armTip, true);
+document.addEventListener('mouseover', showTip, true);
+document.addEventListener('focusin', showTip, true);
 document.addEventListener('mouseout', disarmTip, true);
 document.addEventListener('focusout', disarmTip, true);
 window.addEventListener('scroll', hideTip, { passive: true, capture: true });

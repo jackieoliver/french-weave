@@ -167,8 +167,9 @@ phrases in frequency and usefulness order (connectors and adverbs first), each w
 - **Exposure day**: a day you saw the word in a Claude Code or Codex reply, or on a web page.
 - **Learning**: up to 20 words at a time; at most 5 new a day, and none while 5 or more are shaky.
 - **Learning -> known**: 3 exposure days, with no flip, `learn` or peek on the last 3.
-- **Shaky**: clicking a French word on a page back to English, or `/french-weave:learn`. A **peek** (hovering until
-  the meaning shows) holds back a learning word; a known word peeked on 2 days within a week turns shaky.
+- **Shaky**: clicking a French word on a page back to English, or `/french-weave:learn`. The meaning shows as soon as
+  you hover; a **peek** (keeping the pointer on a word for 0.7 seconds or more) holds back a learning word, and a
+  known word peeked on 2 days within a week turns shaky.
   **Shaky -> known** after 7 days with no flip or peek.
 - **Stage** follows your known words: 1 to start, 2 at 40 known, 3 at 150, 4 at 400.
 
