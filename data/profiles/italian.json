@@ -232,6 +232,7 @@
       "lyee",
       "leh"
     ],
+    "elided_hint_prefixes": ["l"],
     "fixed": [
       "lo so",
       "la maggior parte"

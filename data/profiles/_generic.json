@@ -18,7 +18,7 @@
     "same_as_english": [],
     "not_followed_by": {}
   },
-  "articles": {"definite": [], "indefinite": [], "elided": [], "determiners": [], "hint_prefixes": [], "fixed": []},
+  "articles": {"definite": [], "indefinite": [], "elided": [], "determiners": [], "hint_prefixes": [], "elided_hint_prefixes": [], "fixed": []},
   "extension": {
     "synonym_examples": [],
     "filler_example": null,

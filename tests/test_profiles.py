@@ -244,6 +244,19 @@ class BundledLanguages(unittest.TestCase):
         self.assertFalse(hits('lo so', 'I so wanted that', italian))  # "lo so" is I know, not the noun "so"
         self.assertTrue(hits("l'idea", "un'idea", italian))
 
+    def test_elided_nouns_hints_start_with_the_elided_sound(self):
+        # The extension takes articles.elided_hint_prefixes off the hint of a bare noun ("l'idée", "lee-day" ->
+        # "ee-day"), so every elided noun's hint must start with one of them or the bare hint keeps the article.
+        for name, path in (('French', 'lexicon.csv'), ('Italian', 'lexicons/italian.csv')):
+            articles = fwlib.profile(name)['articles']
+            self.assertTrue(articles['elided_hint_prefixes'], name)
+            lead = re.compile('^(?:%s)' % '|'.join(map(re.escape, articles['elided'])), re.I)
+            sound = re.compile(r'^(?:%s)(?=[^\W\d_])' % '|'.join(map(re.escape, articles['elided_hint_prefixes'])), re.I)
+            rows = [w for w in fwlib.load_lexicon(fwlib.PLUGIN_ROOT / 'data' / path) if lead.match(fwlib.norm(w['fr']))]
+            self.assertGreater(len(rows), 10, name)
+            self.assertEqual([(w['fr'], w['hint']) for w in rows if not sound.match(w['hint'])], [], name)
+        self.assertEqual(fwlib.profile('Spanish')['articles']['elided_hint_prefixes'], [])
+
     def test_japanese_drift_counts_grammar_inside_runs(self):
         state = self.state('Japanese', stage=2, known=100)
         swaps = 'The build passes 今, でも the cache is stale, だから I cleared it, and it is 本当に 簡単 now. ' * 3

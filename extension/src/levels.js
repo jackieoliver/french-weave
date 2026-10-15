@@ -221,7 +221,8 @@ function indexFor(level, sharedWords, articles = FRENCH, fold = normalizeFr) {
     if (stripped !== full && !idx.has(stripped)) {
       // Accept the bare noun ("problème" for "problem") and keep the accents from the list.
       const canon = w.fr.replace(articles.any, '');
-      const hint = articles.hint ? w.hint.replace(articles.hint, '') : w.hint;
+      const hint = articles.elided?.test(full) ? (articles.elidedHint ? w.hint.replace(articles.elidedHint, '') : w.hint)
+        : articles.hint ? w.hint.replace(articles.hint, '') : w.hint;
       idx.set(stripped, { canon, en: w.en.replace(/^the /, ''), hint, word: w.fr, status: w.status });
     }
   }

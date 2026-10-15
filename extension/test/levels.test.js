@@ -44,6 +44,21 @@ describe('validateSwaps', () => {
     expect(f('the problem', 'le problème')).toBe('le problème');
     expect(f('The answer', 'la réponse')).toBe('La réponse');
   });
+  test("a bare noun drops its article's sound from the hint, hyphenated elided hints included", () => {
+    const h = (o, fr, words, lang) => validateSwaps(2, [{ o, f: fr, ctx: '' }], words, lang)[0]?.h;
+    expect(h('idea', "l'idée")).toBe('ee-day'); // was "lee-day", the article's sound
+    expect(h('year', "l'année")).toBe('ah-nay');
+    expect(h('school', "l'école")).toBe('ay-kol');
+    expect(h('story', "l'histoire")).toBe('ees-twar');
+    expect(h('problem', 'le problème')).toBe('prob-lem');
+    expect(h('the idea', "l'idée")).toBe('lee-day'); // with its article, the article's sound stays
+    const it = [{ fr: "l'ora", en: 'the hour', hint: 'LOH-rah', status: 'active' }, { fr: 'la casa', en: 'the house', hint: 'lah KAH-sah', status: 'active' }];
+    expect(h('hour', "l'ora", it, 'Italian')).toBe('OH-rah');
+    expect(h('house', 'la casa', it, 'Italian')).toBe('KAH-sah');
+    // A language whose profile has no elided sound leaves the hint alone.
+    const es = [{ fr: 'el agua', en: 'the water', hint: 'el AH-gwah', status: 'active' }];
+    expect(h('water', 'el agua', es, 'Spanish')).toBe('AH-gwah');
+  });
   test('keeps list words, canonicalizes accents, fills gloss and hint from the list', () => {
     const out = validateSwaps(1, [{ o: 'very', f: 'tres', g: 'x', h: 'y', ctx: 'is very good' }]);
     expect(out).toEqual([{ o: 'very', f: 'très', g: 'very', h: 'treh', ctx: 'is very good' }]);

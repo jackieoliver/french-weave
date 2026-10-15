@@ -41,6 +41,7 @@ it reads (see `french.json`).
 | `articles.elided` | Articles written joined to the noun (`l'`) |
 | `articles.determiners` | Words that may stand before a listed noun when chat exposure is counted (articles, possessives, demonstratives) |
 | `articles.hint_prefixes` | The articles' sounds at the start of a hint, removed for the bare noun (`luh`, `lah`) |
+| `articles.elided_hint_prefixes` | The sound an elided article fuses into the hint's first syllable, removed for the bare noun: French and Italian `l` (`l'idée`, "lee-day" -> "ee-day"; `l'ora`, "LOH-rah" -> "OH-rah"). Matched without case, only before a letter |
 | `articles.fixed` | List entries that start like an article but are fixed phrases, never split into article and bare noun: Portuguese `o que`, `a partir de`; Italian `lo so` |
 | `extension.synonym_examples` | `[[English, ...], word]`: English synonyms the extension prompt names for a word; each must pass the gloss check (a test checks against the word list) |
 | `extension.filler_example` | A common filler pair that must not crowd out learning words: `["and", "et"]` |

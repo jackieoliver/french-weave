@@ -116,7 +116,8 @@
       "ton",
       "ta"
     ],
-    "hint_prefixes": ["luh", "lah", "lay", "lee", "uhn", "ün"]
+    "hint_prefixes": ["luh", "lah", "lay", "lee", "uhn", "ün"],
+    "elided_hint_prefixes": ["l"]
   },
   "extension": {
     "synonym_examples": [

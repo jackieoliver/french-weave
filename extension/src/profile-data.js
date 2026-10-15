@@ -41,6 +41,7 @@ export const GENERIC = {
     "elided": [],
     "determiners": [],
     "hint_prefixes": [],
+    "elided_hint_prefixes": [],
     "fixed": []
   },
   "extension": {
@@ -235,6 +236,9 @@ export const PROFILES = {
         "lee",
         "uhn",
         "ün"
+      ],
+      "elided_hint_prefixes": [
+        "l"
       ]
     },
     "extension": {
@@ -910,6 +914,9 @@ export const PROFILES = {
         "ee",
         "lyee",
         "leh"
+      ],
+      "elided_hint_prefixes": [
+        "l"
       ],
       "fixed": [
         "lo so",

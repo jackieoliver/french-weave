@@ -67,7 +67,7 @@ describe('profiles', () => {
     expect('el problema'.replace(es.any, '')).toBe('problema');
     expect('una casa'.replace(es.any, '')).toBe('casa');
     expect('le problème'.replace(es.any, '')).toBe('le problème');
-    expect(articlePatterns(profileFor('Klingon'))).toEqual({ any: null, definite: null, hint: null });
+    expect(articlePatterns(profileFor('Klingon'))).toEqual({ any: null, definite: null, hint: null, elided: null, elidedHint: null });
     // Words from a language with no profile: French articles are never stripped.
     const klingon = [{ fr: 'le problème', en: 'the problem', hint: 'luh prob-lem', status: 'active' }];
     expect(validateSwaps(1, [{ o: 'problem', f: 'problème' }], klingon, 'Klingon')).toEqual([]);

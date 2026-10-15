@@ -22,7 +22,9 @@ export function profileFor(language = 'French', profiles = PROFILES) {
 const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Regexes for a listed noun's article: any article (le problème, une idée -> problème, idée), definite only (for
-// "the problem" vs "my problem"), and the article's sound in a hint ("luh prob-lem" -> "prob-lem"). null: none.
+// "the problem" vs "my problem"), and the article's sound in a hint ("luh prob-lem" -> "prob-lem"). An elided article
+// is fused into the first syllable of the hint ("l'idée", "lee-day"), so its sound comes off on its own: elided
+// matches the article, elidedHint its sound ("lee-day" -> "ee-day"). null: none.
 // Fixed phrases that only start like an article (Portuguese o que, a partir de) never match.
 export function articlePatterns(profile) {
   const a = profile.articles;
@@ -36,6 +38,8 @@ export function articlePatterns(profile) {
     any: lead([...a.definite, ...a.indefinite]),
     definite: lead(a.definite),
     hint: a.hint_prefixes.length ? new RegExp(`^(?:${a.hint_prefixes.map(esc).join('|')}) `) : null,
+    elided: a.elided.length ? new RegExp(`^${skip}(?:${a.elided.map(esc).join('|')})`, 'i') : null,
+    elidedHint: (a.elided_hint_prefixes || []).length ? new RegExp(`^(?:${a.elided_hint_prefixes.map(esc).join('|')})(?=\\p{L})`, 'iu') : null,
   };
 }
 
