@@ -1,0 +1,298 @@
+{
+  "schema": 1,
+  "language": "Italian",
+  "variety": "",
+  "script": {
+    "spaces": true,
+    "direction": "ltr",
+    "hint": "sound",
+    "hint_name": "sound hint",
+    "marks": "accents",
+    "fold": {},
+    "reading": {
+      "early": "none",
+      "late": "none",
+      "late_from_stage": 0,
+      "late_only_with": "",
+      "known_drop": false
+    }
+  },
+  "examples": {
+    "swap_sentence": "The build passes adesso, ma the cache is stale, quindi I cleared it.",
+    "full_sentences": [
+      "Il test funziona adesso.",
+      "È la soluzione giusta."
+    ],
+    "gloss": {
+      "word": "senza",
+      "en": "without",
+      "hint": "SEN-tsah"
+    },
+    "default_swaps": [
+      [
+        "and",
+        "e"
+      ],
+      [
+        "but",
+        "ma"
+      ],
+      [
+        "so",
+        "quindi"
+      ],
+      [
+        "with",
+        "con"
+      ],
+      [
+        "without",
+        "senza"
+      ],
+      [
+        "very",
+        "molto"
+      ],
+      [
+        "also",
+        "anche"
+      ],
+      [
+        "now",
+        "adesso"
+      ],
+      [
+        "because",
+        "perché"
+      ],
+      [
+        "always",
+        "sempre"
+      ]
+    ]
+  },
+  "sense_notes": {
+    "brief": "per never after ask, wait, look or pay, or for a span still going on; quindi only for therefore, the intensifier so is così; ecco for here's, qui only for a place; a filler well is beh or allora, bene only for fine or done properly; anche only for as well, too meaning excessively is troppo; come only for how or like in a comparison, never the verb like; prima, dopo and durante only alone or before a noun; tutto is everything, tutti everyone; cosa only for what in a question; e is and, è is is, so keep the accents",
+    "export": "per never follows ask, wait, look or pay (chiedere, aspettare, cercare and pagare take none), and never marks a span still going on (\"for years\" is da anni); quindi only for \"so\" meaning therefore, while \"so\" as an intensifier is così and \"so far\" is finora; \"here's\" or \"here is\" introducing something is ecco, never qui (qui is a place); a filler \"well\" is beh or allora, never bene; anche is \"too\" only as \"as well\", and \"too\" meaning excessively is troppo; come is \"how\" or \"like\" in a comparison, never the verb \"like\" (mi piace); prima, dopo and durante only alone or before a noun, never before a clause; tutto is everything, tutti is everyone; cosa only for \"what\" in a question; accents change the word: e is \"and\", è is \"is\", si is \"oneself\", sì is \"yes\"",
+    "export_short": "per not after ask/wait or for durations; ecco = here's; e = and, è = is"
+  },
+  "drift_words": [
+    "gli",
+    "degli",
+    "delle",
+    "della",
+    "dello",
+    "dei",
+    "nel",
+    "nella",
+    "nei",
+    "nelle",
+    "sul",
+    "sulla",
+    "alla",
+    "alle",
+    "una",
+    "che",
+    "cui",
+    "tu",
+    "lui",
+    "noi",
+    "voi",
+    "loro",
+    "mio",
+    "mia",
+    "suo",
+    "sua",
+    "questa",
+    "queste",
+    "questi",
+    "quella",
+    "quelle",
+    "sei",
+    "siamo",
+    "hanno",
+    "abbiamo",
+    "avete",
+    "hai",
+    "stato",
+    "sarà",
+    "può"
+  ],
+  "exposure": {
+    "same_as_english": [
+      "e",
+      "per",
+      "come",
+      "o",
+      "solo",
+      "dove",
+      "no",
+      "male",
+      "su",
+      "fa",
+      "piano",
+      "ciao",
+      "presto",
+      "bravo",
+      "il film",
+      "forte",
+      "locale",
+      "simile",
+      "pronto",
+      "rosa",
+      "gratis",
+      "gentile",
+      "viola",
+      "fare",
+      "dire",
+      "dare",
+      "stare"
+    ],
+    "not_followed_by": {}
+  },
+  "articles": {
+    "definite": [
+      "il",
+      "lo",
+      "la",
+      "i",
+      "gli",
+      "le"
+    ],
+    "indefinite": [
+      "un",
+      "uno",
+      "una"
+    ],
+    "elided": [
+      "l'"
+    ],
+    "determiners": [
+      "il",
+      "lo",
+      "la",
+      "i",
+      "gli",
+      "le",
+      "l'",
+      "un",
+      "uno",
+      "una",
+      "un'",
+      "del",
+      "dello",
+      "della",
+      "dei",
+      "degli",
+      "delle",
+      "dell'",
+      "al",
+      "allo",
+      "alla",
+      "agli",
+      "alle",
+      "all'",
+      "dal",
+      "dallo",
+      "dalla",
+      "dagli",
+      "dalle",
+      "dall'",
+      "nel",
+      "nello",
+      "nella",
+      "nei",
+      "negli",
+      "nelle",
+      "nell'",
+      "sul",
+      "sullo",
+      "sulla",
+      "sui",
+      "sugli",
+      "sulle",
+      "sull'",
+      "questo",
+      "questa",
+      "quest'",
+      "quel",
+      "quello",
+      "quella",
+      "quell'",
+      "mio",
+      "mia",
+      "tuo",
+      "tua"
+    ],
+    "hint_prefixes": [
+      "eel",
+      "loh",
+      "lah",
+      "ee",
+      "lyee",
+      "leh"
+    ],
+    "fixed": [
+      "lo so",
+      "la maggior parte"
+    ]
+  },
+  "extension": {
+    "synonym_examples": [
+      [
+        [
+          "big",
+          "large",
+          "huge"
+        ],
+        "grande"
+      ],
+      [
+        [
+          "maybe",
+          "perhaps",
+          "possibly"
+        ],
+        "forse"
+      ],
+      [
+        [
+          "but",
+          "however"
+        ],
+        "però"
+      ],
+      [
+        [
+          "also",
+          "too",
+          "as well"
+        ],
+        "anche"
+      ],
+      [
+        [
+          "here's",
+          "here is"
+        ],
+        "ecco"
+      ]
+    ],
+    "filler_example": [
+      "and",
+      "e"
+    ],
+    "sense_note": "\"so\" meaning therefore -> quindi; \"so\" as an intensifier, as in \"so slow\", is NOT quindi; \"here's\" or \"here is\" introducing something is ecco, NOT qui; \"well\" as a filler is NOT bene; \"too\" meaning excessively is NOT anche; e is \"and\" and è is \"is\": keep the accent",
+    "adjective_example": [
+      "a new feature",
+      "a nuovo feature"
+    ],
+    "level_examples": {},
+    "synonyms": {
+      "here it is": [
+        "here's",
+        "here is"
+      ]
+    }
+  }
+}

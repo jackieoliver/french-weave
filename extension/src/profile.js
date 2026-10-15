@@ -23,11 +23,14 @@ const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Regexes for a listed noun's article: any article (le problème, une idée -> problème, idée), definite only (for
 // "the problem" vs "my problem"), and the article's sound in a hint ("luh prob-lem" -> "prob-lem"). null: none.
+// Fixed phrases that only start like an article (Portuguese o que, a partir de) never match.
 export function articlePatterns(profile) {
   const a = profile.articles;
+  const fixed = (a.fixed || []).map((p) => esc(String(p).normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim()));
+  const skip = fixed.length ? `(?!(?:${fixed.join('|')})$)` : '';
   const lead = (spaced) => {
     const parts = [...(spaced.length ? [`(?:${spaced.map(esc).join('|')})\\s+`] : []), ...a.elided.map(esc)];
-    return parts.length ? new RegExp(`^(?:${parts.join('|')})`, 'i') : null;
+    return parts.length ? new RegExp(`^${skip}(?:${parts.join('|')})`, 'i') : null;
   };
   return {
     any: lead([...a.definite, ...a.indefinite]),

@@ -8,7 +8,8 @@ and the web pages you read, at your level, and moves each word from learning to 
 
 <!-- TODO: screenshot of a woven Claude Code reply and of a web page with a hover gloss -->
 
-Free and open source (MIT). From English to French, with starter lists for Spanish, Japanese and Indonesian.
+Free and open source (MIT). From English to French, with lists for Spanish, German, Italian, Portuguese and Japanese and a starter list for
+Indonesian.
 
 ## Where it works
 
@@ -23,7 +24,7 @@ Free and open source (MIT). From English to French, with starter lists for Spani
 | Firefox, Safari | Not yet | |
 | macOS, Linux | Yes | Python 3.9 or newer |
 | Windows | Not yet | Use the paste-in blocks, or Claude Code or Codex inside WSL (the extension can't sync with it) |
-| Other languages | Starter lists | Spanish, Japanese, Indonesian, or any word list you give setup; see [Other languages](#other-languages) |
+| Other languages | Yes, unreviewed | Spanish, German, Italian, Portuguese, Japanese (Indonesian: starter list), or any word list you give setup; see [Other languages](#other-languages) |
 
 ## Set up
 
@@ -147,8 +148,8 @@ Stage 2, a month to Stage 3 and 12 weeks to Stage 4. If each word shows up on ab
 7 weeks and 4 months. Starting with some French skips ahead. These are estimates from simulating the rules below.
 Pasted claude.ai and ChatGPT blocks don't advance on their own.
 
-**Japanese, Indonesian, Spanish...?** Starter lists, yes; see [Other languages](#other-languages). French is the
-only full list so far.
+**Spanish, German, Italian, Portuguese, Japanese...?** Yes, with lists of about 1,000 words not yet checked by native
+speakers; see [Other languages](#other-languages). French is the most tested.
 
 **Do I need a subscription?** You need whichever chat tool you already use. French Weave adds no account. The
 extension needs a Gemini API key; a free one works.
@@ -195,12 +196,13 @@ list; the hook, the commands, `export` and the extension then weave that languag
 python3 ~/.french-weave/app/scripts/fw.py setup --language Spanish --lexicon ~/spanish.csv
 ```
 
-(or `/french-weave:setup --language Spanish --lexicon ~/spanish.csv`). A Spanish list of about 1,000 ranked words
-(Latin American Spanish, with a profile) and starter lists of 40-60 words for Japanese and Indonesian are in
-[`data/lexicons/`](data/lexicons/); with one of those, `--language Spanish` alone is enough. Setup copies the list to `~/.french-weave/lexicon.csv`. Switching language sets the old one's progress and
+(or `/french-weave:setup --language Spanish --lexicon ~/spanish.csv`). Lists of about 1,000 ranked words, each with a profile,
+for Spanish (Latin American), German, Italian, Portuguese (Brazilian) and Japanese, and a starter list of 44 words for
+Indonesian are in [`data/lexicons/`](data/lexicons/); with one of those, `--language Spanish` (or German, Italian,
+Portuguese, Japanese) alone is enough. Setup copies the list to `~/.french-weave/lexicon.csv`. Switching language sets the old one's progress and
 word list aside (`state-<language>.json`, `lexicon-<language>.csv`); `setup --language French` brings French back.
-These lists were drafted with AI and not yet checked by a native speaker; corrections are welcome. The Spanish
-list's order uses word frequencies from [wordfreq](https://github.com/rspeer/wordfreq) by Robyn Speer (data CC BY-SA
+These lists were drafted with AI and not yet checked by a native speaker; corrections are welcome. The order of
+these lists uses word frequencies from [wordfreq](https://github.com/rspeer/wordfreq) by Robyn Speer (data CC BY-SA
 4.0), used only to rank the rows.
 
 The list is a CSV with the header `word,en,hint` (`fr` works too), most useful words first: connectors and adverbs,
@@ -236,7 +238,7 @@ commands/         /french-weave:* slash commands
 scripts/          fwlib.py (state, rules, transcript scan), weave.py (hook), fw.py (CLI, setup),
                   fw_host.py (native host), export.py (claude.ai / ChatGPT blocks), make_blocks.py (blocks/),
                   make_profiles.py (checks data/profiles/, writes extension/src/profile-data.js)
-data/lexicon.csv  ranked words: fr, en, sound hint (data/lexicons/: starter lists for other languages)
+data/lexicon.csv  ranked words: fr, en, sound hint (data/lexicons/: word lists for other languages)
 data/profiles/    one profile per language: examples, sense notes, articles, script (extension copy generated)
 blocks/           ready-made claude.ai / ChatGPT blocks, one per level (generated)
 extension/        Chrome MV3 extension (no build step, no runtime dependencies)

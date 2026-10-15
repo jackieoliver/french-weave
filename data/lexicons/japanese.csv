@@ -1,42 +1,1011 @@
-word,en,hint,scan
-でも,but,demo,
-だから,so (therefore),dakara,
-そして,and then,soshite,
-とても,very,totemo,
-今,now,ima,
-いつも,always,itsumo,
-たぶん,maybe,tabun,
-ここ,here,koko,
-今日,today,kyou,
-明日,tomorrow,ashita,
-もう,already,mou,
-まだ,still,mada,
-後で,later,atode,
-少し,a little,sukoshi,
-たくさん,a lot,takusan,
-もっと,more,motto,
-本当に,really,hontou ni,
-すぐ,right away,sugu,
-一緒に,together,issho ni,
-問題,problem,mondai,
-仕事,work,shigoto,
-時間,time,jikan,
-質問,question,shitsumon,
-答え,answer,kotae,
-猫,cat,neko,
-箱,box,hako,
-家,house / home,ie,
-名前,name,namae,
-理由,reason,riyuu,
-世界,world,sekai,
-人,person,hito,
-新しい,new,atarashii,
-古い,old,furui,
-大きい,big,ookii,
-小さい,small,chiisai,
-いい,good,ii,
-悪い,bad,warui,
-簡単,easy,kantan,
-難しい,difficult,muzukashii,
-速い,fast,hayai,
-ありがとう,thanks,arigatou,
+word,en,hint,scan,reading
+でも,but,demo,no,でも
+今,now,ima,no,いま
+もう,already,mō,no,もう
+ここ,here,koko,no,ここ
+ありがとう,thank you,arigatō,,ありがとう
+まだ,still / not yet,mada,no,まだ
+そして,and then,soshite,,そして
+本当に,really,hontō ni,,ほんとうに
+今日,today,kyō,,きょう
+もっと,more,motto,,もっと
+少し,a little,sukoshi,,すこし
+いつも,always,itsumo,,いつも
+とても,very,totemo,,とても
+たくさん,a lot,takusan,,たくさん
+明日,tomorrow,ashita,,あした
+だから,so (therefore),dakara,,だから
+はい,yes,hai,no,はい
+多分,maybe,tabun,,たぶん
+昨日,yesterday,kinō,,きのう
+一緒に,together,issho ni,,いっしょに
+時々,sometimes,tokidoki,,ときどき
+後で,later,ato de,,あとで
+いいえ,no (answer),iie,,いいえ
+けど,but (casual),kedo,no,けど
+これ,this (one),kore,no,これ
+それ,that (one),sore,no,それ
+何,what,nani,no,なに
+どう,how,dō,no,どう
+また,again,mata,no,また
+ちょっと,a little / a bit,chotto,,ちょっと
+誰,who,dare,no,だれ
+みんな,everyone,minna,,みんな
+しかし,however,shikashi,,しかし
+どこ,where,doko,no,どこ
+すぐ,right away,sugu,no,すぐ
+そこ,there,soko,no,そこ
+最近,recently,saikin,,さいきん
+大丈夫,okay / fine,daijōbu,,だいじょうぶ
+全部,all (everything),zenbu,,ぜんぶ
+なぜ,why,naze,no,なぜ
+特に,especially,toku ni,,とくに
+もちろん,of course,mochiron,,もちろん
+いつ,when (question),itsu,no,いつ
+やっぱり,as expected / after all,yappari,,やっぱり
+毎日,every day,mainichi,,まいにち
+あまり,not much,amari,,あまり
+実は,actually (to tell the truth),jitsu wa,,じつは
+全然,not at all,zenzen,,ぜんぜん
+つまり,in other words,tsumari,,つまり
+すごく,really (very),sugoku,,すごく
+ごめん,sorry,gomen,,ごめん
+きっと,surely,kitto,,きっと
+または,or,mataha,,または
+例えば,for example,tatoeba,,たとえば
+ところで,by the way,tokorode,,ところで
+それから,and then / after that,sorekara,,それから
+あれ,that (over there),are,no,あれ
+よく,often,yoku,no,よく
+なんか,kind of (filler),nanka,no,なんか
+ただ,just (merely),tada,no,ただ
+自分で,by oneself,jibun de,,じぶんで
+超,super- (slang prefix),chō,no,ちょう
+一番,the most (number one),ichiban,no,いちばん
+今まで,until now,ima made,,いままで
+現在,currently (at present),genzai,,げんざい
+普通,usually / normal,futsū,,ふつう
+絶対,definitely,zettai,,ぜったい
+約,about (approximately),yaku,no,やく
+まあ,well (filler),mā,no,まあ
+実際,in reality,jissai,,じっさい
+今回,this time,konkai,,こんかい
+早く,early / quickly,hayaku,,はやく
+ずっと,the whole time,zutto,,ずっと
+初めて,for the first time,hajimete,,はじめて
+かなり,quite (fairly),kanari,,かなり
+ちゃんと,properly,chanto,,ちゃんと
+これから,from now on,korekara,,これから
+うん,yeah,un,no,うん
+以前,before (formerly),izen,,いぜん
+結構,pretty (fairly),kekkō,,けっこう
+ほとんど,almost (mostly),hotondo,,ほとんど
+どれ,which one,dore,no,どれ
+なんで,why (casual),nande,no,なんで
+じゃあ,well then,jā,no,じゃあ
+まず,first (to begin with),mazu,no,まず
+色々,various,iroiro,,いろいろ
+本当,true (the truth),hontō,,ほんとう
+今年,this year,kotoshi,,ことし
+とりあえず,for now,toriaezu,,とりあえず
+もし,if (supposing),moshi,no,もし
+ほぼ,almost,hobo,no,ほぼ
+一度,once,ichido,no,いちど
+一方,on the other hand,ippō,,いっぽう
+それぞれ,each (respectively),sorezore,,それぞれ
+そんなに,that much,sonnani,,そんなに
+しかも,what's more,shikamo,,しかも
+結局,in the end,kekkyoku,,けっきょく
+どっち,which (of two),dotchi,,どっち
+今度,next time,kondo,,こんど
+先に,first (ahead of others),saki ni,,さきに
+一人で,alone (by oneself),hitori de,,ひとりで
+必ず,without fail,kanarazu,,かならず
+いっぱい,full / lots,ippai,,いっぱい
+正直,honestly,shōjiki,,しょうじき
+ちなみに,by the way (incidentally),chinamini,,ちなみに
+当然,naturally (of course),tōzen,,とうぜん
+さすが,as you'd expect (of them),sasuga,,さすが
+直接,directly,chokusetsu,,ちょくせつ
+すでに,already (formal),sudeni,,すでに
+それでも,even so,soredemo,,それでも
+ゆっくり,slowly,yukkuri,,ゆっくり
+とにかく,anyway,tonikaku,,とにかく
+いくら,how much (price),ikura,,いくら
+そろそろ,about time,sorosoro,,そろそろ
+半分,half,hanbun,,はんぶん
+同時に,at the same time,dōji ni,,どうじに
+どんどん,rapidly (more and more),dondon,,どんどん
+さっき,a moment ago,sakki,,さっき
+いつか,someday,itsuka,,いつか
+ぜひ,by all means,zehi,no,ぜひ
+しばらく,for a while,shibaraku,,しばらく
+ただし,however (with a caveat),tadashi,,ただし
+やっと,finally (at last),yatto,,やっと
+どうして,why (how come),dōshite,,どうして
+まさに,exactly (precisely),masani,,まさに
+別に,not particularly,betsu ni,,べつに
+お互い,each other,otagai,,おたがい
+ちょうど,exactly (just),chōdo,,ちょうど
+確かに,indeed,tashika ni,,たしかに
+それで,so (and so),sorede,no,それで
+まるで,just like (as if),marude,,まるで
+前回,last time,zenkai,,ぜんかい
+ついに,at long last,tsuini,,ついに
+はっきり,clearly,hakkiri,,はっきり
+なんとか,somehow (managing),nantoka,,なんとか
+むしろ,rather (instead),mushiro,,むしろ
+たった,only (just),tatta,,たった
+めっちゃ,super (slang),metcha,,めっちゃ
+いきなり,out of nowhere,ikinari,,いきなり
+少なくとも,at least,sukunakutomo,,すくなくとも
+両方,both,ryōhō,,りょうほう
+主に,mainly,omo ni,,おもに
+今夜,tonight,kon'ya,,こんや
+去年,last year,kyonen,,きょねん
+それとも,or (in questions),soretomo,,それとも
+どのくらい,how long / how much,donokurai,,どのくらい
+逆に,conversely,gyaku ni,,ぎゃくに
+決して,never (by no means),kesshite,,けっして
+非常に,extremely,hijō ni,,ひじょうに
+毎回,every time,maikai,,まいかい
+今週,this week,konshū,,こんしゅう
+何度も,again and again,nando mo,,なんども
+一気に,all at once,ikki ni,,いっきに
+来年,next year,rainen,,らいねん
+次に,next (as the next step),tsugi ni,,つぎに
+意外と,surprisingly,igaito,,いがいと
+もともと,originally,motomoto,,もともと
+あそこ,over there,asoko,,あそこ
+もう一度,once more,mō ichido,,もういちど
+だいたい,roughly (mostly),daitai,,だいたい
+毎週,every week,maishū,,まいしゅう
+もうすぐ,soon (almost time),mōsugu,,もうすぐ
+先週,last week,senshū,,せんしゅう
+来週,next week,raishū,,らいしゅう
+なんとなく,somehow (vaguely),nantonaku,,なんとなく
+代わりに,instead,kawari ni,,かわりに
+たまに,occasionally,tamani,,たまに
+できれば,if possible,dekireba,,できれば
+もしかして,by any chance,moshikashite,,もしかして
+すっかり,completely,sukkari,,すっかり
+今朝,this morning,kesa,,けさ
+たまたま,by chance,tamatama,,たまたま
+急に,suddenly,kyū ni,,きゅうに
+早速,right away (without delay),sassoku,,さっそく
+なので,so (that's why),nanode,no,なので
+なるべく,as much as possible,narubeku,,なるべく
+だんだん,gradually,dandan,,だんだん
+ますます,increasingly,masumasu,,ますます
+一生懸命,with all one's might,isshōkenmei,,いっしょうけんめい
+少しずつ,little by little,sukoshizutsu,,すこしずつ
+基本的に,basically,kihonteki ni,,きほんてきに
+ずいぶん,quite a lot,zuibun,,ずいぶん
+最終的に,ultimately,saishūteki ni,,さいしゅうてきに
+それに,besides (on top of that),soreni,no,それに
+要するに,in short,yōsuru ni,,ようするに
+毎朝,every morning,maiasa,,まいあさ
+なぜなら,because (sentence-initial),nazenara,,なぜなら
+ついでに,while you're at it,tsuideni,,ついでに
+なのに,and yet (even though),nanoni,no,なのに
+自動的に,automatically,jidōteki ni,,じどうてきに
+ええと,um (filler),ēto,,ええと
+念のため,just in case,nen no tame,,ねんのため
+人,person,hito,no,ひと
+日,day,hi,no,ひ
+いい,good,ii,no,いい
+月,moon,tsuki,no,つき
+中,inside,naka,no,なか
+時,time (when),toki,no,とき
+日本,Japan,nihon,,にほん
+自分,oneself (myself or yourself),jibun,,じぶん
+前,front / before (earlier),mae,no,まえ
+時間,time (duration),jikan,,じかん
+目,eye,me,no,め
+話,story (talk),hanashi,no,はなし
+家,house / home,ie,no,いえ
+好き,liked (favorite),suki,,すき
+上,top (above),ue,no,うえ
+考え,idea (thought),kangae,,かんがえ
+感じ,feel (impression),kanji,,かんじ
+数,number (count),kazu,no,かず
+必要,necessary,hitsuyō,,ひつよう
+世界,world,sekai,,せかい
+本,book,hon,no,ほん
+他,other,hoka,no,ほか
+仕事,work (job),shigoto,,しごと
+問題,problem,mondai,,もんだい
+同じ,same,onaji,,おなじ
+手,hand,te,no,て
+ゲーム,game,gēmu,,ゲーム
+情報,information,jōhō,,じょうほう
+関係,relationship (connection),kankei,,かんけい
+力,strength (power),chikara,no,ちから
+国,country,kuni,no,くに
+車,car,kuruma,no,くるま
+場合,case (situation),bāi,,ばあい
+多い,many,ōi,,おおい
+可能,possible,kanō,no,かのう
+男,man,otoko,no,おとこ
+間,between (interval),aida,no,あいだ
+女,woman,onna,no,おんな
+次,next (one),tsugi,no,つぎ
+女性,woman (formal),josei,,じょせい
+意味,meaning,imi,,いみ
+店,shop (store),mise,no,みせ
+結果,result,kekka,,けっか
+一人,one person (alone),hitori,no,ひとり
+悪い,bad,warui,,わるい
+顔,face,kao,no,かお
+写真,photo,shashin,,しゃしん
+物,thing,mono,no,もの
+先,ahead (the tip),saki,no,さき
+声,voice,koe,no,こえ
+会社,company,kaisha,,かいしゃ
+お願い,favor (request),onegai,,おねがい
+時代,era,jidai,,じだい
+頭,head,atama,no,あたま
+子供,child,kodomo,,こども
+心,heart (mind),kokoro,no,こころ
+名前,name,namae,,なまえ
+アニメ,anime,anime,,アニメ
+一日,one day (all day),ichinichi,no,いちにち
+場所,place,basho,,ばしょ
+下,bottom (below),shita,no,した
+最後,end (the last),saigo,,さいご
+別,separate (different),betsu,no,べつ
+高い,high / expensive,takai,,たかい
+町,town,machi,no,まち
+言葉,word (language),kotoba,,ことば
+映画,movie,eiga,,えいが
+社会,society,shakai,,しゃかい
+相手,the other person,aite,,あいて
+理由,reason,riyū,,りゆう
+方法,method (way),hōhō,,ほうほう
+最初,beginning (the first),saisho,,さいしょ
+体,body,karada,no,からだ
+駅,station,eki,no,えき
+作品,work (creation),sakuhin,,さくひん
+すごい,amazing,sugoi,,すごい
+漫画,manga (comics),manga,,まんが
+無理,impossible (too much),muri,,むり
+水,water,mizu,no,みず
+事件,incident (case),jiken,,じけん
+学校,school,gakkō,,がっこう
+状態,state (condition),jōtai,,じょうたい
+簡単,easy (simple),kantan,,かんたん
+最高,the best (awesome),saikō,,さいこう
+先生,teacher,sensei,,せんせい
+気持ち,feeling,kimochi,,きもち
+確認,check (confirmation),kakunin,,かくにん
+夜,night,yoru,no,よる
+テレビ,TV,terebi,,テレビ
+外,outside,soto,no,そと
+結婚,marriage,kekkon,,けっこん
+友達,friend,tomodachi,,ともだち
+色,color,iro,no,いろ
+生活,daily life,seikatsu,,せいかつ
+理解,understanding,rikai,,りかい
+新しい,new,atarashii,,あたらしい
+女の子,girl,onnanoko,,おんなのこ
+娘,daughter,musume,no,むすめ
+音,sound,oto,no,おと
+内容,content,naiyō,,ないよう
+状況,situation,jōkyō,,じょうきょう
+技術,technology (skill),gijutsu,,ぎじゅつ
+研究,research,kenkyū,,けんきゅう
+夢,dream,yume,no,ゆめ
+説明,explanation,setsumei,,せつめい
+大変,tough (a lot of trouble),taihen,,たいへん
+風,wind,kaze,no,かぜ
+道,road (way),michi,no,みち
+発表,presentation (announcement),happyō,,はっぴょう
+電話,phone,denwa,,でんわ
+お金,money,okane,,おかね
+部分,part,bubun,,ぶぶん
+予定,plan (schedule),yotei,,よてい
+口,mouth,kuchi,no,くち
+花,flower,hana,no,はな
+戦争,war,sensō,,せんそう
+全員,everyone (all members),zen'in,,ぜんいん
+愛,love,ai,no,あい
+ニュース,news,nyūsu,,ニュース
+確か,certain (sure),tashika,,たしか
+計画,plan,keikaku,,けいかく
+設定,settings,settei,,せってい
+機能,feature (function),kinō,,きのう
+調査,investigation (survey),chōsa,,ちょうさ
+重要,important,jūyō,,じゅうよう
+朝,morning,asa,no,あさ
+昔,the old days (long ago),mukashi,no,むかし
+誰か,someone,dareka,,だれか
+形,shape,katachi,no,かたち
+目的,purpose,mokuteki,,もくてき
+記事,article,kiji,,きじ
+人生,life (one's life),jinsei,,じんせい
+開発,development,kaihatsu,,かいはつ
+チーム,team,chīmu,,チーム
+かわいい,cute,kawaii,,かわいい
+自由,free (freedom),jiyū,,じゆう
+家族,family,kazoku,,かぞく
+男性,man (formal),dansei,,だんせい
+部屋,room,heya,,へや
+影響,impact (influence),eikyō,,えいきょう
+夏,summer,natsu,no,なつ
+期間,period (span),kikan,,きかん
+英語,English (language),eigo,,えいご
+注意,caution (attention),chūi,,ちゅうい
+基本,basics,kihon,,きほん
+大学,university,daigaku,,だいがく
+質問,question,shitsumon,,しつもん
+強い,strong,tsuyoi,,つよい
+足,foot / leg,ashi,no,あし
+安全,safety,anzen,,あんぜん
+連絡,contact (getting in touch),renraku,,れんらく
+音楽,music,ongaku,,おんがく
+違い,difference,chigai,,ちがい
+大事,important (precious),daiji,,だいじ
+過去,past,kako,,かこ
+病院,hospital,byōin,,びょういん
+効果,effect,kōka,,こうか
+政治,politics,seiji,,せいじ
+アプリ,app,apuri,,アプリ
+期待,expectation,kitai,,きたい
+米,rice (uncooked),kome,no,こめ
+歴史,history,rekishi,,れきし
+選手,player (athlete),senshu,,せんしゅ
+警察,police,keisatsu,,けいさつ
+犬,dog,inu,no,いぬ
+一部,part (some of it),ichibu,no,いちぶ
+評価,evaluation (rating),hyōka,,ひょうか
+レベル,level,reberu,,レベル
+母,mother (one's own),haha,no,はは
+海,sea,umi,no,うみ
+光,light,hikari,no,ひかり
+番組,program (TV show),bangumi,,ばんぐみ
+希望,hope,kibō,,きぼう
+怖い,scary,kowai,,こわい
+面白い,interesting (funny),omoshiroi,,おもしろい
+特別,special,tokubetsu,,とくべつ
+近く,nearby,chikaku,,ちかく
+経済,economy,keizai,,けいざい
+事故,accident,jiko,,じこ
+環境,environment,kankyō,,かんきょう
+父,father (one's own),chichi,no,ちち
+成功,success,seikō,,せいこう
+文化,culture,bunka,,ぶんか
+データ,data,dēta,,データ
+メール,email,mēru,,メール
+検索,search,kensaku,,けんさく
+発見,discovery,hakken,,はっけん
+嘘,lie,uso,no,うそ
+量,amount,ryō,no,りょう
+協力,cooperation,kyōryoku,,きょうりょく
+酒,alcohol (sake),sake,no,さけ
+猫,cat,neko,no,ねこ
+絵,picture (drawing),e,no,え
+経験,experience,keiken,,けいけん
+契約,contract,keiyaku,,けいやく
+責任,responsibility,sekinin,,せきにん
+心配,worry,shinpai,,しんぱい
+変更,change (to a plan or setting),henkō,,へんこう
+興味,interest,kyōmi,,きょうみ
+メンバー,member,menbā,,メンバー
+難しい,difficult,muzukashii,,むずかしい
+バス,bus,basu,no,バス
+運転,driving,unten,,うんてん
+商品,product,shōhin,,しょうひん
+終わり,end,owari,,おわり
+元気,well (healthy),genki,,げんき
+残念,too bad (a shame),zannen,,ざんねん
+服,clothes,fuku,no,ふく
+星,star,hoshi,no,ほし
+勉強,study,benkyō,,べんきょう
+報告,report,hōkoku,,ほうこく
+間違い,mistake,machigai,,まちがい
+記録,record (log),kiroku,,きろく
+妻,wife,tsuma,no,つま
+文字,character (letter),moji,,もじ
+運動,exercise,undō,,うんどう
+能力,ability,nōryoku,,のうりょく
+全体,the whole,zentai,,ぜんたい
+スポーツ,sports,supōtsu,,スポーツ
+チェック,check,chekku,,チェック
+楽しい,fun,tanoshii,,たのしい
+嫌い,disliked,kirai,,きらい
+変,weird,hen,no,へん
+木,tree,ki,no,き
+価値,value (worth),kachi,,かち
+詳細,details,shōsai,,しょうさい
+時期,timing (period),jiki,,じき
+味,taste (flavor),aji,no,あじ
+山,mountain,yama,no,やま
+担当,person in charge,tantō,,たんとう
+答え,answer,kotae,,こたえ
+失敗,failure,shippai,,しっぱい
+気分,mood,kibun,,きぶん
+大人,adult,otona,,おとな
+学生,student,gakusei,,がくせい
+薬,medicine,kusuri,no,くすり
+歌,song,uta,no,うた
+原因,cause,gen'in,,げんいん
+解決,solution (resolving),kaiketsu,,かいけつ
+安心,relief (peace of mind),anshin,,あんしん
+嬉しい,glad (happy),ureshii,,うれしい
+幸せ,happy (fortunate),shiawase,,しあわせ
+料理,cooking (a dish),ryōri,,りょうり
+自然,nature,shizen,no,しぜん
+右,right (direction),migi,no,みぎ
+例,example,rei,no,れい
+危険,danger,kiken,,きけん
+感謝,gratitude,kansha,,かんしゃ
+日本人,Japanese person,nihonjin,,にほんじん
+春,spring (season),haru,no,はる
+カメラ,camera,kamera,,カメラ
+動物,animal,dōbutsu,,どうぶつ
+準備,preparation,junbi,,じゅんび
+事実,fact,jijitsu,,じじつ
+想像,imagination,sōzō,,そうぞう
+記憶,memory (recall),kioku,,きおく
+自動,automatic,jidō,,じどう
+判断,judgment,handan,,はんだん
+試合,match (game),shiai,,しあい
+大好き,loved (really like),daisuki,,だいすき
+未来,future,mirai,,みらい
+親,parent,oya,no,おや
+種,seed,tane,no,たね
+科学,science,kagaku,,かがく
+ページ,page,pēji,,ページ
+大切,precious (important),taisetsu,,たいせつ
+仲間,teammate (companion),nakama,,なかま
+空,sky,sora,no,そら
+島,island,shima,no,しま
+銀行,bank,ginkō,,ぎんこう
+日本語,Japanese (language),nihongo,,にほんご
+予約,reservation,yoyaku,,よやく
+番号,number (ID),bangō,,ばんごう
+印象,impression,inshō,,いんしょう
+裏,back side (reverse),ura,no,うら
+長い,long,nagai,,ながい
+少ない,few,sukunai,,すくない
+近い,close (near),chikai,,ちかい
+綺麗,pretty (clean),kirei,,きれい
+地球,Earth (planet),chikyū,,ちきゅう
+馬,horse,uma,no,うま
+更新,update,kōshin,,こうしん
+肉,meat,niku,no,にく
+村,village,mura,no,むら
+周り,surroundings,mawari,,まわり
+卒業,graduation,sotsugyō,,そつぎょう
+携帯,cell phone,keitai,,けいたい
+対策,countermeasure,taisaku,,たいさく
+スーパー,supermarket,sūpā,,スーパー
+息子,son,musuko,,むすこ
+火,fire,hi,no,ひ
+電車,train,densha,,でんしゃ
+船,ship,fune,no,ふね
+コメント,comment,komento,,コメント
+素晴らしい,wonderful,subarashii,,すばらしい
+明らか,obvious (clear),akiraka,,あきらか
+楽,easy (comfortable),raku,no,らく
+ホテル,hotel,hoteru,,ホテル
+作業,work (task),sagyō,,さぎょう
+途中,midway,tochū,,とちゅう
+疲れ,fatigue,tsukare,,つかれ
+素敵,lovely,suteki,,すてき
+森,forest,mori,no,もり
+石,stone,ishi,no,いし
+制限,restriction,seigen,,せいげん
+有名,famous,yūmei,,ゆうめい
+本気,serious (for real),honki,,ほんき
+食事,meal,shokuji,,しょくじ
+雨,rain,ame,no,あめ
+左,left,hidari,no,ひだり
+北,north,kita,no,きた
+外国,foreign country,gaikoku,,がいこく
+旅,journey,tabi,no,たび
+会議,meeting,kaigi,,かいぎ
+恋,love (romantic),koi,no,こい
+特徴,characteristic (feature),tokuchō,,とくちょう
+健康,health,kenkō,,けんこう
+客,customer / guest,kyaku,no,きゃく
+髪,hair,kami,no,かみ
+箱,box,hako,no,はこ
+意見,opinion,iken,,いけん
+無駄,waste (pointless),muda,,むだ
+成長,growth,seichō,,せいちょう
+ソフト,software,sofuto,,ソフト
+若い,young,wakai,,わかい
+夫,husband,otto,no,おっと
+パン,bread,pan,no,パン
+南,south,minami,no,みなみ
+変化,change,henka,,へんか
+予想,prediction,yosō,,よそう
+命,life,inochi,no,いのち
+新聞,newspaper,shinbun,,しんぶん
+スマホ,smartphone,sumaho,,スマホ
+妹,younger sister,imōto,no,いもうと
+耳,ear,mimi,no,みみ
+壁,wall,kabe,no,かべ
+席,seat,seki,no,せき
+現場,site (the scene),genba,,げんば
+条件,condition (requirement),jōken,,じょうけん
+テスト,test,tesuto,,テスト
+大きい,big,ōkii,,おおきい
+種類,type (kind),shurui,,しゅるい
+法律,law,hōritsu,,ほうりつ
+可能性,possibility,kanōsei,,かのうせい
+事務所,office,jimusho,,じむしょ
+旅行,trip (travel),ryokō,,りょこう
+趣味,hobby,shumi,,しゅみ
+機会,opportunity,kikai,,きかい
+小説,novel,shōsetsu,,しょうせつ
+美しい,beautiful,utsukushii,,うつくしい
+不安,anxious,fuan,,ふあん
+秋,autumn,aki,no,あき
+社長,company president,shachō,,しゃちょう
+胸,chest,mune,no,むね
+トイレ,toilet,toire,,トイレ
+コーヒー,coffee,kōhī,,コーヒー
+地震,earthquake,jishin,,じしん
+画面,screen,gamen,,がめん
+秘密,secret,himitsu,,ひみつ
+プレゼント,present (gift),purezento,,プレゼント
+広告,ad,kōkoku,,こうこく
+早い,early,hayai,,はやい
+安定,stable,antei,no,あんてい
+紙,paper,kami,no,かみ
+練習,practice,renshū,,れんしゅう
+処理,processing,shori,,しょり
+サッカー,soccer,sakkā,,サッカー
+正しい,correct,tadashii,,ただしい
+瞬間,moment (instant),shunkan,,しゅんかん
+弟,younger brother,otōto,no,おとうと
+電気,electricity (lights),denki,,でんき
+横,side (beside),yoko,no,よこ
+会場,venue,kaijō,,かいじょう
+物語,tale,monogatari,,ものがたり
+首,neck,kubi,no,くび
+川,river,kawa,no,かわ
+遊び,play (fun),asobi,,あそび
+小さい,small,chiisai,,ちいさい
+冬,winter,fuyu,no,ふゆ
+兄,older brother,ani,no,あに
+平和,peace,heiwa,,へいわ
+機械,machine,kikai,,きかい
+安い,cheap,yasui,,やすい
+西,west,nishi,no,にし
+試験,exam,shiken,,しけん
+雑誌,magazine,zasshi,,ざっし
+表,table (chart),hyō,no,ひょう
+批判,criticism,hihan,,ひはん
+信頼,trust,shinrai,,しんらい
+相談,consultation (talking it over),sōdan,,そうだん
+十分,enough,jūbun,no,じゅうぶん
+桜,cherry blossom,sakura,no,さくら
+公園,park,kōen,,こうえん
+東,east,higashi,no,ひがし
+最新,latest,saishin,,さいしん
+努力,effort,doryoku,,どりょく
+性格,personality,seikaku,,せいかく
+提案,suggestion (proposal),teian,,ていあん
+確実,certain (reliable),kakujitsu,,かくじつ
+指,finger,yubi,no,ゆび
+雪,snow,yuki,no,ゆき
+後ろ,behind,ushiro,,うしろ
+文,sentence,bun,no,ぶん
+知識,knowledge,chishiki,,ちしき
+目標,goal,mokuhyō,,もくひょう
+構造,structure,kōzō,,こうぞう
+平均,average,heikin,,へいきん
+古い,old (things),furui,,ふるい
+建物,building,tatemono,,たてもの
+ファイル,file,fairu,,ファイル
+保存,saving (a file),hozon,,ほぞん
+実験,experiment,jikken,,じっけん
+主人公,main character,shujinkō,,しゅじんこう
+不思議,mysterious (strange),fushigi,,ふしぎ
+急,sudden (urgent),kyū,no,きゅう
+他人,other people (strangers),tanin,,たにん
+病気,illness,byōki,,びょうき
+交通,traffic,kōtsū,,こうつう
+様子,how things look,yōsu,,ようす
+ルール,rule,rūru,,ルール
+続き,the rest (continuation),tsuzuki,,つづき
+実行,run (a program),jikkō,,じっこう
+低い,low,hikui,,ひくい
+痛い,painful (it hurts),itai,,いたい
+面倒,troublesome,mendō,,めんどう
+休み,day off (break),yasumi,,やすみ
+血,blood,chi,no,ち
+工場,factory,kōjō,,こうじょう
+値段,price,nedan,,ねだん
+我慢,patience (putting up with it),gaman,,がまん
+午後,afternoon (p.m.),gogo,,ごご
+姉,older sister,ane,no,あね
+ベッド,bed,beddo,,ベッド
+シャツ,shirt,shatsu,,シャツ
+ラーメン,ramen,rāmen,,ラーメン
+兄弟,siblings,kyōdai,,きょうだい
+腕,arm,ude,no,うで
+魚,fish,sakana,no,さかな
+空気,air (mood),kūki,,くうき
+立場,position (standpoint),tachiba,,たちば
+依頼,request,irai,,いらい
+ひどい,terrible,hidoi,,ひどい
+将来,future (one's own),shōrai,,しょうらい
+鳥,bird,tori,no,とり
+隣,next door,tonari,no,となり
+授業,class (lesson),jugyō,,じゅぎょう
+恋人,partner (romantic),koibito,,こいびと
+調子,condition (how it's going),chōshi,,ちょうし
+証拠,evidence,shōko,,しょうこ
+一覧,list (overview),ichiran,,いちらん
+比較,comparison,hikaku,,ひかく
+便利,convenient,benri,,べんり
+熱,fever (heat),netsu,no,ねつ
+自信,confidence,jishin,,じしん
+ミス,mistake (slip),misu,no,ミス
+修正,fix (correction),shūsei,,しゅうせい
+緑,green,midori,no,みどり
+運,luck,un,no,うん
+範囲,range (scope),han'i,,はんい
+感想,thoughts (impressions),kansō,,かんそう
+迷惑,nuisance (trouble to others),meiwaku,,めいわく
+分析,analysis,bunseki,,ぶんせき
+ボタン,button,botan,,ボタン
+インターネット,internet,intānetto,,インターネット
+窓,window,mado,no,まど
+ビール,beer,bīru,,ビール
+草,grass,kusa,no,くさ
+自転車,bicycle,jitensha,,じてんしゃ
+資料,materials (reference documents),shiryō,,しりょう
+約束,promise (appointment),yakusoku,,やくそく
+計算,calculation,keisan,,けいさん
+改善,improvement,kaizen,,かいぜん
+おいしい,delicious,oishii,,おいしい
+一般的,general (common),ippanteki,,いっぱんてき
+掃除,cleaning,sōji,,そうじ
+職場,workplace,shokuba,,しょくば
+接続,connection,setsuzoku,,せつぞく
+辛い,spicy,karai,no,からい
+近所,neighborhood,kinjo,,きんじょ
+肌,skin,hada,no,はだ
+言語,language,gengo,,げんご
+パソコン,computer (PC),pasokon,,パソコン
+祭り,festival,matsuri,,まつり
+最悪,the worst,saiaku,,さいあく
+先輩,senior (at work or school),senpai,,せんぱい
+ゴミ,trash,gomi,no,ごみ
+靴,shoes,kutsu,no,くつ
+許可,permission,kyoka,,きょか
+中身,contents (what's inside),nakami,,なかみ
+利益,profit,rieki,,りえき
+痛み,pain,itami,,いたみ
+正確,accurate,seikaku,,せいかく
+当たり前,obvious (a given),atarimae,,あたりまえ
+お腹,stomach (belly),onaka,,おなか
+角,corner,kado,no,かど
+笑顔,smile,egao,,えがお
+邪魔,in the way (a nuisance),jama,,じゃま
+議論,discussion (debate),giron,,ぎろん
+パーティー,party,pātī,,パーティー
+優しい,kind (gentle),yasashii,,やさしい
+深い,deep,fukai,,ふかい
+卵,egg,tamago,no,たまご
+太陽,sun,taiyō,,たいよう
+牛,cow,ushi,no,うし
+思い出,memory (keepsake),omoide,,おもいで
+速度,speed,sokudo,,そくど
+弱い,weak,yowai,,よわい
+厳しい,strict,kibishii,,きびしい
+得意,strong point (good at),tokui,,とくい
+午前,morning (a.m.),gozen,,ごぜん
+鼻,nose,hana,no,はな
+苦手,weak point (not good at),nigate,,にがて
+野菜,vegetable,yasai,,やさい
+注文,order (purchase),chūmon,,ちゅうもん
+やり方,way (of doing),yarikata,,やりかた
+悲しい,sad,kanashii,,かなしい
+お母さん,mom,okāsan,,おかあさん
+歯,tooth,ha,no,は
+骨,bone,hone,no,ほね
+汗,sweat,ase,no,あせ
+ドア,door,doa,no,ドア
+塩,salt,shio,no,しお
+ケーキ,cake,kēki,,ケーキ
+台風,typhoon,taifū,,たいふう
+橋,bridge,hashi,no,はし
+涙,tears,namida,no,なみだ
+指示,instructions,shiji,,しじ
+感動,being deeply moved,kandō,,かんどう
+コンビニ,convenience store,konbini,,コンビニ
+上手,skilled (good at),jōzu,,じょうず
+上司,boss,jōshi,,じょうし
+床,floor,yuka,no,ゆか
+鍵,key (lock),kagi,no,かぎ
+袋,bag (sack),fukuro,no,ふくろ
+ご飯,meal (cooked rice),gohan,,ごはん
+豚,pig,buta,no,ぶた
+空港,airport,kūkō,,くうこう
+怒り,anger,ikari,,いかり
+都合,convenience (whether it suits),tsugō,,つごう
+甘い,sweet,amai,,あまい
+赤ちゃん,baby,akachan,,あかちゃん
+鏡,mirror,kagami,no,かがみ
+虫,bug (insect),mushi,no,むし
+単純,simple (straightforward),tanjun,,たんじゅん
+肩,shoulder,kata,no,かた
+列,line (queue),retsu,no,れつ
+予算,budget,yosan,,よさん
+課題,task (assignment),kadai,,かだい
+挨拶,greeting,aisatsu,,あいさつ
+役割,role,yakuwari,,やくわり
+真面目,serious (earnest),majime,,まじめ
+完璧,perfect,kanpeki,,かんぺき
+彼氏,boyfriend,kareshi,,かれし
+天才,genius,tensai,,てんさい
+天気,weather,tenki,,てんき
+影,shadow,kage,no,かげ
+向こう,the other side,mukō,,むこう
+芸術,art,geijutsu,,げいじゅつ
+寒い,cold (weather),samui,,さむい
+白い,white,shiroi,,しろい
+暇,free (not busy),hima,no,ひま
+有効,valid (effective),yūkō,,ゆうこう
+両親,parents,ryōshin,,りょうしん
+食べ物,food,tabemono,,たべもの
+波,wave,nami,no,なみ
+植物,plant,shokubutsu,,しょくぶつ
+教室,classroom,kyōshitsu,,きょうしつ
+世の中,the world (society),yononaka,,よのなか
+赤い,red,akai,,あかい
+複雑,complicated,fukuzatsu,,ふくざつ
+時計,clock / watch,tokei,,とけい
+買い物,shopping,kaimono,,かいもの
+荷物,luggage (package),nimotsu,,にもつ
+方針,policy (direction),hōshin,,ほうしん
+形式,format,keishiki,,けいしき
+限界,limit,genkai,,げんかい
+数字,number (digit),sūji,,すうじ
+不満,dissatisfaction,fuman,,ふまん
+緊張,nervousness,kinchō,,きんちょう
+遅い,late / slow,osoi,,おそい
+忙しい,busy,isogashii,,いそがしい
+昼,noon / daytime,hiru,no,ひる
+初心者,beginner,shoshinsha,,しょしんしゃ
+神社,shrine,jinja,,じんじゃ
+信号,traffic light (signal),shingō,,しんごう
+文章,text (writing),bunshō,,ぶんしょう
+手紙,letter (mail),tegami,,てがみ
+入力,input,nyūryoku,,にゅうりょく
+喜び,joy,yorokobi,,よろこび
+詳しい,detailed,kuwashii,,くわしい
+誕生日,birthday,tanjōbi,,たんじょうび
+知り合い,acquaintance,shiriai,,しりあい
+専門家,expert,senmonka,,せんもんか
+背中,back (body),senaka,,せなか
+財布,wallet,saifu,,さいふ
+料金,fee,ryōkin,,りょうきん
+季節,season,kisetsu,,きせつ
+男の子,boy,otokonoko,,おとこのこ
+地図,map,chizu,,ちず
+選択肢,option (choice),sentakushi,,せんたくし
+同僚,coworker,dōryō,,どうりょう
+お茶,tea,ocha,,おちゃ
+文句,complaint,monku,,もんく
+週末,weekend,shūmatsu,,しゅうまつ
+給料,salary,kyūryō,,きゅうりょう
+削除,deletion,sakujo,,さくじょ
+笑い,laughter,warai,,わらい
+ピアノ,piano,piano,,ピアノ
+短い,short (length),mijikai,,みじかい
+静か,quiet,shizuka,,しずか
+医者,doctor,isha,,いしゃ
+正解,right answer,seikai,,せいかい
+合計,total,gōkei,,ごうけい
+恥ずかしい,embarrassing,hazukashii,,はずかしい
+費用,cost,hiyō,,ひよう
+充電,charging,jūden,,じゅうでん
+ノート,notebook,nōto,,ノート
+期限,time limit (expiry),kigen,,きげん
+下手,unskilled (bad at),heta,,へた
+平気,fine (unbothered),heiki,,へいき
+図書館,library,toshokan,,としょかん
+書類,paperwork (documents),shorui,,しょるい
+仕組み,how it works (mechanism),shikumi,,しくみ
+睡眠,sleep,suimin,,すいみん
+気温,air temperature,kion,,きおん
+重い,heavy,omoi,,おもい
+黒い,black,kuroi,,くろい
+危ない,dangerous,abunai,,あぶない
+油,oil,abura,no,あぶら
+氷,ice,kōri,no,こおり
+レストラン,restaurant,resutoran,,レストラン
+住所,address,jūsho,,じゅうしょ
+返事,reply,henji,,へんじ
+苦労,hardship,kurō,,くろう
+懐かしい,nostalgic,natsukashii,,なつかしい
+飛行機,airplane,hikōki,,ひこうき
+数学,math,sūgaku,,すうがく
+道具,tool,dōgu,,どうぐ
+メモ,note (memo),memo,no,メモ
+底,bottom,soko,no,そこ
+遠い,far,tōi,,とおい
+熱い,hot (to the touch),atsui,,あつい
+素直,frank (open-hearted),sunao,,すなお
+怪我,injury,kega,,けが
+寿司,sushi,sushi,,すし
+冗談,joke,jōdan,,じょうだん
+前提,assumption (premise),zentei,,ぜんてい
+珍しい,rare (unusual),mezurashii,,めずらしい
+激しい,intense,hageshii,,はげしい
+息,breath,iki,no,いき
+洗濯,laundry,sentaku,,せんたく
+田舎,countryside,inaka,,いなか
+漢字,kanji,kanji,,かんじ
+休憩,break (rest),kyūkei,,きゅうけい
+動作,behavior (operation),dōsa,,どうさ
+意図,intent,ito,,いと
+暑い,hot (weather),atsui,,あつい
+うるさい,noisy (annoying),urusai,,うるさい
+弁当,boxed lunch (bento),bentō,,べんとう
+タクシー,taxi,takushī,,タクシー
+出力,output,shutsuryoku,,しゅつりょく
+立派,splendid,rippa,,りっぱ
+微妙,iffy (subtle),bimyō,,びみょう
+外国人,foreigner,gaikokujin,,がいこくじん
+アイデア,idea,aidea,,アイデア
+才能,talent,sainō,,さいのう
+体調,physical condition,taichō,,たいちょう
+お菓子,sweets (snacks),okashi,,おかし
+温度,temperature,ondo,,おんど
+軽い,light (weight),karui,,かるい
+椅子,chair,isu,,いす
+階段,stairs,kaidan,,かいだん
+メガネ,glasses,megane,,めがね
+猿,monkey,saru,no,さる
+支払い,payment,shiharai,,しはらい
+ペン,pen,pen,no,ペン
+汚い,dirty,kitanai,,きたない
+広い,spacious (wide),hiroi,,ひろい
+日曜日,Sunday,nichiyōbi,,にちようび
+お父さん,dad,otōsan,,おとうさん
+膝,knee,hiza,no,ひざ
+庭,garden (yard),niwa,no,にわ
+割引,discount,waribiki,,わりびき
+適切,appropriate,tekisetsu,,てきせつ
+雲,cloud,kumo,no,くも
+結論,conclusion,ketsuron,,けつろん
+寂しい,lonely,sabishii,,さびしい
+青い,blue,aoi,,あおい
+丁寧,polite (careful),teinei,,ていねい
+夕方,evening,yūgata,,ゆうがた
+土曜日,Saturday,doyōbi,,どようび
+面接,interview,mensetsu,,めんせつ
+風邪,cold (illness),kaze,no,かぜ
+布団,futon,futon,,ふとん
+残業,overtime,zangyō,,ざんぎょう
+アパート,apartment,apāto,,アパート
+マンション,condo (apartment building),manshon,,マンション
+帽子,hat,bōshi,,ぼうし
+真ん中,middle,mannaka,,まんなか
+電池,battery,denchi,,でんち
+喉,throat,nodo,no,のど
+湖,lake,mizuumi,no,みずうみ
+単語,word (vocabulary item),tango,,たんご
+まずい,bad (taste or situation),mazui,,まずい
+机,desk,tsukue,no,つくえ
+寺,temple,tera,no,てら
+怪しい,suspicious,ayashii,,あやしい
+金曜日,Friday,kin'yōbi,,きんようび
+狭い,cramped (narrow),semai,,せまい
+無効,invalid,mukō,,むこう
+ジュース,juice,jūsu,,ジュース
+習慣,habit,shūkan,,しゅうかん
+皿,plate,sara,no,さら
+細かい,fine-grained (detailed),komakai,,こまかい
+月曜日,Monday,getsuyōbi,,げつようび
+夏休み,summer vacation,natsuyasumi,,なつやすみ
+アルバイト,part-time job,arubaito,,アルバイト
+冷たい,cold (to the touch),tsumetai,,つめたい
+明るい,bright,akarui,,あかるい
+暗い,dark,kurai,,くらい
+新鮮,fresh,shinsen,,しんせん
+砂糖,sugar,satō,,さとう
+言い訳,excuse,iiwake,,いいわけ
+冷蔵庫,fridge,reizōko,,れいぞうこ
+警告,warning,keikoku,,けいこく
+端,edge,hashi,no,はし
+後輩,junior (at work or school),kōhai,,こうはい
+飲み物,drink,nomimono,,のみもの
+パスワード,password,pasuwādo,,パスワード
+お風呂,bath,ofuro,,おふろ
+傘,umbrella,kasa,no,かさ
+出口,exit,deguchi,,でぐち
+牛乳,milk,gyūnyū,,ぎゅうにゅう
+外国語,foreign language,gaikokugo,,がいこくご
+配達,delivery,haitatsu,,はいたつ
+手順,steps (procedure),tejun,,てじゅん
+お礼,thanks (a thank-you),orei,,おれい
+速い,fast,hayai,,はやい
+映画館,movie theater,eigakan,,えいがかん
+順番,order (turn),junban,,じゅんばん
+出張,business trip,shutchō,,しゅっちょう
+バグ,bug (software),bagu,no,バグ
+エアコン,air conditioner,eakon,,エアコン
+都会,big city,tokai,,とかい
+賢い,smart (wise),kashikoi,,かしこい
+景色,scenery (view),keshiki,,けしき
+めんどくさい,such a hassle,mendokusai,,めんどくさい
+つまらない,boring,tsumaranai,,つまらない
+エラー,error,erā,,エラー
+手伝い,help,tetsudai,,てつだい
+親切,kind (helpful),shinsetsu,,しんせつ
+具体的,concrete (specific),gutaiteki,,ぐたいてき
+暖かい,warm,atatakai,,あたたかい
+火曜日,Tuesday,kayōbi,,かようび
+水曜日,Wednesday,suiyōbi,,すいようび
+工夫,clever tweak (ingenuity),kufū,,くふう
+カバン,bag (carry bag),kaban,,かばん
+入口,entrance,iriguchi,,いりぐち
+宿題,homework,shukudai,,しゅくだい
+関数,function (code),kansū,,かんすう
+細い,thin,hosoi,,ほそい
+効率的,efficient,kōritsuteki,,こうりつてき
+うさぎ,rabbit,usagi,,うさぎ
+辞書,dictionary,jisho,,じしょ
+用事,errand (something to do),yōji,,ようじ
+不便,inconvenient,fuben,,ふべん
+朝ご飯,breakfast,asagohan,,あさごはん
+木曜日,Thursday,mokuyōbi,,もくようび
+おやつ,snack,oyatsu,,おやつ
+黄色い,yellow,kiiroi,,きいろい
+りんご,apple,ringo,,りんご
+着物,kimono,kimono,,きもの
+果物,fruit,kudamono,,くだもの
+箸,chopsticks,hashi,no,はし
+台所,kitchen,daidokoro,,だいどころ
+眠い,sleepy,nemui,,ねむい
+涼しい,cool (weather),suzushii,,すずしい
+昼ご飯,lunch,hirugohan,,ひるごはん
+晩ご飯,dinner,bangohan,,ばんごはん
+お土産,souvenir,omiyage,,おみやげ
+締め切り,deadline,shimekiri,,しめきり
+変数,variable,hensū,,へんすう
+要約,summary,yōyaku,,ようやく
+おじいさん,grandfather (old man),ojiisan,,おじいさん
+おばあさん,grandmother (old woman),obāsan,,おばあさん
+いいね,nice (sounds good),ii ne,,いいね
+やった,yay (I did it),yatta,,やった
+またね,see you later,mata ne,,またね
+問題ない,no problem,mondainai,,もんだいない
+そうだね,that's right,sō da ne,,そうだね
+どうぞ,here you go (go ahead),dōzo,,どうぞ
+よろしく,thanks in advance (nice to meet you),yoroshiku,,よろしく
+おはよう,good morning,ohayō,,おはよう
+おめでとう,congratulations,omedetō,,おめでとう
+なるほど,I see,naruhodo,,なるほど
+よかった,that's a relief (glad),yokatta,,よかった
+こんにちは,hello,konnichiwa,,こんにちは
+まさか,no way,masaka,,まさか
+すみません,excuse me,sumimasen,,すみません
+久しぶり,long time no see,hisashiburi,,ひさしぶり
+どうも,thanks (casual),dōmo,,どうも
+じゃあね,see you,jā ne,,じゃあね
+いただきます,let's eat (said before a meal),itadakimasu,,いただきます
+おやすみ,good night,oyasumi,,おやすみ
+頑張って,good luck (hang in there),ganbatte,,がんばって
+お願いします,please,onegaishimasu,,おねがいします
+了解,got it (roger),ryōkai,,りょうかい
+仕方ない,it can't be helped,shikatanai,,しかたない
+こんばんは,good evening,konbanwa,,こんばんは
+お疲れ様,good work (thanks for your effort),otsukaresama,,おつかれさま
+ただいま,I'm home,tadaima,,ただいま
+おかえり,welcome back,okaeri,,おかえり
+いってきます,I'm off (leaving home),ittekimasu,,いってきます
+さようなら,goodbye,sayōnara,,さようなら
+気をつけて,take care,ki o tsukete,,きをつけて
+どういたしまして,you're welcome,dōitashimashite,,どういたしまして
+初めまして,nice to meet you,hajimemashite,,はじめまして
+ごちそうさま,thanks for the meal,gochisōsama,,ごちそうさま

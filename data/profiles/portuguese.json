@@ -1,0 +1,313 @@
+{
+  "schema": 1,
+  "language": "Portuguese",
+  "variety": "Brazilian Portuguese",
+  "script": {
+    "spaces": true,
+    "direction": "ltr",
+    "hint": "sound",
+    "hint_name": "sound hint",
+    "marks": "accents",
+    "fold": {},
+    "reading": {
+      "early": "none",
+      "late": "none",
+      "late_from_stage": 0,
+      "late_only_with": "",
+      "known_drop": false
+    }
+  },
+  "examples": {
+    "swap_sentence": "The build passes agora, mas the cache is stale, então I cleared it.",
+    "full_sentences": [
+      "O teste passa agora.",
+      "É a solução certa."
+    ],
+    "gloss": {
+      "word": "sem",
+      "en": "without",
+      "hint": "sayn"
+    },
+    "default_swaps": [
+      [
+        "and",
+        "e"
+      ],
+      [
+        "but",
+        "mas"
+      ],
+      [
+        "so",
+        "então"
+      ],
+      [
+        "with",
+        "com"
+      ],
+      [
+        "without",
+        "sem"
+      ],
+      [
+        "very",
+        "muito"
+      ],
+      [
+        "also",
+        "também"
+      ],
+      [
+        "now",
+        "agora"
+      ],
+      [
+        "because",
+        "porque"
+      ],
+      [
+        "for",
+        "para"
+      ]
+    ]
+  },
+  "sense_notes": {
+    "brief": "para never after ask, wait, look or pay, or for a duration; então only for therefore or then, never the intensifier so, which is tão; aqui only for a place, never here's; mais means more, never and; depois de and antes de before a noun; o tempo is time or weather, a vez an occasion, o time a team; atualmente means currently, a pasta a folder, a data a date, legal cool; não only as an answer; tem only for there is; the article a reads as English a, so use a nouns where the English had the",
+    "export": "para only for purpose or recipient, never after ask, wait, look or pay (pedir, esperar, procurar and pagar take no \"for\"), and never for a duration; então is \"so\" meaning therefore, or \"then\", but \"so\" as an intensifier is tão; aqui only for a place, never \"here's\"; mais means \"more\", never \"and\" or \"plus\" (mas is \"but\"); depois and antes alone mean afterwards and earlier, and before a noun they are depois de and antes de; o tempo is time or the weather, a vez an occasion (the first time), a hora clock time, and o time a sports team; false friends: atualmente is currently (actually is na verdade), a pasta a folder, a data a date (data is os dados), legal cool; ainda alone is still, and \"not yet\" is the whole ainda não; tem is there is or there are, not has; não only as the answer no; the feminine article a reads as English \"a\", so use those nouns where the English had \"the\"",
+    "export_short": "para not after ask/wait or for durations; mais = more; atualmente = currently"
+  },
+  "drift_words": [
+    "você",
+    "vocês",
+    "ele",
+    "ela",
+    "eles",
+    "elas",
+    "nós",
+    "uma",
+    "umas",
+    "pela",
+    "pelos",
+    "pelas",
+    "numa",
+    "dele",
+    "dela",
+    "deles",
+    "delas",
+    "seu",
+    "sua",
+    "seus",
+    "suas",
+    "meu",
+    "meus",
+    "nosso",
+    "este",
+    "esta",
+    "esse",
+    "essa",
+    "isto",
+    "aquilo",
+    "lhe",
+    "comigo",
+    "está",
+    "estão",
+    "estava",
+    "estou",
+    "tinha",
+    "seria",
+    "temos",
+    "vai"
+  ],
+  "exposure": {
+    "same_as_english": [
+      "e",
+      "com",
+      "se",
+      "como",
+      "nada",
+      "outro",
+      "sim",
+      "de novo",
+      "era",
+      "há",
+      "contra",
+      "logo",
+      "mal",
+      "ali",
+      "oi",
+      "inclusive",
+      "grande",
+      "o site",
+      "pronto",
+      "legal",
+      "principal",
+      "a data",
+      "o final",
+      "janeiro",
+      "anterior",
+      "salvo",
+      "a lei",
+      "a pasta",
+      "forte",
+      "vivo",
+      "alto",
+      "o time",
+      "a vista",
+      "o professor",
+      "o hospital",
+      "verde",
+      "domingo",
+      "a chance",
+      "a mesa",
+      "rosa",
+      "a lua",
+      "rico",
+      "o humor",
+      "grave",
+      "a meta",
+      "o chocolate",
+      "largo",
+      "suave",
+      "bravo",
+      "fresco",
+      "ir",
+      "saber",
+      "responder",
+      "remover",
+      "comer",
+      "mover"
+    ],
+    "not_followed_by": {}
+  },
+  "articles": {
+    "definite": [
+      "o",
+      "a",
+      "os",
+      "as"
+    ],
+    "indefinite": [
+      "um",
+      "uma",
+      "uns",
+      "umas"
+    ],
+    "elided": [],
+    "determiners": [
+      "o",
+      "a",
+      "os",
+      "as",
+      "um",
+      "uma",
+      "uns",
+      "umas",
+      "da",
+      "das",
+      "dos",
+      "na",
+      "nas",
+      "nos",
+      "pelo",
+      "pela",
+      "pelos",
+      "pelas",
+      "ao",
+      "aos",
+      "à",
+      "às",
+      "este",
+      "esta",
+      "esse",
+      "essa",
+      "meu",
+      "minha",
+      "seu",
+      "sua"
+    ],
+    "hint_prefixes": [
+      "oos",
+      "ahs",
+      "oo",
+      "ah",
+      "oon",
+      "OO-mah"
+    ],
+    "fixed": [
+      "o que",
+      "a não ser",
+      "a partir de",
+      "a maioria",
+      "o tempo todo"
+    ]
+  },
+  "extension": {
+    "synonym_examples": [
+      [
+        [
+          "big",
+          "large",
+          "huge"
+        ],
+        "grande"
+      ],
+      [
+        [
+          "other",
+          "another",
+          "else"
+        ],
+        "outro"
+      ],
+      [
+        [
+          "maybe",
+          "perhaps",
+          "possibly"
+        ],
+        "talvez"
+      ],
+      [
+        [
+          "also",
+          "too",
+          "as well"
+        ],
+        "também"
+      ],
+      [
+        [
+          "I think"
+        ],
+        "acho que"
+      ]
+    ],
+    "filler_example": [
+      "and",
+      "e"
+    ],
+    "sense_note": "\"so\" meaning therefore -> então; \"so\" as an intensifier, as in \"so slow\", is tão, NOT então; \"here\" introducing something, as in \"here's\", is NOT aqui; \"actually\" is NOT atualmente; \"and\" or \"plus\" is NOT mais; a noun listed with the article a reads as English \"a\", so swap it only where the English had \"the\"",
+    "adjective_example": [
+      "the fix is fast",
+      "the fix is rápido"
+    ],
+    "level_examples": {},
+    "synonyms": {
+      "cool": [
+        "neat"
+      ],
+      "great": [
+        "awesome"
+      ],
+      "definitely": [
+        "certainly"
+      ],
+      "everyone": [
+        "everybody"
+      ],
+      "hi": [
+        "hey"
+      ]
+    }
+  }
+}

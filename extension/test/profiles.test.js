@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { GENERIC, PROFILES } from '../src/profile-data.js';
 import { profileFor, articlePatterns, readingFor } from '../src/profile.js';
 import { buildSystemPrompt } from '../src/prompt.js';
-import { validateSwaps, glossMatches, SYNONYMS } from '../src/levels.js';
+import { validateSwaps, glossMatches, SYNONYMS, normalizeFr, foldFor } from '../src/levels.js';
 
 const DATA = new URL('../../data/', import.meta.url);
 const json = (name) => JSON.parse(readFileSync(new URL(`profiles/${name}`, DATA), 'utf8'));
@@ -90,6 +90,41 @@ describe('profiles', () => {
     }
   });
 
+  test('German folds umlauts to ae, oe, ue and ss instead of stripping them', () => {
+    const de = profileFor('German');
+    expect(normalizeFr('schön')).toBe(normalizeFr('schon')); // the French fold would merge them
+    expect(foldFor(de)('Schön')).toBe('schoen');
+    expect(foldFor(de)('groß')).toBe('gross');
+    expect(foldFor(profileFor('French'))).toBe(normalizeFr);
+    const words = [
+      { fr: 'schön', en: 'beautiful / nice', hint: 'shöhn', status: 'active' },
+      { fr: 'schon', en: 'already', hint: 'shohn', status: 'active' },
+      { fr: 'Fehler', en: 'mistake / error', hint: 'FAY-luh', status: 'active' },
+    ];
+    const swaps = validateSwaps(1, [{ o: 'nice', f: 'schoen' }, { o: 'already', f: 'schon' }, { o: 'nice', f: 'schon' },
+      { o: 'bug', f: 'fehler' }], words, 'German');
+    expect(swaps.map((s) => [s.o, s.f])).toEqual([['nice', 'schön'], ['already', 'schon'], ['bug', 'Fehler']]);
+  });
+
+  test('Portuguese fixed phrases keep their article', () => {
+    const pt = articlePatterns(profileFor('Portuguese'));
+    for (const phrase of ['o que', 'a não ser', 'a partir de', 'a maioria', 'o tempo todo']) {
+      expect(phrase.replace(pt.any, '')).toBe(phrase);
+      expect(phrase.replace(pt.definite, '')).toBe(phrase);
+    }
+    expect('o problema'.replace(pt.any, '')).toBe('problema');
+    expect('o tempo'.replace(pt.any, '')).toBe('tempo');
+    expect('uma ideia'.replace(pt.any, '')).toBe('ideia');
+    const words = [
+      { fr: 'o que', en: 'what', hint: 'oo KAY', status: 'active' },
+      { fr: 'a partir de', en: 'starting from', hint: 'ah par-CHEER jee', status: 'active' },
+      { fr: 'o problema', en: 'the problem', hint: 'oo proh-BLAY-mah', status: 'active' },
+    ];
+    const swaps = validateSwaps(1, [{ o: 'what', f: 'que' }, { o: 'starting from', f: 'partir de' },
+      { o: 'what', f: 'o que' }, { o: 'problem', f: 'problema' }], words, 'Portuguese');
+    expect(swaps.map((s) => [s.o, s.f, s.h])).toEqual([['what', 'o que', 'oo KAY'], ['problem', 'problema', 'proh-BLAY-mah']]);
+  });
+
   test('reading above a word follows the profile (none by default)', () => {
     const neko = { fr: '猫', en: 'cat', hint: 'neko', reading: 'ねこ', status: 'active' };
     const demo = { fr: 'でも', en: 'but', hint: 'demo', reading: 'でも', status: 'active' };
@@ -99,5 +134,9 @@ describe('profiles', () => {
     expect([readingFor(neko, ja, 1), readingFor(demo, ja, 2)]).toEqual(['neko', 'demo']);
     expect([readingFor(neko, ja, 3), readingFor(demo, ja, 3)]).toEqual(['ねこ', '']);
     expect(readingFor({ ...neko, status: 'known' }, ja, 1)).toBe('');
+    // The bundled Japanese profile: romaji above every word early on, kana above kanji words later, none when known.
+    const bundled = profileFor('Japanese');
+    expect([readingFor(neko, bundled, 1), readingFor(neko, bundled, 3), readingFor(demo, bundled, 3)]).toEqual(['neko', 'ねこ', '']);
+    expect(readingFor({ ...neko, status: 'known' }, bundled, 1)).toBe('');
   });
 });

@@ -174,5 +174,88 @@ class Profiles(unittest.TestCase):
         self.assertNotRegex(weave.brief(state, {}), FRENCH)
 
 
+class BundledLanguages(unittest.TestCase):
+    """The bundled German, Italian, Portuguese and Japanese profiles with their own word lists."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = mock.patch.dict(os.environ, {'FRENCH_WEAVE_HOME': self.tmp.name})
+        self.home.start()
+
+    def tearDown(self):
+        self.home.stop()
+        self.tmp.cleanup()
+
+    def state(self, language, stage=1, known=60):
+        words = fwlib.load_lexicon(fwlib.PLUGIN_ROOT / 'data' / 'lexicons' / f'{language.lower()}.csv')
+        state = fwlib.new_state('2026-10-01', words, known_top=known)
+        state.update(language=language, stage=stage, stage_pinned=True)
+        return state
+
+    def test_every_new_language_fills_the_rules_with_its_own_text(self):
+        for language in ('German', 'Italian', 'Portuguese', 'Japanese'):
+            prof = fwlib.profile(language)
+            self.assertEqual(prof['language'], language)
+            for stage, known in ((1, 60), (3, 200)):
+                state = self.state(language, stage, known)
+                brief = weave.brief(state, {})
+                claude, (about, respond) = export.claude_ai(state), export.chatgpt(state)
+                self.assertIn(prof['examples']['swap_sentence' if stage < 3 else 'full_sentences'][0], brief)
+                self.assertIn(prof['sense_notes']['export'], claude)
+                self.assertIn(prof['sense_notes']['export_short'], respond)
+                for text in (brief, claude, about, respond):
+                    # mais is also Portuguese (more)
+                    self.assertNotRegex(text.replace('mais', '') if language == 'Portuguese' else text, FRENCH)
+                self.assertLessEqual(max(len(about), len(respond)), export.CHATGPT_LIMIT)
+        self.assertIn('Use Brazilian Portuguese words and spellings.', weave.brief(self.state('Portuguese'), {}))
+        self.assertIn('with the romaji: (今 = now, "ima")', export.claude_ai(self.state('Japanese')))
+
+    def test_german_folds_umlauts_instead_of_stripping_them(self):
+        state, prof = self.state('German'), fwlib.profile('German')
+        hits = lambda fr, text: bool(fwlib.pattern(fr, prof).search(fwlib.fold(fwlib.norm(text), prof)))
+        self.assertTrue(hits('schön', 'that looks schoen'))
+        self.assertTrue(hits('schön', 'that looks Schön'))
+        self.assertFalse(hits('schön', 'it is schon done'))  # schon (already) is another word
+        self.assertFalse(hits('schon', 'that looks schön'))
+        self.assertTrue(hits('Länge', 'the Laenge of it'))
+        self.assertFalse(hits('Länge', 'it took lange'))
+        self.assertTrue(hits('groß', 'a gross change'))  # ß typed as ss
+        self.assertEqual(fwlib.find(state, 'fuer')['fr'], 'für')
+        self.assertEqual(fwlib.find(state, 'schon')['fr'], 'schon')
+        # Words spelled like English never count toward the measured share.
+        known = [dict(w, status='known') for w in fwlib.load_lexicon(fwlib.PLUGIN_ROOT / 'data' / 'lexicons' / 'german.csv')]
+        english = 'So the Hand of the Team had a Problem with the Name, so we fixed it fast. ' * 3
+        self.assertEqual(weave.share(english, known, prof)[0], 0)
+        german = 'The build passes jetzt, aber the cache is stale, deshalb I cleared it, and it was schoen. ' * 3
+        self.assertEqual(weave.share(german, known, prof)[0], 12)
+
+    def test_fixed_phrases_keep_their_article(self):
+        state, prof = self.state('Portuguese'), fwlib.profile('Portuguese')
+        hits = lambda fr, text, p=prof: bool(fwlib.pattern(fr, p).search(fwlib.norm(text)))
+        self.assertTrue(hits('o que', 'o que is that'))
+        self.assertFalse(hits('o que', 'a que'))  # not a noun: no determiner swap
+        self.assertTrue(hits('a partir de', 'a partir de today'))
+        self.assertFalse(hits('a partir de', 'o partir de today'))
+        self.assertTrue(hits('o problema', 'o problema is here'))
+        self.assertTrue(hits('o problema', 'meu problema is here'))
+        self.assertIsNone(fwlib.find(state, 'que'))
+        self.assertEqual(fwlib.find(state, 'problema')['fr'], 'o problema')
+        italian = fwlib.profile('Italian')
+        self.assertFalse(hits('lo so', 'I so wanted that', italian))  # "lo so" is I know, not the noun "so"
+        self.assertTrue(hits("l'idea", "un'idea", italian))
+
+    def test_japanese_drift_counts_grammar_inside_runs(self):
+        state = self.state('Japanese', stage=2, known=100)
+        swaps = 'The build passes 今, でも the cache is stale, だから I cleared it, and it is 本当に 簡単 now. ' * 3
+        sentences = 'これは本当に簡単です。問題はキャッシュだったので、ファイルを消しました。私はそれを確認したいです。' * 2
+        self.assertNotIn('slipped', weave.calibration(swaps, state))
+        self.assertIn('slipped into Japanese sentences', weave.calibration(swaps + sentences, state))
+        prof = fwlib.profile('Japanese')
+        self.assertEqual(prof['script']['reading'], {'early': 'romaji', 'late': 'kana', 'late_from_stage': 3,
+                                                     'late_only_with': 'kanji', 'known_drop': True})
+        readings = {w['fr']: w.get('reading') for w in fwlib.public_state(state)['words']}
+        self.assertEqual((readings['今'], readings['でも']), ('いま', 'でも'))
+
+
 if __name__ == '__main__':
     unittest.main()

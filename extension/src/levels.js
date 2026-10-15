@@ -196,13 +196,21 @@ export function normalizeFr(s) {
     .trim();
 }
 
+// The fold for a language's folded index: its profile's script.fold spellings (German: "schön" and "schoen" -> "schoen",
+// while "schon" stays apart) in place of accent stripping, else normalizeFr.
+export function foldFor(profile) {
+  const pairs = Object.entries(profile?.script?.fold || {});
+  if (!pairs.length) return normalizeFr;
+  return (s) => pairs.reduce((text, [letter, plain]) => text.split(letter).join(plain), exactFr(s));
+}
+
 // Article patterns from the language profile (French: le, la, les, un, une, des, l'); the bundled lists are French.
 const FRENCH = articlePatterns(profileFor('French'));
 const articlesFor = (language) => (!language || language === 'French' ? FRENCH : articlePatterns(profileFor(language)));
 export const exactFr = (s) => String(s).normalize('NFC').toLowerCase().replace(/[’‘`]/g, "'").replace(/\s+/g, ' ').trim();
 
 const indexCache = new Map();
-function indexFor(level, sharedWords, articles = FRENCH) {
+function indexFor(level, sharedWords, articles = FRENCH, fold = normalizeFr) {
   const lvl = level <= 1 ? 1 : 2;
   if (!sharedWords && indexCache.has(lvl)) return indexCache.get(lvl);
   const idx = new Map();
@@ -219,8 +227,8 @@ function indexFor(level, sharedWords, articles = FRENCH) {
   }
   const folded = new Map();
   for (const [key, value] of idx) {
-    const fold = normalizeFr(key);
-    folded.set(fold, folded.has(fold) ? null : value);
+    const k = fold(key);
+    folded.set(k, folded.has(k) ? null : value);
   }
   const result = { exact: idx, folded };
   if (!sharedWords) indexCache.set(lvl, result);
@@ -300,15 +308,17 @@ export function validateSwaps(level, swaps, sharedWords, language = 'French') {
   if (!Array.isArray(swaps)) return [];
   const lang = sharedWords ? language || 'French' : 'French';
   const articles = articlesFor(lang);
-  const extra = lang === 'French' ? null : profileFor(lang).extension.synonyms;
+  const prof = lang === 'French' ? null : profileFor(lang);
+  const extra = prof ? prof.extension.synonyms : null;
+  const fold = prof ? foldFor(prof) : normalizeFr;
   const synonyms = extra && Object.keys(extra).length ? mergeSynonyms(SYNONYMS, extra) : SYNONYMS;
-  const idx = indexFor(level, sharedWords, articles);
+  const idx = indexFor(level, sharedWords, articles, fold);
   const out = [];
   for (const s of swaps) {
     if (!s || typeof s.o !== 'string' || typeof s.f !== 'string') continue;
     const o = s.o.trim();
     if (!o || !s.f.trim()) continue;
-    let hit = idx.exact.get(exactFr(s.f)) || idx.folded.get(normalizeFr(s.f));
+    let hit = idx.exact.get(exactFr(s.f)) || idx.folded.get(fold(s.f));
     if (!hit || !glossMatches(o, hit.en, synonyms)) continue;
     // "my problem" -> "my le problème", "the answer" -> "the la réponse": when the English article (or a
     // possessive) stays outside the swap, use the bare noun.

@@ -8,6 +8,7 @@
     "hint": "sound",
     "hint_name": "sound hint",
     "marks": "accents",
+    "fold": {},
     "reading": {"early": "none", "late": "none", "late_from_stage": 0, "late_only_with": "", "known_drop": false}
   },
   "examples": {"swap_sentence": "", "full_sentences": [], "gloss": null, "default_swaps": []},
@@ -17,7 +18,7 @@
     "same_as_english": [],
     "not_followed_by": {}
   },
-  "articles": {"definite": [], "indefinite": [], "elided": [], "determiners": [], "hint_prefixes": []},
+  "articles": {"definite": [], "indefinite": [], "elided": [], "determiners": [], "hint_prefixes": [], "fixed": []},
   "extension": {
     "synonym_examples": [],
     "filler_example": null,

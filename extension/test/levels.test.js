@@ -156,7 +156,8 @@ describe('gloss check across every word list', () => {
     .split('\n').slice(1).map((line) => line.match(/("[^"]*"|[^,]*)(?:,|$)/g).map((c) => c.replace(/,$/, '').replace(/^"|"$/g, '')))
     .map(([fr, en]) => ({ fr, en, hint: '', status: 'active' }));
   const lists = { bundled: L2_WORDS, lexicon: csv('lexicon.csv'), spanish: csv('lexicons/spanish.csv'),
-    japanese: csv('lexicons/japanese.csv'), indonesian: csv('lexicons/indonesian.csv') };
+    japanese: csv('lexicons/japanese.csv'), indonesian: csv('lexicons/indonesian.csv'), german: csv('lexicons/german.csv'),
+    italian: csv('lexicons/italian.csv'), portuguese: csv('lexicons/portuguese.csv') };
   const alternatives = (en) => en.split(/\s*[/;,]\s*/).filter((a) => a.trim());
   // 0.2.1 regression (gloss check with synonyms): a too-strict check dropped right swaps. Each word's own gloss passes.
   test('every gloss alternative of every word is accepted for that word', () => {

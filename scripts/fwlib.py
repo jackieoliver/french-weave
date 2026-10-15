@@ -152,6 +152,20 @@ def variety_note(prof, short=False):
     return '' if not variety else f' Use {variety}.' if short else f' Use {variety} words and spellings.'
 
 
+def fold(text, prof):
+    """Normalized text with the profile's script.fold spellings (German: ä -> ae, ß -> ss), so a word typed without
+    its letters still matches; text as is for a profile without any (French: accents always count)."""
+    for letter, plain in (prof['script'].get('fold') or {}).items():
+        text = text.replace(letter, plain)
+    return text
+
+
+def fixed_phrase(fr, prof):
+    """True for a listed entry that starts like an article but is a fixed phrase (Portuguese o que, a partir de):
+    never split into an article and a bare noun."""
+    return key(fr) in {key(p) for p in prof['articles'].get('fixed') or ()}
+
+
 def measurable(word, prof=None):
     same = (prof or profile(DEFAULT_LANGUAGE))['exposure']['same_as_english']
     return norm(word['fr']) not in same and word.get('scan', True)
@@ -339,14 +353,15 @@ def editing():
 
 
 def find(state, fr):
-    k = key(fr)
+    prof = profile(state)
+    k = fold(key(fr), prof)
     for w in state['words']:
-        if key(w['fr']) == k:
+        if fold(key(w['fr']), prof) == k:
             return w
     # Accept the bare noun for "le problème" style entries (the profile's definite articles).
-    lead = definite_lead(profile(state))
+    lead = definite_lead(prof)
     for w in state['words'] if lead else ():
-        if re.sub(f'^({lead})', '', key(w['fr'])) == k:
+        if not fixed_phrase(w['fr'], prof) and fold(re.sub(f'^({lead})', '', key(w['fr'])), prof) == k:
             return w
     return None
 
@@ -520,11 +535,11 @@ def pattern(fr, prof=None):
     """Regex for a word in normalized prose. Nouns listed with a definite article (le problème) also count bare, and
     with any of the profile's determiners when the bare noun is ASCII (le chat, not the English "chat")."""
     prof = prof or profile(DEFAULT_LANGUAGE)
-    word = norm(fr)
+    word = fold(norm(fr), prof)  # prose is folded the same way (scan, weave.share)
     if NO_SPACES.search(word) or not prof['script']['spaces']:  # no spaces between words: no boundaries to look for
         return re.compile(re.escape(word))
     lead = definite_lead(prof)
-    noun = re.match(f'(?:{lead})(.+)', word) if lead else None
+    noun = re.match(f'(?:{lead})(.+)', word) if lead and not fixed_phrase(fr, prof) else None
     if noun:
         noun = noun.group(1)
         determiners = '|'.join(re.escape(d) for d in prof['articles']['determiners'])
@@ -648,7 +663,7 @@ def scan(words, index, roots=None, start='0000-00-00', prof=None):
             if digest in recent:
                 continue
             recent[digest] = day
-            prose = norm(CODE.sub(' ', text))
+            prose = fold(norm(CODE.sub(' ', text)), prof)
             for fr, regex in patterns.items():
                 if regex.search(prose):
                     entry = counts[fr]

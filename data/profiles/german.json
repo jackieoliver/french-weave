@@ -1,0 +1,292 @@
+{
+  "schema": 1,
+  "language": "German",
+  "variety": "",
+  "script": {
+    "spaces": true,
+    "direction": "ltr",
+    "hint": "sound",
+    "hint_name": "sound hint",
+    "marks": "umlauts and ß",
+    "fold": {
+      "ä": "ae",
+      "ö": "oe",
+      "ü": "ue",
+      "ß": "ss"
+    },
+    "reading": {
+      "early": "none",
+      "late": "none",
+      "late_from_stage": 0,
+      "late_only_with": "",
+      "known_drop": false
+    }
+  },
+  "examples": {
+    "swap_sentence": "The build passes jetzt, aber the cache is stale, deshalb I cleared it.",
+    "full_sentences": [
+      "Der Test läuft jetzt.",
+      "Das ist eine gute Idee."
+    ],
+    "gloss": {
+      "word": "ohne",
+      "en": "without",
+      "hint": "OH-nuh"
+    },
+    "default_swaps": [
+      [
+        "and",
+        "und"
+      ],
+      [
+        "but",
+        "aber"
+      ],
+      [
+        "so",
+        "deshalb"
+      ],
+      [
+        "with",
+        "mit"
+      ],
+      [
+        "without",
+        "ohne"
+      ],
+      [
+        "very",
+        "sehr"
+      ],
+      [
+        "also",
+        "auch"
+      ],
+      [
+        "now",
+        "jetzt"
+      ],
+      [
+        "because",
+        "weil"
+      ],
+      [
+        "for",
+        "für"
+      ]
+    ]
+  },
+  "sense_notes": {
+    "brief": "also means therefore, never English also, which is auch; bald is soon, fast almost, Kind child, Rat advice, Chef boss and Handy a cell phone, never their English look-alikes; bekommen is get, eventuell possibly, aktuell current; für never for a duration; nach never to a person, vor never ago; wenn for if, wann only in questions, ob for whether; hier only for a place, never here's; schon only already, doch only against a no, zu only for too meaning excessively; keep the English the before a German noun, the Haus and never das Haus, and keep the noun's capital; words spelled like English, such as so, Hand, Problem, Name and Team, don't count as German",
+    "export": "also means \"so\" (therefore), never English \"also\" (that is auch), and \"so\" as an intensifier is so, never also or deshalb; bald is soon, fast almost, Kind child, Rat advice, Chef boss and Handy a cell phone, never their English look-alikes; bekommen is \"get\", never \"become\"; eventuell is \"possibly\" and aktuell \"current\"; für never marks a duration, and seit is since in time only; nach is after or to a place, never to a person; vor is before, never \"ago\"; wenn for if or whenever, wann only in questions, ob for whether; \"here's\" is never hier; a filler \"well\" is na ja, never gut; ich will means I want, never the future will; doch only contradicts a no, zu only means too (excessively), schon only already; keep the English \"the\" before a German noun (the Haus, never das Haus), keep the noun's capital, and use adjectives bare (a neu feature); words spelled like English (so, Hand, Problem, Name, Team) don't count as German",
+    "export_short": "also = therefore, never also; bald, fast, Kind, Chef: German senses; the Haus, not das Haus"
+  },
+  "drift_words": [
+    "ich",
+    "wir",
+    "ihr",
+    "uns",
+    "euch",
+    "ihm",
+    "ihn",
+    "ihnen",
+    "dich",
+    "sich",
+    "ist",
+    "sind",
+    "bist",
+    "habe",
+    "hatte",
+    "waren",
+    "wurde",
+    "wurden",
+    "wird",
+    "kann",
+    "muss",
+    "soll",
+    "sollte",
+    "würde",
+    "möchte",
+    "nicht",
+    "eine",
+    "einen",
+    "einem",
+    "einer",
+    "keine",
+    "dieser",
+    "diese",
+    "dieses",
+    "diesen",
+    "meine",
+    "unsere",
+    "zum",
+    "vom",
+    "gibt"
+  ],
+  "exposure": {
+    "same_as_english": [
+      "mit",
+      "von",
+      "was",
+      "als",
+      "ab",
+      "so",
+      "also",
+      "um",
+      "nun",
+      "super",
+      "fast",
+      "toll",
+      "oft",
+      "pro",
+      "links",
+      "bald",
+      "total",
+      "tag",
+      "fall",
+      "art",
+      "land",
+      "team",
+      "person",
+      "problem",
+      "name",
+      "auto",
+      "hand",
+      "fest",
+      "job",
+      "kind",
+      "ding",
+      "film",
+      "moment",
+      "chance",
+      "plan",
+      "rest",
+      "angst",
+      "bank",
+      "bett",
+      "post",
+      "baby",
+      "uni",
+      "form",
+      "grad",
+      "pause",
+      "minute",
+      "kraft",
+      "ton",
+      "winter",
+      "wand",
+      "sport",
+      "stern",
+      "chef",
+      "brief",
+      "app",
+      "computer",
+      "see",
+      "rat",
+      "bad",
+      "handy",
+      "bus",
+      "wind",
+      "lust",
+      "tier",
+      "strand",
+      "e-mail",
+      "roman",
+      "boot",
+      "tee",
+      "taste",
+      "gut",
+      "lang",
+      "alt",
+      "stark",
+      "hart",
+      "rot",
+      "nett",
+      "tot",
+      "nah",
+      "reich",
+      "arm",
+      "warm",
+      "eng",
+      "hell",
+      "rosa",
+      "still",
+      "dick",
+      "fallen",
+      "bitten",
+      "laden"
+    ],
+    "not_followed_by": {}
+  },
+  "articles": {
+    "definite": [],
+    "indefinite": [],
+    "elided": [],
+    "determiners": [],
+    "hint_prefixes": [],
+    "fixed": []
+  },
+  "extension": {
+    "synonym_examples": [
+      [
+        [
+          "big",
+          "large",
+          "huge"
+        ],
+        "groß"
+      ],
+      [
+        [
+          "small",
+          "little",
+          "tiny"
+        ],
+        "klein"
+      ],
+      [
+        [
+          "maybe",
+          "perhaps",
+          "possibly"
+        ],
+        "vielleicht"
+      ],
+      [
+        [
+          "also",
+          "too",
+          "as well"
+        ],
+        "auch"
+      ],
+      [
+        [
+          "error",
+          "mistake",
+          "bug"
+        ],
+        "Fehler"
+      ]
+    ],
+    "filler_example": [
+      "and",
+      "und"
+    ],
+    "sense_note": "\"so\" meaning therefore -> deshalb; \"so\" as an intensifier, as in \"so complicated\", is NOT deshalb or also; English \"also\" is auch, NOT also; \"here\" introducing something, as in \"here's\", is NOT hier; \"well\" as a filler is NOT gut; English \"fast\", \"bald\", \"kind\" and \"chef\" are NOT fast, bald, Kind or Chef; keep the English \"the\" before a German noun, never der, die or das, and keep the noun's capital letter",
+    "adjective_example": [
+      "a new feature",
+      "a neu feature"
+    ],
+    "level_examples": {},
+    "synonyms": {
+      "small": [
+        "little",
+        "tiny"
+      ],
+      "error": [
+        "bug"
+      ]
+    }
+  }
+}

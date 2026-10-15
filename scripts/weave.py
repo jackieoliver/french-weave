@@ -145,9 +145,10 @@ def share(text, words, prof=None):
 
     Drift words are the profile's grammar words (French: je, nous, était, ...): several in one reply mean it slid
     into full sentences in the language. Code, links, glosses and the recall cue are skipped. prof: the language
-    profile (default French)."""
+    profile (default French). In a language written without spaces (Japanese) a run of script is one word, and its
+    grammar words (particles, endings) are found inside the runs, longest first, after the listed words are removed."""
     prof = prof or fwlib.profile(fwlib.DEFAULT_LANGUAGE)
-    prose = fwlib.norm(fwlib.CODE.sub(' ', text))
+    prose = fwlib.fold(fwlib.norm(fwlib.CODE.sub(' ', text)), prof)
     prose = '\n'.join(line for line in prose.split('\n') if not EXTRA.match(line))
     total = len(re.findall(r"[^\W\d_]+(?:['-][^\W\d_]+)*", prose))
     french = learning = 0
@@ -160,8 +161,16 @@ def share(text, words, prof=None):
             french += uses * len(word['fr'].split())
             learning += uses if word['status'] != 'known' else 0
             rest = regex.sub(' ', rest)
-    drift = set(prof['drift_words'])
-    grammar = sum(token in drift for token in re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", rest))
+    drift = {fwlib.fold(fwlib.norm(word), prof) for word in prof['drift_words']}
+    if prof['script']['spaces']:
+        grammar = sum(token in drift for token in re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", rest))
+    else:
+        for word in sorted(words, key=lambda w: -len(w['fr'])):  # unmeasured list words (でも) hold particle kana too
+            rest = rest.replace(fwlib.fold(fwlib.norm(word['fr']), prof), ' ')
+        grammar = 0
+        for word in sorted(drift, key=len, reverse=True):
+            grammar += rest.count(word)
+            rest = rest.replace(word, ' ')
     return french, total, learning, grammar
 
 
