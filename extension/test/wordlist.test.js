@@ -53,13 +53,14 @@ describe('renderWordList in the popup', () => {
     const html = await popupHtml();
     expect(html).toMatch(/<details id="wordList">/); // no "open" attribute
     expect(html).toMatch(/#wordList \[data-rows\] \{ max-height: \d+px; overflow: auto; \}/);
-    expect(html).not.toMatch(/https?:\/\/(?!\*)/); // nothing fetched from the network
+    const module = await Bun.file(new URL('../src/wordlist.js', import.meta.url)).text();
+    for (const source of [html, module]) expect(source).not.toMatch(/fetch\(|XMLHttpRequest|https?:\/\//); // no network
   });
   test('synced words: counts in the summary line, shaky then learning rows with English and sound hint', async () => {
     const doc = await popupDocument();
     const details = doc.getElementById('wordList');
     renderWordList(details, wordSummary(STATE, {}));
-    expect(details.querySelector('summary').textContent).toBe('Your words2 known · 2 learning · 2 shaky');
+    expect(details.querySelector('summary').textContent).toBe('Your words 2 known · 2 learning · 2 shaky');
     expect(details.open).toBe(false);
     expect([...details.querySelectorAll('.word-group')].map((e) => e.textContent)).toEqual(['Shaky', 'Learning']);
     expect([...details.querySelectorAll('.word')].map((e) => [e.dataset.status, e.querySelector('.word-fr').textContent, e.querySelector('.word-en').textContent]))
