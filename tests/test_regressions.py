@@ -64,11 +64,15 @@ class ScriptedRuns(Home):
 
     def under_claude(self, args, **env):
         code = ('import json, os, subprocess\n'
+                'os.environ.pop("PYTHONHOME", None)\n'
                 'ps = subprocess.run(["ps", "-o", "args=", "-p", str(os.getpid())], capture_output=True, text=True)\n'
                 f'out = subprocess.run([{sys.executable!r}, {str(HOOK)!r}, "--hook"], input="{{}}", capture_output=True, text=True)\n'
                 'print(json.dumps([(ps.stdout.split() or [""])[0], out.stdout, out.returncode]))')
-        result = subprocess.run(['claude', '-c', code, *args], executable=sys.executable, capture_output=True, text=True,
-                                timeout=60, env=dict(os.environ, **env))
+        run = lambda **extra: subprocess.run(['claude', '-c', code, *args], executable=sys.executable, capture_output=True,
+                                             text=True, timeout=60, env=dict(os.environ, **env, **extra))
+        result = run()
+        if result.returncode and 'encodings' in result.stderr:  # relocatable builds find their stdlib from argv[0]
+            result = run(PYTHONHOME=sys.base_prefix)
         self.assertEqual(result.returncode, 0, result.stderr)
         name, out, code = json.loads(result.stdout)
         if os.path.basename(name) != 'claude':  # macOS framework Python re-execs itself and loses argv[0]
