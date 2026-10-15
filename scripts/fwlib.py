@@ -580,6 +580,18 @@ def auto_update():
     return bool(entry['autoUpdate']) if isinstance(entry, dict) and 'autoUpdate' in entry else None
 
 
+NARRATION_ENV = 'CLAUDE_CODE_THINKING_DISPLAY_UPDATES'  # undocumented; "0" turns Claude Code's narration off
+
+
+def narration_off():
+    """True when Claude Code's mid-turn narration is off in its user settings, False when on, None when not set."""
+    settings = read_json(claude_home() / 'settings.json', {}) or {}
+    env = settings.get('env') if isinstance(settings, dict) else None
+    if not isinstance(env, dict) or NARRATION_ENV not in env:
+        return None
+    return str(env[NARRATION_ENV]).strip().lower() in ('0', 'false')
+
+
 def transcript_roots():
     """Chat transcripts to scan: FRENCH_WEAVE_TRANSCRIPTS, else Claude Code's projects and Codex's sessions."""
     if os.environ.get('FRENCH_WEAVE_TRANSCRIPTS'):
