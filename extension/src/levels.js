@@ -237,8 +237,12 @@ function indexFor(level, sharedWords, articles = FRENCH, fold = normalizeFr) {
   return result;
 }
 
+// "I" is written with a capital anywhere in a sentence, so it says nothing about the swap's case: "I think" stays
+// je pense que here, and applySwaps (text.js) capitalizes it where the swap starts a sentence.
+const PRONOUN_I = /^I(?!\p{L})/u;
+
 export function matchCase(fr, original) {
-  if (/^\p{Lu}/u.test(original) && !/^\p{Lu}{2}/u.test(original)) {
+  if (/^\p{Lu}/u.test(original) && !/^\p{Lu}{2}/u.test(original) && !PRONOUN_I.test(original)) {
     return fr.charAt(0).toUpperCase() + fr.slice(1);
   }
   return fr;

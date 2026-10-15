@@ -130,6 +130,12 @@ describe('validateSwaps', () => {
     expect(validateSwaps(1, [{ o: 'AND', f: 'et' }])[0].f).toBe('et');
     expect(validateSwaps(1, [{ o: 'Because', f: 'parce que' }])[0].f).toBe('Parce que');
     expect(matchCase("l'idée", 'The idea')).toBe("L'idée");
+    // The pronoun I is always capitalized, so it never capitalizes the swap (text.js does at a sentence start).
+    expect(validateSwaps(2, [{ o: 'I think', f: 'je pense que' }])[0].f).toBe('je pense que');
+    expect(matchCase('je sais', 'I know')).toBe('je sais');
+    expect(matchCase('je sais', "I'm sure")).toBe('je sais');
+    expect(matchCase('ici', 'Here')).toBe('Ici');
+    expect(matchCase('idée', 'Idea')).toBe('Idée');
   });
   test('keeps accented homographs distinct and rejects blank replacements', () => {
     expect(validateSwaps(2, [{ o: 'or', f: 'ou' }])[0].f).toBe('ou');

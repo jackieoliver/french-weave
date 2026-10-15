@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'bun:test';
 import { Window } from 'happy-dom';
-import { flatten, locate, applySwaps, revert, toggle, tipFor } from '../src/text.js';
+import { flatten, locate, applySwaps, revert, toggle, tipFor, sentenceStart } from '../src/text.js';
+import { validateSwaps } from '../src/levels.js';
 
 const win = new Window();
 const document = win.document;
@@ -137,6 +138,23 @@ describe('applySwaps', () => {
     const before = el.innerHTML;
     expect(applySwaps(el, [S({ o: 'and', f: 'et', ctx: '' }), S({ o: 'zebra', f: 'et', ctx: 'zebra' })])).toBe(0);
     expect(el.innerHTML).toBe(before);
+  });
+  test('"I think" takes its capital from the sentence, not from the pronoun', () => {
+    const swap = validateSwaps(2, [{ o: 'I think', f: 'je pense que', ctx: '' }])[0];
+    expect(swap.f).toBe('je pense que');
+    const shown = (html) => {
+      const el = tweet(html);
+      applySwaps(el, [swap]);
+      return el.querySelector('.fw-word')?.textContent;
+    };
+    expect(shown('<span>Honestly, I think it works.</span>')).toBe('je pense que');
+    expect(shown('<span>I think it works.</span>')).toBe('Je pense que');
+    expect(shown('<span>It broke. I think it works now.</span>')).toBe('Je pense que');
+    expect(shown('<span>He said: "I think so."</span>')).toBe('je pense que');
+    expect(shown('<span>Done!</span><br><span>I think so.</span>')).toBe('Je pense que');
+    expect(shown('<span>"Wait." "I think so."</span>')).toBe('Je pense que');
+    expect(sentenceStart('so ', 3)).toBe(false);
+    expect(sentenceStart('', 0)).toBe(true);
   });
   test('tip without hint is just the gloss', () => {
     expect(tipFor({ g: 'and', h: '' })).toBe('and');
