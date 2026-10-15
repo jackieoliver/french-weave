@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "language": "",
+  "variety": "",
+  "script": {
+    "spaces": true,
+    "direction": "ltr",
+    "hint": "sound",
+    "hint_name": "sound hint",
+    "marks": "accents",
+    "reading": "off"
+  },
+  "examples": {"swap_sentence": "", "full_sentences": [], "gloss": null, "default_swaps": []},
+  "sense_notes": {"brief": "", "export": "", "export_short": ""},
+  "drift_words": [],
+  "exposure": {
+    "same_as_english": [],
+    "not_followed_by": {}
+  },
+  "articles": {"definite": [], "indefinite": [], "elided": [], "determiners": [], "hint_prefixes": []},
+  "extension": {
+    "synonym_examples": [],
+    "filler_example": null,
+    "sense_note": "",
+    "adjective_example": null,
+    "level_examples": {},
+    "synonyms": {}
+  }
+}
