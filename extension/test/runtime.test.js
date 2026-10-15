@@ -128,8 +128,16 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     await wait(800);
     expect(span.classList.contains('fw-tip')).toBe(true);
     expect(local.pendingEvents).toHaveLength(1);
+    // The gloss is one fixed box outside the text (so overflow: hidden can't clip it), never inside the word.
+    const gloss = win.document.querySelector('fw-gloss');
+    expect(gloss.parentNode).toBe(win.document.documentElement);
+    expect(gloss.textContent).toBe(span.getAttribute('data-tip'));
+    expect(gloss.classList.contains('fw-gloss-on')).toBe(true);
+    expect(gloss.style.top).toMatch(/px$/);
+    expect(span.contains(gloss) || el.contains(gloss)).toBe(false);
     span.dispatchEvent(user(new win.FocusEvent('focusout', { bubbles: true })));
     expect(span.classList.contains('fw-tip')).toBe(false);
+    expect(gloss.classList.contains('fw-gloss-on')).toBe(false);
     span.dispatchEvent(user(new win.MouseEvent('mouseover', { bubbles: true })));
     await wait(800);
     expect(span.classList.contains('fw-tip')).toBe(true);

@@ -79,7 +79,7 @@ try {
     const first = page.locator('.fw-word').first();
     await first.hover();
     await page.waitForTimeout(1000); // the gloss shows after a short dwell, which also counts as a peek
-    out.hoverAfter = await first.evaluate((e) => getComputedStyle(e, '::after').content);
+    out.hoverAfter = await page.evaluate(() => document.querySelector('fw-gloss.fw-gloss-on')?.textContent || '');
     await first.click();
     out.afterClick = await first.evaluate((e) => ({ text: e.textContent, english: e.classList.contains('fw-en') }));
     await first.click();

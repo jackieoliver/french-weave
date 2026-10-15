@@ -68,10 +68,33 @@ function record(span, event) {
     if (!r?.ok && daily) seen.delete(id);
   }).catch(() => { if (daily) seen.delete(id); });
 }
+// The gloss is one box for the whole page, fixed to the viewport and placed over the word, so a container with
+// overflow: hidden (quoted posts on X, comment threads) can't clip or hide it the way a box inside the word could.
+// It sits outside every text block the extension reads, never takes the pointer, and is hidden from screen readers
+// (the word's aria-label carries the gloss).
+let tipBox = null;
+const TIP_GAP = 4;
+function showTip(span) {
+  if (!tipBox?.isConnected) {
+    tipBox = document.createElement('fw-gloss');
+    tipBox.className = 'fw-gloss';
+    tipBox.setAttribute('aria-hidden', 'true');
+    document.documentElement.append(tipBox);
+  }
+  tipBox.textContent = span.getAttribute('data-tip') || '';
+  tipBox.classList.add('fw-gloss-on');
+  const word = span.getBoundingClientRect();
+  const box = tipBox.getBoundingClientRect();
+  const width = document.documentElement.clientWidth || window.innerWidth;
+  const top = word.top - box.height - TIP_GAP >= 0 ? word.top - box.height - TIP_GAP : word.bottom + TIP_GAP;
+  tipBox.style.left = `${Math.max(TIP_GAP, Math.min(word.left, width - box.width - TIP_GAP))}px`;
+  tipBox.style.top = `${top}px`;
+}
 // The gloss appears only after a short dwell; reaching it counts as a peek (the reader needed the meaning).
 function hideTip() {
   clearTimeout(tipTimer); tipTimer = null;
   for (const el of document.querySelectorAll(`.${SWAP_CLASS}.fw-tip`)) el.classList.remove('fw-tip');
+  tipBox?.classList.remove('fw-gloss-on');
 }
 function armTip(e) {
   const span = swapFor(e);
@@ -81,6 +104,7 @@ function armTip(e) {
     tipTimer = null;
     if (!span.isConnected || span.classList.contains('fw-en')) return;
     span.classList.add('fw-tip');
+    showTip(span);
     if (e.type === 'mouseover') record(span, 'peek'); // a page can focus a span from script, so focus never counts
   }, TIP_DELAY_MS);
 }
