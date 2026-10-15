@@ -1,6 +1,6 @@
 # French Weave
 
-Learn French from the English you already read. French Weave swaps a few French words into your AI chat replies
+Learn languages from the English you already read. French Weave swaps a few French words into your AI chat replies
 and the web pages you read, at your level, and moves each word from learning to known as you keep seeing it.
 
 > The build passes maintenant, mais the cache is stale, donc I cleared it.
@@ -40,7 +40,8 @@ It asks four questions in one go (how much French you know, where French should 
 you'll give it a Gemini key; skip any to take the default), installs everything, and then hands you up to four
 steps it can't do:
 
-1. Extension: get a free Gemini API key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+1. Extension: get a Gemini API key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). A free key
+   lets Google use the page text it's sent to improve its products; see [What leaves your machine](#what-leaves-your-machine).
 2. Extension: open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, pick the folder it names.
 3. Extension: click the French Weave toolbar icon, then **Allow all websites** (until then it only runs on X), and
    paste the key if you didn't give setup a key file. If you chose only sites you turn on, tick the box next to
@@ -69,8 +70,11 @@ and paste the block it prints. It carries your real progress; re-export about on
 - Your word list and progress stay in `~/.french-weave` (or `$FRENCH_WEAVE_HOME`).
 - The hook reads your local Claude Code and Codex transcripts to count which words you saw, and never sends them
   anywhere. Its instructions go to Anthropic or OpenAI as part of your message, like the rest of your prompt.
-- The extension sends readable text from the sites where it's on to Google's Gemini API with your key (free-tier
-  keys let Google use prompts to improve its products). Links, code, forms and editable text are skipped.
+- The extension sends readable text from the sites where it's on to Google's Gemini API with your key. Links,
+  code, forms and editable text are skipped.
+- With a free Gemini key, Google may use that text to improve its products, and human reviewers may read it. If you
+  don't want that, use a paid key (turn on billing for the key's Google Cloud project): Google doesn't use paid-key
+  prompts that way. In the EEA, UK and Switzerland the paid terms cover free keys too.
 - Off by default even in every-site mode: webmail and messaging, AI chat sites, password managers, banking and
   payments, health portals, government sites, Google Docs and Drive, and local or intranet addresses (the list is in
   `extension/src/settings.js`). No list catches every sensitive site, so turn others off in the popup, or choose

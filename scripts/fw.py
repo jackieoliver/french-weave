@@ -250,6 +250,7 @@ def setup(args):
         print("     on each site you want, tick the box next to the site's name (Chrome asks for that site).")
     if not key and not (home / 'gemini_key').exists():
         print('     Paste a Gemini API key (https://aistudio.google.com/apikey).')
+        print('     With a free key, Google may use the page text it is sent to improve its products; a paid key avoids that.')
     print('Chat weaving runs wherever the plugin is enabled; sessions opened from now on pick it up.')
 
 

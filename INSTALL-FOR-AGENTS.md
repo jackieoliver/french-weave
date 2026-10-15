@@ -20,7 +20,8 @@ Human steps (send as written):
 >    websites** (or, on each site you want, tick the box next to the site's name). Chrome doesn't let scripts do this
 >    part.
 > 2. If you pick the Chrome extension: a Gemini API key (free at https://aistudio.google.com/apikey), as a file
->    path now or pasted into the extension's popup at the end.
+>    path now or pasted into the extension's popup at the end. With a free key, Google may use the page text it's
+>    sent to improve its products; a paid key (billing on) avoids that.
 > 3. If you pick Codex CLI: the next time you start `codex`, it asks you to review a new hook; choose
 >    **Trust all and continue**.
 

@@ -18,7 +18,8 @@ Leave Codex CLI out of question 2 if `codex_cli` above is null.
    installed) / The Chrome extension on websites (default) / A claude.ai or ChatGPT preferences block to paste.
 3. "If you picked the Chrome extension, which websites?" Every site; turn any off from the toolbar (default) /
    Only sites I turn on.
-4. "If you picked the Chrome extension, your Gemini API key (free at https://aistudio.google.com/apikey)?" Paste it
+4. "If you picked the Chrome extension, your Gemini API key (free at https://aistudio.google.com/apikey; with a free
+   key Google may use the page text it's sent to improve its products, a paid key avoids that)?" Paste it
    into the extension's popup at the end (default) / A file that contains it: type its path under Other. Never
    paste the key itself here.
 
