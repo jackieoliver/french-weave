@@ -165,9 +165,9 @@ def parse_state_line(line):
     return out
 
 
-def claude_ai(state, now=None, tail=None, known_max=KNOWN_LIST_MAX):
+def claude_ai(state, now=None, tail=None, known_max=KNOWN_LIST_MAX, dates=True):
     """Personal preferences for claude.ai (Settings > Profile): the rules, then the state line."""
-    return localize(rules(), state) + '\n\n' + state_line(state, now, tail=tail, known_max=known_max)
+    return localize(rules(), state) + '\n\n' + state_line(state, now, tail=tail, known_max=known_max, dates=dates)
 
 
 def chatgpt(state, now=None, limit=CHATGPT_LIMIT, tail=None):

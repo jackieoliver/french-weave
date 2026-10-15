@@ -425,9 +425,13 @@ class Codex(Home):
         self.assertFalse(weave.interactive({}, data, exec_check=lambda: True))
         self.assertTrue(weave.interactive({}, data, exec_check=lambda: False))
         self.assertTrue(weave.interactive({'FRENCH_WEAVE_FORCE': '1'}, data, exec_check=lambda: True))
-        code = f'import sys, os; sys.path.insert(0, {str(ROOT / "scripts")!r}); import weave; print(weave.codex_exec(os.getpid()))'
+        code = (f'import sys, os; sys.path.insert(0, {str(ROOT / "scripts")!r}); import weave; '
+                'print(os.path.basename(weave.process_args(os.getpid())[0][0]), weave.codex_exec(os.getpid()))')
         sh = subprocess.run(['codex', '-c', code, 'exec'], executable=sys.executable, capture_output=True, text=True)
-        self.assertEqual(sh.stdout.strip(), 'True', sh.stderr)
+        name, _, result = sh.stdout.strip().rpartition(' ')
+        if name != 'codex':  # macOS framework Python re-execs itself, so the process no longer shows argv[0]
+            self.skipTest(f'this Python does not keep argv[0] ({name})')
+        self.assertEqual(result, 'True', sh.stderr)
 
     def test_codex_transcript_replies(self):
         lines = [json.dumps({'type': 'response_item', 'timestamp': '2026-10-09T10:00:00Z',

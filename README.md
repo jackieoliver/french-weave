@@ -22,7 +22,7 @@ Free and open source (MIT). From English to French, with starter lists for Spani
 | Brave, Edge, Arc | Not tested | |
 | Firefox, Safari | Not yet | |
 | macOS, Linux | Yes | Python 3.9 or newer |
-| Windows | Not yet | Setup and the extension's link to your word list are macOS/Linux only |
+| Windows | Not yet | Use the paste-in blocks, or Claude Code or Codex inside WSL (the extension can't sync with it) |
 | Other languages | Starter lists | Spanish, Japanese, Indonesian, or any word list you give setup; see [Other languages](#other-languages) |
 
 ## Set up
@@ -32,6 +32,9 @@ Free and open source (MIT). From English to French, with starter lists for Spani
 ```
 Set up French Weave from https://github.com/jackieoliver/french-weave
 ```
+
+In Codex, first run `/permissions` and pick **Ask for approval**: a new Codex install blocks the download and setup
+without asking.
 
 It asks four questions in one go (how much French you know, where French should show up, which websites, how
 you'll give it a Gemini key; skip any to take the default), installs everything, and then hands you up to four
@@ -47,8 +50,8 @@ steps it can't do:
 Rerunning `/french-weave:setup` asks again and never resets your progress. Agents: follow
 [INSTALL-FOR-AGENTS.md](INSTALL-FOR-AGENTS.md).
 
-**claude.ai or ChatGPT, nothing to install.** Open [blocks/level-01.md](blocks/level-01.md) and paste its block
-where it says. When its 30 words feel easy, paste level 2 instead, and so on through level 35.
+**claude.ai or ChatGPT, nothing to install.** Open [blocks/level-01.md](blocks/level-01.md) and copy the block
+for your app (one for claude.ai, two for ChatGPT) into the settings box it names. When its 30 words feel easy, paste level 2 instead, and so on through level 35.
 
 **claude.ai or ChatGPT, with Claude Code installed.** Run `/french-weave:export` (or `/french-weave:export --chatgpt`)
 and paste the block it prints. It carries your real progress; re-export about once a week (Claude Code reminds you).

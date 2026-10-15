@@ -35,7 +35,7 @@ FRENCH WEAVE
 
 - "word?" = translate in one line. "quiz" = ask me what 3 recent words meant. "story" = retell your last answer as a short story at my stage. "easier" / "harder" shifts one stage for this chat. Apart from the recall cue, never quiz me or comment on the method.
 
-French weave state — Stage: 4 | Active (use most; gloss in footer): s'appeler = to be called, "sahp-lay" (1/1); la classe = the class, "lah klahss" (1/1) | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common French words up to about the 1022nd most frequent | Level 35 of 35
+French weave state — Stage: 4 | Active (use most; gloss in footer): s'appeler = to be called, "sahp-lay"; la classe = the class, "lah klahss" | Shaky (use often; gloss in footer): none | Known (use freely; never gloss): common French words up to about the 1022nd most frequent | Level 35 of 35
 ```
 
 ## ChatGPT

@@ -62,15 +62,22 @@ How the answers map to setup (step 3) and the hand-over (step 5):
 (Stage 2 at 40 known words, Stage 3 at 150). It only touches words not introduced yet, so a rerun never resets or
 lowers anyone's progress.
 
+In Codex: the clone and setup need network access and writes outside the workspace (`~/.codex`,
+`~/.french-weave`). If the sandbox blocks a command and you can't request approval, don't fall back to reading
+the repo on the web: tell the person to run `/permissions`, pick **Ask for approval**, and say "go on", then
+rerun the command.
+
 ## 1. Check prerequisites
+
+On native Windows (not WSL), stop here and tell the person Windows isn't supported yet; offer the paste-in
+blocks (`blocks/level-01.md`) or running Claude Code or Codex inside WSL.
 
 ```sh
 python3 -c 'import sys; assert sys.version_info >= (3, 9), sys.version; print(sys.version)'
 claude --version
 ```
 
-Python 3.9+ (macOS system `python3` is fine) on macOS or Linux, and Claude Code. Nothing else is needed: no pip
-installs, no Node. Windows is not supported yet (the native host and setup paths are macOS/Linux only).
+Python 3.9+ (macOS system `python3` is fine) and Claude Code. Nothing else is needed: no pip installs, no Node.
 
 No Claude Code (Codex only, or the extension only): skip step 2, `git clone https://github.com/jackieoliver/french-weave`
 into a temporary folder, and in step 3 use `FW=<clone>/scripts/fw.py`. Setup copies what it needs into

@@ -33,7 +33,7 @@ def block(level, levels, lexicon):
     stage = fwlib.stage_for(state)
     nxt = f'level-{level + 1:02d}.md' if level < levels else None
     tail = f'Level {level} of {levels}' + (f' (next: {nxt})' if nxt else '')
-    claude = export.claude_ai(state, tail=tail, known_max=KNOWN_NAMED)
+    claude = export.claude_ai(state, tail=tail, known_max=KNOWN_NAMED, dates=False)  # a fixed date reads as a score
     about, respond = export.chatgpt(state, tail=tail)
     first, last = (level - 1) * PER_LEVEL + 1, min(level * PER_LEVEL, len(lexicon))
     known = f'words ranked 1-{first - 1}' if first > 1 else 'none yet'

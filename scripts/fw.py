@@ -187,6 +187,9 @@ def set_language(name, lexicon, home):
 
 
 def setup(args):
+    if sys.platform == 'win32':
+        sys.exit('French Weave setup supports macOS and Linux only for now. On Windows, run Claude Code or Codex '
+                 'inside WSL, or paste a block from blocks/ into claude.ai or ChatGPT.')
     info = plan(args.user_data_dir)
     if sys.version_info < (3, 9):
         sys.exit(f'French Weave needs Python 3.9 or newer; this is {info["python_version"]}.')
