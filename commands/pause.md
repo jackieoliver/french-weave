@@ -1,5 +1,5 @@
 ---
-description: Pause French Weave in chat and on X
+description: Pause French Weave in chat and on websites
 allowed-tools: Bash(python3:*)
 ---
 !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/fw.py" pause`

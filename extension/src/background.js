@@ -70,7 +70,7 @@ async function swaps(msg, sender) {
       if (await callsToday(chromeStorage) >= DAILY_MODEL_CALLS) throw new Error(`Daily limit of ${DAILY_MODEL_CALLS} model calls reached; French resumes tomorrow`);
       const { wordState, apiKey, hostKey } = await store.get(['wordState', 'apiKey', 'hostKey']);
       const fetchImpl = async (...args) => { await countCall(chromeStorage); return fetch(...args); };
-      return requestSwaps({ apiKey: apiKey || hostKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, fetchImpl,
+      return requestSwaps({ apiKey: apiKey || hostKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, language: wordState?.language, fetchImpl,
         shownToday: await shownToday(chromeStorage), cooldown, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
     });
     return await locked(async () => {
@@ -147,7 +147,22 @@ async function status() {
   const config = await context();
   const data = await store.get(['wordState', 'apiKey', 'hostKey', 'modelStatus']);
   return { config, words: data.wordState?.words?.length || 0, fetchedAt: data.wordState?.fetchedAt || 0,
-    pastedKey: !!data.apiKey, hostKey: !!data.hostKey, modelStatus: data.modelStatus || null };
+    pastedKey: !!data.apiKey, hostKey: !!data.hostKey, modelStatus: data.modelStatus || null,
+    update: await checkUpdate() };
+}
+
+// An update replaces this folder on disk (setup, or the Claude Code hook after a plugin update), but Chrome keeps
+// running the loaded copy until the extension is reloaded. Compare the manifest on disk with the running one and
+// mark the toolbar icon until the user reloads.
+async function checkUpdate() {
+  try {
+    const disk = await (await fetch(chrome.runtime.getURL('manifest.json'), { cache: 'no-store' })).json();
+    const waiting = disk.version && disk.version !== chrome.runtime.getManifest().version ? String(disk.version) : '';
+    await chrome.action.setBadgeText({ text: waiting ? 'NEW' : '' });
+    return waiting;
+  } catch {
+    return '';
+  }
 }
 
 // Pages may only ask for config, swaps and events; everything else is popup-only.
@@ -197,8 +212,13 @@ chrome.permissions.onRemoved.addListener(permissionsChanged);
 function arm() {
   chrome.alarms.create(ALARM, { periodInMinutes: SYNC_MINUTES });
   void syncWords().catch(() => {});
+  void checkUpdate();
 }
 chrome.runtime.onInstalled.addListener(arm);
 chrome.runtime.onStartup.addListener(arm);
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === ALARM) void syncWords().catch(() => {}); });
+chrome.alarms.onAlarm.addListener((a) => {
+  if (a.name !== ALARM) return;
+  void syncWords().catch(() => {});
+  void checkUpdate();
+});
 void ready.then(registerSites).catch(() => {});

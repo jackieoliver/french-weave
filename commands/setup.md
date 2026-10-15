@@ -1,13 +1,17 @@
 ---
 description: Set up French Weave (asks a few questions, then installs the word state, extension folder and native host)
-argument-hint: [--gemini-key-file <path>]
+argument-hint: [--gemini-key-file <path>] [--language <name> [--lexicon <file>]]
 allowed-tools: Bash(python3:*), AskUserQuestion
 ---
 Setup plan (a dry run; nothing changed yet; don't show it to the user):
 !`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/fw.py" setup --dry-run`
 
-Write no French in anything you say during setup. Ask these four questions in ONE AskUserQuestion call, the
-default option first with "(default)" in its label. Leave Codex CLI out of question 2 if `codex_cli` above is null.
+Write no French in anything you say during setup. If the user wants to learn another language (like Spanish), in the
+arguments or in their message, ask question 1 about that language and make sure the command below gets
+`--language <name>`, plus `--lexicon <file>` if they have a word list (README "Other languages").
+
+Ask these four questions in ONE AskUserQuestion call, the default option first with "(default)" in its label.
+Leave Codex CLI out of question 2 if `codex_cli` above is null.
 
 1. "How much French do you know already?" None (default) / A few basic words / I can read simple French.
 2. "Where should French show up?" (multi-select) Claude Code (always on with the plugin) / Codex CLI (default when

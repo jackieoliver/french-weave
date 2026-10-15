@@ -10,14 +10,15 @@ command yourself; the person only does the steps marked HUMAN. Write no French i
 Run `codex --version` first: if it fails, leave Codex CLI out of question 2. Then, in Claude Code, send the
 human steps below as a short message and ask all four questions in one AskUserQuestion call (question 2
 multi-select, the default option first with "(default)" in its label). In Codex or anywhere else, send the
-human steps and the numbered questions as one chat message. Anyone who skips a question gets the default.
+human steps and the numbered questions as one chat message. Anyone who skips a question gets the default. If you can't ask at all (a non-interactive run), use every default and say which ones you used.
 
 Human steps (send as written):
 
 > Setting up French Weave. A few quick questions below; I'll do the rest, except these steps for you:
 > 1. If you pick the Chrome extension: at the end, open `chrome://extensions`, switch on **Developer mode**, click
 >    **Load unpacked**, and pick the folder I give you, then click the French Weave toolbar icon and **Allow all
->    websites** (or tick **This site** on each site you want). Chrome doesn't let scripts do this part.
+>    websites** (or, on each site you want, tick the box next to the site's name). Chrome doesn't let scripts do this
+>    part.
 > 2. If you pick the Chrome extension: a Gemini API key (free at https://aistudio.google.com/apikey), as a file
 >    path now or pasted into the extension's popup at the end.
 > 3. If you pick Codex CLI: the next time you start `codex`, it asks you to review a new hook; choose
@@ -68,7 +69,13 @@ python3 -c 'import sys; assert sys.version_info >= (3, 9), sys.version; print(sy
 claude --version
 ```
 
-Python 3.9+ (macOS system `python3` is fine) and Claude Code. Nothing else is needed: no pip installs, no Node.
+Python 3.9+ (macOS system `python3` is fine) on macOS or Linux, and Claude Code. Nothing else is needed: no pip
+installs, no Node. Windows is not supported yet (the native host and setup paths are macOS/Linux only).
+
+No Claude Code (Codex only, or the extension only): skip step 2, `git clone https://github.com/jackieoliver/french-weave`
+into a temporary folder, and in step 3 use `FW=<clone>/scripts/fw.py`. Setup copies what it needs into
+`~/.french-weave`, so the clone can be deleted afterwards; later commands run as
+`python3 ~/.french-weave/app/scripts/fw.py <command>`.
 
 ## 2. Install the Claude Code plugin
 
@@ -127,7 +134,8 @@ Tell the person, in plain English (leave out the items for things they didn't pi
 1. Chrome extension: the HUMAN Chrome step with the exact folder from `check` (`~/.french-weave/extension` expanded
    to a full path): `chrome://extensions` -> Developer mode on -> Load unpacked -> that folder. Then the French
    Weave toolbar icon (puzzle piece menu -> pin it): every-site mode, click **Allow all websites** (Chrome asks
-   once; until then it only runs on X); only-sites-I-turn-on mode, tick **This site** on each site they want.
+   once; until then it only runs on X); only-sites-I-turn-on mode, tick the box next to the site's name on each site
+   they want.
 2. Chrome extension, no key file given: click the French Weave toolbar icon (puzzle piece menu -> pin it) and paste
    the Gemini key.
 3. Codex CLI: at the next `codex` start, choose **Trust all and continue** when it asks about the new hook.
@@ -143,11 +151,26 @@ Tell the person, in plain English (leave out the items for things they didn't pi
 You are done when `check` is all `ok` and only the HUMAN steps above remain. If you cloned the repo only to read
 these instructions, delete that clone (setup keeps its own copy in `~/.french-weave`).
 
+## Update
+
+```sh
+claude plugin marketplace update french-weave
+claude plugin update french-weave@french-weave
+```
+
+Then start a new Claude Code session and send any message: the hook sees the new version and refreshes
+`~/.french-weave/extension` and the copy the Codex hook runs from, keeping all progress (rerunning setup does the
+same). Tell the person to click the reload arrow on French Weave in `chrome://extensions`; until they do, its
+toolbar icon shows NEW. Without Claude Code: `git pull` in a clone, `python3 <clone>/scripts/fw.py setup`, then the
+same reload.
+
 ## Uninstall
 
 ```sh
-python3 "$FW" uninstall --codex  # removes the native host manifests and the Codex hook; keeps ~/.french-weave
+python3 ~/.french-weave/app/scripts/fw.py uninstall --codex  # removes the native host manifests and the Codex hook; keeps ~/.french-weave
 claude plugin uninstall french-weave@french-weave
+claude plugin marketplace remove french-weave
 ```
 
-Then remove the extension in `chrome://extensions`, and delete `~/.french-weave` to drop the word progress.
+Then remove the extension in `chrome://extensions`, delete `~/.french-weave` to drop the word progress, and delete
+any pasted block from claude.ai or ChatGPT settings.

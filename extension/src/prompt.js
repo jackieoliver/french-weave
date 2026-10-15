@@ -37,7 +37,21 @@ const entry = ({ fr, en }) => `${fr} = ${en}`;
 
 // With the plugin's word state, learning words (active, then shaky) are the target and known words are filler.
 // Without it, the bundled level list is used with the original examples.
-export function buildSystemPrompt(level, sharedWords, shownToday = []) {
+// French-only examples, cut when the plugin's word state is for another language (fw.py setup --language).
+const FRENCH_ONLY = [
+  ' (including its English synonyms, e.g. "big"/"large"/"huge" -> grand, "only"/"alone"/"single" -> seul, "other"/"another"/"else" -> autre, "even"/"same" -> même)',
+  ' like "and" -> et',
+  ' ("so" meaning therefore -> donc; "so" as an intensifier is NOT donc; "well" as a filler is NOT bien)',
+  ' ("a big win" -> "a grand win" is fine)',
+];
+
+export function buildSystemPrompt(level, sharedWords, shownToday = [], language = 'French') {
+  const prompt = frenchPrompt(level, sharedWords, shownToday);
+  if (!sharedWords || language === 'French') return prompt;
+  return FRENCH_ONLY.reduce((p, cut) => p.replace(cut, ''), prompt).replace(/French(?! Weave)/g, language);
+}
+
+function frenchPrompt(level, sharedWords, shownToday) {
   const lvl = level <= 1 ? 1 : 2;
   const density = lvl === 1
     ? 'about one French word every sentence or two. Count per sentence, not per passage: a passage of four sentences should usually get two or more swaps'

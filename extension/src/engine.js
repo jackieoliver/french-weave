@@ -7,8 +7,8 @@ import { validateSwaps, capSwaps } from './levels.js';
 // free tier's per-minute limit does not cost every batch a failed request before the fallback.
 export const COOLDOWN_MS = { 429: 60000, 503: 30000, timeout: 30000 };
 
-export async function requestSwaps({ apiKey, model, level, batch, words, shownToday, fetchImpl, timeoutMs, cooldown = new Map(), now = Date.now }) {
-  const body = buildRequest({ system: buildSystemPrompt(level, words, shownToday), user: buildUserContent(batch), schema: RESPONSE_SCHEMA });
+export async function requestSwaps({ apiKey, model, level, batch, words, language, shownToday, fetchImpl, timeoutMs, cooldown = new Map(), now = Date.now }) {
+  const body = buildRequest({ system: buildSystemPrompt(level, words, shownToday, language), user: buildUserContent(batch), schema: RESPONSE_SCHEMA });
   const candidates = [model];
   if (FALLBACK_MODEL[model]) candidates.push(FALLBACK_MODEL[model]);
   const models = candidates.filter((m) => !(cooldown.get(m) > now()));

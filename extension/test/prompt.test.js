@@ -39,4 +39,13 @@ describe('prompt', () => {
     expect(p).toContain('four or more swaps');
     expect(buildSystemPrompt(1, words)).toContain('two or more swaps');
   });
+  test('another language from the plugin: its name, no French examples; French stays as it was', () => {
+    const words = [{ fr: '猫', en: 'cat', hint: 'neko', status: 'active' }, { fr: 'でも', en: 'but', hint: 'demo', status: 'known' }];
+    const p = buildSystemPrompt(1, words, [], 'Japanese');
+    expect(p).toContain('French Weave engine');
+    expect(p).toContain('zero Japanese');
+    expect(p).not.toMatch(/French(?! Weave)|donc|grand|-> et/);
+    expect(buildSystemPrompt(1, words, [], 'French')).toBe(buildSystemPrompt(1, words));
+    expect(buildSystemPrompt(1, undefined, [], 'Japanese')).toBe(buildSystemPrompt(1)); // bundled lists are French
+  });
 });

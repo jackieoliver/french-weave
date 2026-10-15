@@ -20,6 +20,11 @@ const visibleWords = new Set();
 const seen = new Set();
 const failures = new Map(); // text key -> failed model attempts; retried with backoff
 const MAX_RETRIES = 3;
+// Live text (countdowns, tickers, "updated 5s ago") would cost a model call per change, and a page that undoes
+// swaps would be repainted forever. Such an element stays English until the next page view.
+const CHURN = { asks: 3, paints: 6 }; // new texts needing a model call / repaints, per element per window
+const CHURN_WINDOW_MS = 60000;
+let churn = new WeakMap(); // element -> { text, asks: [ms], paints: [ms], live }
 const TIP_DELAY_MS = 700; // a beat to recall the word before the meaning appears
 let tipTimer = null;
 const send = (msg) => chrome.runtime.sendMessage(msg);
@@ -69,10 +74,22 @@ function seenVisible() {
 function paint(el, key) {
   if (!on() || keys.get(el) !== key || !readable(el, location.href)) return;
   const swaps = memo.get(key);
-  if (!swaps?.length) return;
+  if (!swaps?.length || busy(el, 'paints')) return;
   applySwaps(el, swaps);
   for (const span of el.querySelectorAll(`.${SWAP_CLASS}`)) if (isSwap(span)) visible.observe(span);
   observer?.takeRecords();
+}
+// True when this element churns; same-text retries never count as a new ask.
+function busy(el, kind, text = '') {
+  const c = churn.get(el) || { text: '', asks: [], paints: [], live: false };
+  churn.set(el, c);
+  if (c.live || (kind === 'asks' && c.text === text)) return c.live;
+  const now = Date.now();
+  c[kind] = c[kind].filter((t) => now - t < CHURN_WINDOW_MS);
+  if (c[kind].length >= CHURN[kind]) return (c.live = true);
+  c[kind].push(now);
+  if (kind === 'asks') c.text = text;
+  return false;
 }
 function consider(el) {
   if (!on() || !el.isConnected) return;
@@ -83,6 +100,7 @@ function consider(el) {
   const key = `${config.revision}:${hashKey(text)}`;
   keys.set(el, key);
   if (memo.has(key)) { paint(el, key); return; }
+  if (busy(el, 'asks', text)) return;
   let p = pending.get(key);
   if (!p) { p = { text, els: new Set() }; pending.set(key, p); }
   p.els.add(el);
@@ -170,6 +188,7 @@ function stop() {
   near?.disconnect(); visible?.disconnect();
   clearTimeout(timer); timer = null;
   pending.clear(); inflight.clear(); memo.clear(); failures.clear(); hideTip();
+  churn = new WeakMap();
   for (const el of tracked) { revert(el); keys.delete(el); }
   tracked.clear(); visibleWords.clear();
 }

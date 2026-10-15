@@ -45,6 +45,24 @@ describe('validateSwaps', () => {
     expect(validateSwaps(1, [{ o: 'and' }, null, { f: 'et' }, { o: '  ', f: 'et' }])).toEqual([]);
     expect(validateSwaps(1, 'nope')).toEqual([]);
   });
+  test('keeps the synonym swaps the prompt itself asks for, with the bundled list and the plugin lexicon glosses', () => {
+    // prompt.js examples and synonym rule; the lexicon (data/lexicon.csv) glosses grand as "big", il y a as "there is".
+    const lexicon = [['grand', 'big'], ['seul', 'alone / only'], ['autre', 'other'], ['même', 'same / even'],
+      ['je pense que', 'I think that'], ["c'est", "it's"], ['il y a', 'there is'], ['merci', 'thank you'],
+      ["d'accord", 'okay / agreed'], ['un peu', 'a little'], ['beaucoup', 'a lot'], ['peut-être', 'maybe']]
+      .map(([fr, en]) => ({ fr, en, hint: '', status: 'active' }));
+    const pairs = [['large', 'grand'], ['huge', 'grand'], ['single', 'seul'], ['another', 'autre'], ['else', 'autre'],
+      ['even', 'même'], ['I think', 'je pense que'], ['it is', "c'est"], ["that's", "c'est"], ['there are', 'il y a'],
+      ['Thanks', 'merci'], ['OK', "d'accord"], ['a bit', 'un peu'], ['so much', 'beaucoup'], ['perhaps', 'peut-être']];
+    const kept = validateSwaps(2, pairs.map(([o, f]) => ({ o, f, ctx: '' })), lexicon).map((s) => s.o);
+    expect(kept).toEqual(pairs.map(([o]) => o));
+    // The bundled level 2 examples in the prompt ("I think"->je pense que, "it's"->c'est, ...) all survive too.
+    const bundled = [['I think', 'je pense que'], ["it's", "c'est"], ['there is', 'il y a'], ['the world', 'le monde'], ['today', "aujourd'hui"]];
+    expect(validateSwaps(2, bundled.map(([o, f]) => ({ o, f, ctx: '' }))).map((s) => s.o)).toEqual(bundled.map(([o]) => o));
+    // Issue #1 still drops.
+    expect(validateSwaps(1, [{ o: 'to start', f: 'donc', ctx: '' }])).toEqual([]);
+  });
+
   test('drops a swap whose English is not the word\'s gloss (issue #1: "to start" -> donc)', () => {
     expect(validateSwaps(1, [{ o: 'to start', f: 'donc' }])).toEqual([]);
     expect(validateSwaps(1, [{ o: 'So', f: 'donc' }])[0].f).toBe('Donc');

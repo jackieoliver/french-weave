@@ -236,11 +236,34 @@ const EN_LEAD_RE = /^(?:the|a|an|to)\s+/;
 const cleanEn = (s) => String(s).toLowerCase().replace(/[’‘`]/g, "'").replace(/\(.*?\)/g, ' ')
   .replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
 
+// Everyday English variants of a gloss, including the synonyms the prompt itself asks the model to use
+// (prompt.js: "big"/"large"/"huge" -> grand, "other"/"another"/"else" -> autre, "I think" -> je pense que, ...).
+const SYNONYMS = {
+  big: ['large', 'huge'],
+  only: ['single'],
+  other: ['another', 'else'],
+  'i think that': ['i think'],
+  okay: ['ok'],
+  'thank you': ['thanks'],
+  'a little': ['a bit', 'a little bit'],
+  'a lot': ['lots', 'a lot of', 'lots of', 'much', 'so much'],
+  maybe: ['perhaps'],
+  'there is': ["there's", 'there are'],
+  'there are': ["there's", 'there is'],
+  "it's": ['it is', 'this is', "that's", 'that is'],
+  'this is': ["it's", 'it is', "that's", 'that is'],
+  hello: ['hi'],
+};
+
 export function glossMatches(original, en) {
   const forms = new Set();
   for (const alt of String(en).split(/\s*[/;,]\s*/)) {
     const g = cleanEn(alt);
-    if (g) forms.add(g).add(g.replace(EN_LEAD_RE, ''));
+    if (!g) continue;
+    for (const f of [g, g.replace(EN_LEAD_RE, '')]) {
+      forms.add(f);
+      for (const syn of SYNONYMS[f] || []) forms.add(syn);
+    }
   }
   const t = cleanEn(original);
   if (!t) return false;

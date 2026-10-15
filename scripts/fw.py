@@ -9,11 +9,14 @@
                                                      already introduced (40: some basics, 150: simple French);
                                                      --sites: extension on every site (all) or only ones you
                                                      turn on (ask)
+  fw.py setup --language NAME [--lexicon FILE]       learn another language from a word list (columns word,en,hint;
+                                                     default data/lexicons/<name>.csv); the old language's state is
+                                                     kept and comes back when you switch back
   fw.py status                                       stage, word counts, learning words
   fw.py known WORD...                                mark words as known
   fw.py learn WORD...                                put words back in the learning set (shaky)
   fw.py stage N|auto                                 pin the stage (1-4) or let it follow known words
-  fw.py pause | resume                               stop or restart French in chat and on X
+  fw.py pause | resume                               stop or restart French in chat and on websites
   fw.py refresh                                      rescan chat transcripts and apply the promotion rules
   fw.py setup --codex [--dry-run]                    also add the chat hook to Codex CLI (~/.codex or $CODEX_HOME)
   fw.py export [--claude-ai | --chatgpt] [--log-day] paste-ready block for claude.ai preferences or ChatGPT
@@ -22,6 +25,7 @@
   fw.py uninstall [--codex] [--dry-run]              remove the native host manifests (and the Codex hook)
 """
 import argparse
+import csv
 import json
 import os
 from pathlib import Path
@@ -147,6 +151,41 @@ def read_key_file(arg):
     return key
 
 
+def named(state):
+    """'Spanish, ' before the stage in setup and status output; nothing for French."""
+    language = fwlib.language(state)
+    return '' if language == fwlib.DEFAULT_LANGUAGE else f'{language}, '
+
+
+def set_language(name, lexicon, home):
+    """Installs the word list for a language as <home>/lexicon.csv (French: the bundled list) and, when the language
+    changes, sets the current state aside as state-<language>.json and brings back one saved for the new language."""
+    name = ' '.join(name.split())
+    bundled = fwlib.PLUGIN_ROOT / 'data' / 'lexicons' / f'{name.lower()}.csv'
+    source = Path(lexicon).expanduser() if lexicon else bundled if bundled.exists() else None
+    if source is None and name.lower() != fwlib.DEFAULT_LANGUAGE.lower():
+        sys.exit(f'No word list for {name}: pass --lexicon FILE, a CSV with columns word,en,hint (README "Other languages").')
+    try:
+        words = fwlib.load_lexicon(source) if source else []
+    except (OSError, UnicodeDecodeError, csv.Error) as error:
+        sys.exit(f'Could not read the word list: {error.__class__.__name__}.')
+    if source and (not words or not all(w['en'] for w in words)):
+        sys.exit('The word list needs a header row word,en,hint and an English gloss on every row.')
+    name = fwlib.DEFAULT_LANGUAGE if not source else name
+    state = fwlib.load_state(create=False, lock=False)
+    old = fwlib.language(state)
+    if state and old != name:
+        os.replace(home / 'state.json', home / f'state-{old.lower()}.json')
+        saved = home / f'state-{name.lower()}.json'
+        if saved.exists():
+            os.replace(saved, home / 'state.json')
+    if source:
+        shutil.copyfile(source, home / 'lexicon.csv')
+    elif (home / 'lexicon.csv').exists():
+        (home / 'lexicon.csv').unlink()
+    return name, len(words)
+
+
 def setup(args):
     info = plan(args.user_data_dir)
     if sys.version_info < (3, 9):
@@ -155,22 +194,17 @@ def setup(args):
     if not (root / 'extension' / 'manifest.json').exists():
         sys.exit(f'No extension/ folder next to {root / "scripts"}; run setup from a full copy of the repo.')
     key = read_key_file(args.gemini_key_file) if args.gemini_key_file else None
+    if args.lexicon and not args.language:
+        sys.exit('--lexicon needs --language NAME too, like --language Spanish --lexicon spanish.csv.')
     if args.dry_run:
         print(json.dumps(dict(info, dry_run=True, gemini_key='would be stored' if key else 'not given',
-                              known_top=args.known_top, sites=args.sites), indent=1))
+                              known_top=args.known_top, sites=args.sites, language=args.language), indent=1))
         if args.codex:
             setup_codex(True)
         return
     home.mkdir(parents=True, exist_ok=True)
     os.chmod(home, 0o700)
-    # Stable copies: the plugin cache path changes on every update, Chrome needs fixed paths.
-    for name, ignore in (('extension', shutil.ignore_patterns('test', 'node_modules', 'package.json', 'bun.lock')),
-                         ('app/scripts', shutil.ignore_patterns('__pycache__')), ('app/data', None)):
-        source = root / ('extension' if name == 'extension' else name.split('/')[1])
-        target = home / name
-        if target.exists():
-            shutil.rmtree(target)
-        shutil.copytree(source, target, ignore=ignore)
+    fwlib.install_copies(root, home)
     launcher = home / 'app' / 'fw-host'
     launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{home / "app" / "scripts" / "fw_host.py"}" "$@"\n')
     launcher.chmod(0o755)
@@ -184,16 +218,19 @@ def setup(args):
         path.write_text(key + '\n')
         path.chmod(0o600)
     with fwlib.locked():
+        language = set_language(args.language, args.lexicon, home)[0] if args.language else None
         if not (home / 'state.json').exists():  # first run: seed known words before the first learning words
             fwlib.save_state(fwlib.new_state(known_top=args.known_top))
     with fwlib.editing() as state:  # later runs: adds new lexicon words, seeds only words not yet introduced
+        if language:
+            state['language'] = language
         fwlib.seed_known(state, args.known_top)
         if args.sites:
             state.setdefault('prefs', {})['extension_sites'] = args.sites
     if args.codex:
         setup_codex(False)
     print('French Weave is set up.')
-    print(f'  word state:  {home / "state.json"} (Stage {fwlib.stage_for(state)}, '
+    print(f'  word state:  {home / "state.json"} ({named(state)}Stage {fwlib.stage_for(state)}, '
           f'{sum(w["status"] == "known" for w in state["words"])} known, '
           f'{sum(w["status"] == "active" for w in state["words"])} learning words)')
     sites = (state.get('prefs') or {}).get('extension_sites', 'all')
@@ -207,7 +244,7 @@ def setup(args):
     if sites == 'all':
         print('     click "Allow all websites" (Chrome asks once; until then it runs only on X).')
     else:
-        print('     on each site you want, tick "This site" (Chrome asks for that site).')
+        print("     on each site you want, tick the box next to the site's name (Chrome asks for that site).")
     if not key and not (home / 'gemini_key').exists():
         print('     Paste a Gemini API key (https://aistudio.google.com/apikey).')
     print('Chat weaving runs wherever the plugin is enabled; sessions opened from now on pick it up.')
@@ -280,7 +317,7 @@ def status(_args):
     for w in state['words']:
         by.setdefault(w['status'], []).append(w)
     stage = fwlib.stage_for(state)
-    print(f'French Weave: Stage {stage}{" (pinned)" if state.get("stage_pinned") else ""}'
+    print(f'French Weave: {named(state)}Stage {stage}{" (pinned)" if state.get("stage_pinned") else ""}'
           f'{", PAUSED" if state.get("paused") else ""}')
     print(f'  known {len(by.get("known", []))}, learning {len(by.get("active", []))}, '
           f'shaky {len(by.get("shaky", []))}, not yet introduced {len(by.get("queue", []))}')
@@ -323,7 +360,7 @@ def pause(value):
     def run(_args):
         with fwlib.editing() as state:
             state['paused'] = value
-        print('French Weave paused: no French in chat or on X until you resume.' if value else 'French Weave resumed.')
+        print('French Weave paused: no French in chat or on websites until you resume (pasted claude.ai or ChatGPT blocks stay as they are).' if value else 'French Weave resumed.')
     return run
 
 
@@ -365,6 +402,8 @@ def main(argv=None):
     p.add_argument('--codex', action='store_true')
     p.add_argument('--known-top', type=int, default=0, metavar='N')
     p.add_argument('--sites', choices=['all', 'ask'])
+    p.add_argument('--language', metavar='NAME')
+    p.add_argument('--lexicon', metavar='FILE')
     p.add_argument('--dry-run', action='store_true')
     p.set_defaults(run=setup)
     p = sub.add_parser('uninstall')

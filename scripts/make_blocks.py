@@ -54,7 +54,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
-    lexicon = fwlib.load_lexicon()
+    lexicon = fwlib.load_lexicon(fwlib.LEXICON)  # the blocks are French, whatever this machine is set up for
     levels = -(-len(lexicon) // PER_LEVEL)
     stale, worst = [], [0, 0, 0]
     for level in range(1, levels + 1):
