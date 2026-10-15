@@ -6,9 +6,13 @@ import { validateSwaps, capSwaps } from './levels.js';
 // cooldown: Map<model, until ms>. Rate-limited or overloaded models are skipped until then, so the
 // free tier's per-minute limit does not cost every batch a failed request before the fallback.
 export const COOLDOWN_MS = { 429: 60000, 503: 30000, timeout: 30000 };
+// A model with a fallback gets a short wait, so an overloaded model costs seconds before the fallback, not 20.
+export const PRIMARY_TIMEOUT_MS = 8000;
+export const timeoutFor = (m, models, timeoutMs) =>
+  models.length > 1 && m === models[0] ? Math.min(timeoutMs || 20000, PRIMARY_TIMEOUT_MS) : timeoutMs;
 
-export async function requestSwaps({ apiKey, model, level, batch, words, shownToday, fetchImpl, timeoutMs, cooldown = new Map(), now = Date.now }) {
-  const body = buildRequest({ system: buildSystemPrompt(level, words, shownToday), user: buildUserContent(batch), schema: RESPONSE_SCHEMA });
+export async function requestSwaps({ apiKey, model, level, batch, words, language, shownToday, fetchImpl, timeoutMs, cooldown = new Map(), now = Date.now }) {
+  const body = buildRequest({ system: buildSystemPrompt(level, words, shownToday, language), user: buildUserContent(batch), schema: RESPONSE_SCHEMA });
   const candidates = [model];
   if (FALLBACK_MODEL[model]) candidates.push(FALLBACK_MODEL[model]);
   const models = candidates.filter((m) => !(cooldown.get(m) > now()));
@@ -20,7 +24,7 @@ export async function requestSwaps({ apiKey, model, level, batch, words, shownTo
   }
   for (const m of models) {
     try {
-      const byId = await callGemini({ fetchImpl, apiKey, model: m, body, timeoutMs });
+      const byId = await callGemini({ fetchImpl, apiKey, model: m, body, timeoutMs: timeoutFor(m, models, timeoutMs) });
       const results = {};
       for (const { id, text } of batch) {
         if (!byId.has(id)) throw new Error('Incomplete model response');

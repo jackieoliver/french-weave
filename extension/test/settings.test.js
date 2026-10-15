@@ -1,5 +1,5 @@
-import { expect, it } from 'bun:test';
-import { cleanSettings, siteEnabled } from '../src/settings.js';
+import { describe, expect, it, test } from 'bun:test';
+import { cleanSettings, siteEnabled, siteOn } from '../src/settings.js';
 
 it('webmail, AI chat and local addresses start off; a popup choice wins', () => {
   const every = { ...cleanSettings(), newSitesEnabled: true };
@@ -11,10 +11,41 @@ it('webmail, AI chat and local addresses start off; a popup choice wins', () => 
     'https://mail.google.com./', 'http://[::ffff:127.0.0.1]/', 'http://0.0.0.0:8000/', 'http://169.254.1.1/', 'http://100.100.1.1:4100/',
     'https://box.example.ts.net/', 'http://router.lan/', 'http://app.test/', 'http://svc.internal/'])
     expect(siteEnabled(every, url)).toBe(false);
+  // Banking, payments, password managers, health, government, messaging and intranet names start off too,
+  // subdomains included; ordinary sites that merely contain a listed name stay on.
+  for (const url of ['https://secure.chase.com/web/auth/dashboard', 'https://www.bankofamerica.com/', 'https://onlinebanking.usbank.com/',
+    'https://www.paypal.com/myaccount/summary', 'https://my.1password.com/', 'https://vault.bitwarden.com/', 'https://mychart.example.org/',
+    'https://www.irs.gov/', 'https://www.gov.uk/', 'https://www.service-public.gouv.fr/', 'https://www.cra-arc.gc.ca/',
+    'https://healthy.kp.org/', 'https://app.slack.com/client/T1', 'https://web.whatsapp.com/', 'https://docs.google.com/document/d/1',
+    'https://www.icloud.com/mail', 'http://wiki/', 'http://jira.corp/', 'https://perplexity.ai/', 'https://example.bank/'])
+    expect(siteEnabled(every, url)).toBe(false);
+  for (const url of ['https://notpaypal.com/', 'https://chase.com.example.org/', 'https://www.google.com/search?q=x', 'https://en.wikipedia.org/wiki/Bank'])
+    expect(siteEnabled(every, url)).toBe(true);
   const chosen = cleanSettings({ siteOverrides: { 'mail.google.com': true, 'example.com': false, 'localhost': true } });
   const withChoices = { ...chosen, newSitesEnabled: true };
   expect(siteEnabled(withChoices, 'https://mail.google.com/mail/')).toBe(true);
   expect(siteEnabled(withChoices, 'http://localhost:8080/')).toBe(true);
   expect(siteEnabled(withChoices, 'https://example.com/')).toBe(false);
   expect(siteEnabled({ ...chosen, newSitesEnabled: false }, 'https://mail.google.com/')).toBe(true);
+});
+
+describe('siteOn edge hosts', () => {
+  const settings = cleanSettings({ newSitesEnabled: false, siteOverrides: { 'example.com': true } });
+  test('a trailing dot is the same site', () => {
+    expect(siteOn(settings, 'example.com.')).toBe(true);
+  });
+  // 0.2.1 regression: a popup choice saved for "example.com" was ignored for "Example.COM" and "example.com.".
+  test('uppercase and trailing-dot hostnames find the popup choice and the off-by-default list', () => {
+    expect(siteOn(settings, 'Example.COM')).toBe(true);
+    expect(siteOn(settings, 'EXAMPLE.com.')).toBe(true);
+    const every = cleanSettings({ newSitesEnabled: true, siteOverrides: { 'news.example.org': false } });
+    expect(siteOn(every, 'News.Example.ORG')).toBe(false);
+    expect(siteOn(every, 'MAIL.GOOGLE.COM')).toBe(false);
+    expect(siteOn(every, 'Mail.Google.Com.')).toBe(false);
+    expect(siteOn(every, 'WWW.Example.COM')).toBe(true);
+  });
+  test('inherited property names are not overrides', () => {
+    expect(siteOn(settings, 'constructor')).toBe(false);
+    expect(siteOn(settings, '__proto__')).toBe(false);
+  });
 });

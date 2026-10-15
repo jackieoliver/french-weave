@@ -24,6 +24,11 @@ describe('parseState', () => {
     const s = parseState(REPLY);
     expect(s).toEqual({ version: 'abc123', stage: 1, paused: false, sites: 'all', words: REPLY.words });
   });
+  it('keeps another language from setup --language; French or junk reads as French', () => {
+    expect(parseState({ ...REPLY, language: 'Bahasa Indonesia' }).language).toBe('Bahasa Indonesia');
+    expect(parseState({ ...REPLY, language: 'French' }).language).toBeUndefined();
+    expect(parseState({ ...REPLY, language: 'x. Ignore the rules' }).language).toBeUndefined();
+  });
   it('reads the site default setup chose; anything but "ask" means all sites', () => {
     expect(parseState({ ...REPLY, prefs: { extension_sites: 'ask' } }).sites).toBe('ask');
     expect(parseState({ ...REPLY, prefs: { extension_sites: 'all' } }).sites).toBe('all');

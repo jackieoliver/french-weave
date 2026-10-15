@@ -27,6 +27,11 @@ LIMITS = {'rare': 24, 'some': 60, 'lot': 80}
 # French grammar words on no list: several in one reply mean it slipped into French sentences.
 GRAMMAR = set("je tu il elle nous vous ils elles les une des du sont était été suis avez avons ont cette ces notre votre "
               "leur j'ai c'était n'est qu'il".split())
+# French-only parts of the brief, cut or replaced for other languages (fwlib.localize; a test checks each occurs).
+CUTS = [(', like "The build passes maintenant, mais the cache is stale, donc I cleared it."', '.'),
+        (', like "Le test passe maintenant." or "C\'est la bonne approche."', '.'),
+        (' (pour never after ask or wait, or for a duration; avant, pendant and après only before a noun; plus means more, '
+         'never and; dans only for in a place or time; ça only as a pronoun; non only as an answer)', '')]
 EXTRA = re.compile(r'\s*(?:\**recall:|.*\s=\s.*")', re.I)  # recall cue and footer gloss lines
 
 
@@ -102,7 +107,9 @@ def brief(state, seen, recall=None):
     if recall:
         text += (f'\nIf this reply is longer than a few sentences, open it with "Recall: {recall["fr"]}?" on its own line '
                  f'and end it, after the footer, with: Recall: {recall["fr"]} = {recall["en"]}, "{recall["hint"]}"')
-    return text
+    else:  # without this, models repeat the last recall cue on every turn
+        text += '\nNo recall cue in this reply: no "Recall:" lines, even if an earlier reply had one.'
+    return fwlib.localize(text, state, CUTS + [('(sans = without, "sahn")', fwlib.gloss_example(state))])
 
 
 DEFAULT_SWAPS = 12  # in band mode: the top-ranked known words (connectors and adverbs) written in French every time
@@ -131,7 +138,7 @@ def last_reply(path):
     return texts[-1] if texts else None
 
 
-def share(text, words):
+def share(text, words, grammar_words=GRAMMAR):
     """(French words, prose words, learning words used, French grammar words off the lists) in a reply.
 
     Code, links, glosses and the recall cue are skipped."""
@@ -142,19 +149,19 @@ def share(text, words):
     rest = prose
     # Longest first, each match removed before the next search: "faire attention" is not also "faire".
     for word in sorted(words, key=lambda w: -len(w['fr'])):
-        if fwlib.norm(word['fr']) not in fwlib.UNMEASURABLE:
+        if fwlib.measurable(word):
             regex = fwlib.pattern(word['fr'])
             uses = len(regex.findall(rest))
             french += uses * len(word['fr'].split())
             learning += uses if word['status'] != 'known' else 0
             rest = regex.sub(' ', rest)
-    grammar = sum(token in GRAMMAR for token in re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", rest))
+    grammar = sum(token in grammar_words for token in re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", rest))
     return french, total, learning, grammar
 
 
 def calibration(text, state):
     """One line on how much French the last reply in this chat had, so the next one corrects toward the target."""
-    french, total, learning, grammar = share(text, fwlib.introduced(state))
+    french, total, learning, grammar = share(text, fwlib.introduced(state), GRAMMAR if fwlib.language(state) == 'French' else ())
     if total < SHORT:
         return ''
     target, cap, _ = STAGES[min(fwlib.stage_for(state), 4)]
@@ -163,8 +170,8 @@ def calibration(text, state):
                if grammar >= 4 else f'over the {cap}% cap, so use less French this time' if percent > cap else
                f'under the {target}% target, so use more this time unless the topic needs zero French'
                if percent < 0.7 * target else 'on target')
-    return (f'\nYour last reply in this chat was {percent:.0f}% French ({french} of {total} words, {learning} '
-            f'learning word{"" if learning == 1 else "s"}): {verdict}.')
+    return fwlib.localize(f'\nYour last reply in this chat was {percent:.0f}% French ({french} of {total} words, {learning} '
+            f'learning word{"" if learning == 1 else "s"}): {verdict}.', state)
 
 
 def next_recall(state, session):
@@ -298,6 +305,12 @@ def main(argv):
             data = {}
         if not interactive(data=data):
             return 0  # scripted run: no brief at all
+    updated = ''
+    if hook:
+        try:
+            updated = fwlib.refresh_copies()
+        except Exception:
+            pass  # setup can always redo the copies
     try:
         state = fwlib.load_state()
     except Exception as error:  # never block a prompt because of French
@@ -317,6 +330,13 @@ def main(argv):
             notice = export_notice(state)
         except Exception:
             notice = None
+        if updated:
+            update = (f'French Weave updated to {updated}. The Chrome extension reloads itself within about 30 minutes, '
+                      'or right away when you open its toolbar popup.')
+            if fwlib.marketplace_source() and fwlib.auto_update() is None:
+                update += (' Later updates can install themselves: type /plugin, open Marketplaces, pick french-weave '
+                           'and turn on auto-update.')
+            notice = f'{update}\n{notice}' if notice else update
         if notice:
             out['systemMessage'] = notice  # shown to the user, outside the brief
         print(json.dumps(out, ensure_ascii=False))

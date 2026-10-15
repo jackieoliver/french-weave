@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'bun:test';
+import { readFileSync } from 'fs';
 import {
-  resolveLevel, L1_WORDS, L2_WORDS, validateSwaps, wordCount, isZeroFrench, normalizeFr, matchCase,
+  resolveLevel, L1_WORDS, L2_WORDS, validateSwaps, glossMatches, wordCount, isZeroFrench, normalizeFr, matchCase,
 } from '../src/levels.js';
 
 describe('level', () => {
@@ -35,6 +36,14 @@ describe('word lists', () => {
 });
 
 describe('validateSwaps', () => {
+  test('an English article left outside the swap gets the bare noun, never a double article', () => {
+    const f = (o, fr) => validateSwaps(1, [{ o, f: fr, ctx: '' }])[0]?.f;
+    expect(f('problem', 'le problème')).toBe('problème'); // "my problem", "a solved problem"
+    expect(f('answer', 'la réponse')).toBe('réponse'); // "The answer is"
+    expect(f('idea', "l'idée")).toBe('idée');
+    expect(f('the problem', 'le problème')).toBe('le problème');
+    expect(f('The answer', 'la réponse')).toBe('La réponse');
+  });
   test('keeps list words, canonicalizes accents, fills gloss and hint from the list', () => {
     const out = validateSwaps(1, [{ o: 'very', f: 'tres', g: 'x', h: 'y', ctx: 'is very good' }]);
     expect(out).toEqual([{ o: 'very', f: 'très', g: 'very', h: 'treh', ctx: 'is very good' }]);
@@ -44,6 +53,29 @@ describe('validateSwaps', () => {
     expect(validateSwaps(2, [{ o: 'in', f: 'dans' }])[0].f).toBe('dans');
     expect(validateSwaps(1, [{ o: 'and' }, null, { f: 'et' }, { o: '  ', f: 'et' }])).toEqual([]);
     expect(validateSwaps(1, 'nope')).toEqual([]);
+  });
+  test('keeps the synonym swaps the prompt itself asks for, with the bundled list and the plugin lexicon glosses', () => {
+    // prompt.js examples and synonym rule; the lexicon (data/lexicon.csv) glosses grand as "big", il y a as "there is".
+    const lexicon = [['grand', 'big'], ['seul', 'alone / only'], ['autre', 'other'], ['même', 'same / even'],
+      ['je pense que', 'I think that'], ["c'est", "it's"], ['il y a', 'there is'], ['merci', 'thank you'],
+      ["d'accord", 'okay / agreed'], ['un peu', 'a little'], ['beaucoup', 'a lot'], ['peut-être', 'maybe']]
+      .map(([fr, en]) => ({ fr, en, hint: '', status: 'active' }));
+    const pairs = [['large', 'grand'], ['huge', 'grand'], ['single', 'seul'], ['another', 'autre'], ['else', 'autre'],
+      ['even', 'même'], ['I think', 'je pense que'], ['it is', "c'est"], ["that's", "c'est"], ['there are', 'il y a'],
+      ['Thanks', 'merci'], ['OK', "d'accord"], ['a bit', 'un peu'], ['so much', 'beaucoup'], ['perhaps', 'peut-être']];
+    const kept = validateSwaps(2, pairs.map(([o, f]) => ({ o, f, ctx: '' })), lexicon).map((s) => s.o);
+    expect(kept).toEqual(pairs.map(([o]) => o));
+    // The bundled level 2 examples in the prompt ("I think"->je pense que, "it's"->c'est, ...) all survive too.
+    const bundled = [['I think', 'je pense que'], ["it's", "c'est"], ['there is', 'il y a'], ['the world', 'le monde'], ['today', "aujourd'hui"]];
+    expect(validateSwaps(2, bundled.map(([o, f]) => ({ o, f, ctx: '' }))).map((s) => s.o)).toEqual(bundled.map(([o]) => o));
+    // Issue #1 still drops.
+    expect(validateSwaps(1, [{ o: 'to start', f: 'donc', ctx: '' }])).toEqual([]);
+  });
+
+  test('drops a swap whose English is not the word\'s gloss (issue #1: "to start" -> donc)', () => {
+    expect(validateSwaps(1, [{ o: 'to start', f: 'donc' }])).toEqual([]);
+    expect(validateSwaps(1, [{ o: 'So', f: 'donc' }])[0].f).toBe('Donc');
+    expect(validateSwaps(1, [{ o: 'really', f: 'très' }])).toEqual([]);
   });
   test('accepts the bare noun and keeps accents', () => {
     const [s] = validateSwaps(1, [{ o: 'problem', f: 'probleme' }]);
@@ -85,5 +117,66 @@ describe('guards', () => {
     expect(isZeroFrench('call 911 in an emergency')).toBe(true);
     expect(isZeroFrench('shipped the new onboarding flow today')).toBe(false);
     expect(isZeroFrench('the taxi was late again')).toBe(false);
+  });
+});
+
+describe('glossMatches', () => {
+  test('matches any slash alternative, with or without a leading article', () => {
+    expect(glossMatches('still', 'again / still')).toBe(true);
+    expect(glossMatches('home', 'the house / home')).toBe(true);
+    expect(glossMatches('the house', 'the house / home')).toBe(true);
+    expect(glossMatches('house', 'the house / home')).toBe(true);
+    expect(glossMatches('free', 'free (no cost)')).toBe(true);
+  });
+  test('accepts plain inflections and ignores case and punctuation', () => {
+    expect(glossMatches('Problems', 'the problem')).toBe(true);
+    expect(glossMatches('starting', 'to start')).toBe(true);
+    expect(glossMatches('started', 'to start')).toBe(true);
+    expect(glossMatches('making', 'to make')).toBe(true);
+    expect(glossMatches('cities', 'the city')).toBe(true);
+    expect(glossMatches('so,', 'so')).toBe(true);
+    expect(glossMatches('it’s', "it's")).toBe(true);
+  });
+  test('QA 2026-10-15: right synonyms the gloss check used to drop', () => {
+    for (const [o, en] of [['too', 'also'], ['as well', 'also'], ['hard', 'difficult'], ['in fact', 'actually'], ['However', 'but'], ['possibly', 'maybe'], ['too', 'too much']]) {
+      expect(glossMatches(o, en)).toBe(true);
+    }
+    expect(glossMatches('sure', 'of course')).toBe(false); // "I'm not sure" is not bien sûr
+  });
+  test('rejects English that is not a gloss', () => {
+    expect(glossMatches('to start', 'so')).toBe(false);
+    expect(glossMatches('soon', 'so')).toBe(false);
+    expect(glossMatches('', 'so')).toBe(false);
+  });
+});
+
+describe('gloss check across every word list', () => {
+  // CSV rows of the plugin lexicon and the starter lists (word or fr, en, ...); quoted fields allowed.
+  const csv = (name) => readFileSync(new URL(`../../data/${name}`, import.meta.url), 'utf8').replace(/^﻿/, '').trim()
+    .split('\n').slice(1).map((line) => line.match(/("[^"]*"|[^,]*)(?:,|$)/g).map((c) => c.replace(/,$/, '').replace(/^"|"$/g, '')))
+    .map(([fr, en]) => ({ fr, en, hint: '', status: 'active' }));
+  const lists = { bundled: L2_WORDS, lexicon: csv('lexicon.csv'), spanish: csv('lexicons/spanish.csv'),
+    japanese: csv('lexicons/japanese.csv'), indonesian: csv('lexicons/indonesian.csv') };
+  const alternatives = (en) => en.split(/\s*[/;,]\s*/).filter((a) => a.trim());
+  // 0.2.1 regression (gloss check with synonyms): a too-strict check dropped right swaps. Each word's own gloss passes.
+  test('every gloss alternative of every word is accepted for that word', () => {
+    for (const [name, words] of Object.entries(lists)) {
+      expect(words.length).toBeGreaterThan(20);
+      const dropped = words.flatMap((w) => alternatives(w.en).filter((alt) => !glossMatches(alt, w.en)).map((alt) => `${name}: ${w.fr} <- ${alt}`));
+      expect(dropped).toEqual([]);
+    }
+  });
+  // Issue #1 generalized: a model pairing a word with another word's English (wrong sense) is dropped.
+  test("another word's gloss is rejected unless the two glosses share an alternative", () => {
+    for (const [name, words] of Object.entries(lists)) {
+      const wrong = [];
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i], other = words[(i + 7) % words.length];
+        const shared = alternatives(other.en).some((alt) => glossMatches(alt, w.en) && glossMatches(alternatives(w.en)[0], other.en));
+        const english = alternatives(other.en)[0];
+        if (!shared && glossMatches(english, w.en)) wrong.push(`${name}: ${w.fr} (${w.en}) <- ${english}`);
+      }
+      expect(wrong).toEqual([]);
+    }
   });
 });

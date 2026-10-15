@@ -213,7 +213,7 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     expect(el.querySelector('.fw-word')).not.toBeNull();
 
     // A failed model call is retried after a backoff instead of leaving the passage English.
-    modelThrows = 2;
+    modelThrows = 1; // Flash-Lite, the default, has no fallback: one failed request, then the retry
     const retried = win.document.createElement('p');
     retried.textContent = 'They walk home and talk about the long week.';
     win.document.querySelector('main').append(retried); await wait();

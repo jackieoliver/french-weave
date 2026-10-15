@@ -1,0 +1,83 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ['3.9', '3.12']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit and regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Ready-made blocks are current and fit
+        run: python scripts/make_blocks.py --check
+
+  extension:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - name: Install
+        run: |
+          if [ -f bun.lock ] || [ -f bun.lockb ]; then
+            bun install --frozen-lockfile
+          else
+            bun install
+          fi
+      - name: Test
+        run: bun test
+
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the base commit must be in the clone
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # Versions must agree everywhere; a pull request, or a push to main, that changes a file the plugin ships
+      # must bump .claude-plugin/plugin.json (`claude plugin update` only delivers when that version changes).
+      - name: Versions agree, and shipped changes bump the version
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          base=""
+          if [ "$EVENT" = "pull_request" ]; then
+            base="$PR_BASE"
+          elif [ "$EVENT" = "push" ] && [ "$REF" = "refs/heads/main" ]; then
+            base="$BEFORE"
+          fi
+          if [ -n "$base" ]; then
+            python tests/check_version_bump.py --base "$base" --head HEAD
+          else
+            python tests/check_version_bump.py --head HEAD
+          fi

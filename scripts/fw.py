@@ -9,11 +9,14 @@
                                                      already introduced (40: some basics, 150: simple French);
                                                      --sites: extension on every site (all) or only ones you
                                                      turn on (ask)
+  fw.py setup --language NAME [--lexicon FILE]       learn another language from a word list (columns word,en,hint;
+                                                     default data/lexicons/<name>.csv); the old language's state and
+                                                     word list are kept and come back when you switch back
   fw.py status                                       stage, word counts, learning words
   fw.py known WORD...                                mark words as known
   fw.py learn WORD...                                put words back in the learning set (shaky)
   fw.py stage N|auto                                 pin the stage (1-4) or let it follow known words
-  fw.py pause | resume                               stop or restart French in chat and on X
+  fw.py pause | resume                               stop or restart French in chat and on websites
   fw.py refresh                                      rescan chat transcripts and apply the promotion rules
   fw.py setup --codex [--dry-run]                    also add the chat hook to Codex CLI (~/.codex or $CODEX_HOME)
   fw.py export [--claude-ai | --chatgpt] [--log-day] paste-ready block for claude.ai preferences or ChatGPT
@@ -22,17 +25,24 @@
   fw.py uninstall [--codex] [--dry-run]              remove the native host manifests (and the Codex hook)
 """
 import argparse
+import csv
 import json
 import os
 from pathlib import Path
 import platform
 import re
 import shutil
+import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fwlib  # noqa: E402
 import export  # noqa: E402
+
+try:
+    import tomllib
+except ImportError:  # Python 3.9 and 3.10: no TOML parser in the standard library
+    tomllib = None
 
 HOST_NAME = 'com.frenchweave.host'
 EXTENSION_ID = 'ckihjnkijacemibkblmjfjgpffflbced'  # fixed by the "key" in extension/manifest.json
@@ -91,30 +101,94 @@ def merge_codex_hooks(data, command):
     return data
 
 
+TABLE = re.compile(r'\s*\[\[?\s*([^\]]*?)\s*\]\]?\s*(#.*)?$')
+HOOKS_KEY = re.compile(r'\s*(hooks|"hooks"|\'hooks\')\s*=')
+CODEX_LINE = 'hooks = true'
+
+
+def hooks_on(text):
+    """Whether config.toml text parses with hooks = true in [features]; None without tomllib (Python 3.9, 3.10)."""
+    if tomllib is None:
+        return None
+    try:
+        return tomllib.loads(text).get('features', {}).get('hooks') is True
+    except (tomllib.TOMLDecodeError, AttributeError):
+        return False
+
+
 def enable_codex_hooks(text):
-    """config.toml text with `hooks = true` in its [features] table (added if missing)."""
+    """config.toml text with `hooks = true` in its [features] table (added if missing), or None when the file
+    can't be edited safely (features as an inline table or dotted keys, or a result that doesn't parse)."""
     lines = text.splitlines()
-    start = next((i for i, line in enumerate(lines) if line.strip() == '[features]'), None)
+    tables = [(i, m.group(1).strip('"\'')) for i, m in ((i, TABLE.match(line)) for i, line in enumerate(lines)) if m]
+    top = lines[:tables[0][0]] if tables else lines
+    if any(re.match(r'\s*["\']?features["\']?\s*[.=]', line) for line in top):
+        return None
+    start = next((i for i, name in tables if name == 'features' and not lines[i].lstrip().startswith('[[')), None)
     if start is None:
-        return text.rstrip('\n') + ('\n\n' if text.strip() else '') + '[features]\nhooks = true\n'
-    end = next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith('[')), len(lines))
-    for i in range(start + 1, end):
-        if re.match(r'\s*hooks\s*=', lines[i]):
-            lines[i] = 'hooks = true'
-            break
+        out = text.rstrip('\n') + ('\n\n' if text.strip() else '') + f'[features]\n{CODEX_LINE}\n'
     else:
-        lines.insert(start + 1, 'hooks = true')
-    return '\n'.join(lines) + '\n'
+        end = next((i for i, _ in tables if i > start), len(lines))
+        for i in range(start + 1, end):
+            if HOOKS_KEY.match(lines[i]):
+                lines[i] = CODEX_LINE
+                break
+        else:
+            lines.insert(start + 1, CODEX_LINE)
+        out = '\n'.join(lines) + '\n'
+    return None if hooks_on(out) is False else out
+
+
+def claude_settings():
+    """Claude Code's user settings file and its contents ({} when missing, None when it isn't a JSON object)."""
+    path = fwlib.claude_home() / 'settings.json'
+    data = fwlib.read_json(path) if path.exists() else {}
+    return path, data if isinstance(data, dict) else None
+
+
+def write_claude_settings(path, data):
+    backup = path.with_name(path.name + '.before-french-weave')
+    if path.exists() and not backup.exists():
+        shutil.copy2(path, backup)
+    temporary = path.with_name(f'{path.name}.{os.getpid()}.tmp')
+    temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    os.replace(temporary, path)
+
+
+def enable_auto_update(dry_run):
+    """Turns on Claude Code's auto-update for this marketplace (off by default outside Anthropic's marketplaces)
+    with the documented extraKnownMarketplaces setting, unless the person already chose either way. Returns the
+    line for the setup summary, or None when French Weave isn't installed as a Claude Code plugin."""
+    source = fwlib.marketplace_source()
+    if not source:
+        return None
+    choice = fwlib.auto_update()
+    if choice is not None:
+        return 'on' if choice else 'off (your choice; /plugin, Marketplaces, french-weave turns it on)'
+    if source.get('source') not in ('github', 'git', 'url'):
+        return 'off (installed from a folder on this computer; update that folder, then run claude plugin update)'
+    path, settings = claude_settings()
+    extra = settings.get('extraKnownMarketplaces', {}) if settings is not None else None
+    if not isinstance(extra, dict):
+        return f'off ({path} is not valid JSON, so setup left it alone)'
+    if not dry_run:
+        extra[fwlib.MARKETPLACE] = {**(extra.get(fwlib.MARKETPLACE) or {'source': source}), 'autoUpdate': True}
+        settings['extraKnownMarketplaces'] = extra
+        write_claude_settings(path, settings)
+    return 'on (Claude Code checks after you start a session; turn off in /plugin, Marketplaces, french-weave)'
 
 
 def setup_codex(dry_run):
     codex = fwlib.codex_home()
     hooks_path, config_path = codex / 'hooks.json', codex / 'config.toml'
     data = merge_codex_hooks(fwlib.read_json(hooks_path, {}) if hooks_path.exists() else {}, codex_command())
-    config = enable_codex_hooks(config_path.read_text() if config_path.exists() else '')
+    original = config_path.read_text() if config_path.exists() else ''
+    config = original if hooks_on(original) else enable_codex_hooks(original)
+    manual = (f'  Could not edit {config_path} safely; add the line `{CODEX_LINE}` to its [features] table yourself '
+              '(inside the braces if it is written as features = { ... }).')
     if dry_run:
-        print(json.dumps({'codex_hooks': str(hooks_path), 'codex_config': str(config_path), 'command': codex_command()},
-                         indent=1))
+        print(json.dumps({'codex_hooks': str(hooks_path), 'codex_config': str(config_path), 'command': codex_command(),
+                          'codex_config_edit': 'manual' if config is None else 'automatic'}, indent=1))
         return
     if hooks_path.exists() and fwlib.read_json(hooks_path) is None:
         sys.exit(f'{hooks_path} is not valid JSON; fix it, then rerun setup --codex.')
@@ -124,8 +198,13 @@ def setup_codex(dry_run):
         if path.exists() and not backup.exists():
             shutil.copy2(path, backup)
     fwlib.write_json(hooks_path, data)
-    config_path.write_text(config)
-    print(f'Codex: chat hook in {hooks_path}, hooks enabled in {config_path}.')
+    if config is None:
+        print(f'Codex: chat hook in {hooks_path}.')
+        print(manual)
+    else:
+        if config != original:
+            config_path.write_text(config)
+        print(f'Codex: chat hook in {hooks_path}, hooks enabled in {config_path}.')
     print('  Human step: start `codex` once; at "Hooks need review" pick "Trust all and continue" (or review first).')
     print('  Codex never runs a new hook before that. `codex exec` runs stay French-free either way.')
 
@@ -147,30 +226,76 @@ def read_key_file(arg):
     return key
 
 
+def named(state):
+    """'Spanish, ' before the stage in setup and status output; nothing for French."""
+    language = fwlib.language(state)
+    return '' if language == fwlib.DEFAULT_LANGUAGE else f'{language}, '
+
+
+def set_language(name, lexicon, home):
+    """Installs the word list for a language as <home>/lexicon.csv (French: the bundled list) and, when the language
+    changes, sets the current state and word list aside as state-<language>.json and lexicon-<language>.csv and
+    brings back ones saved for the new language. Word list: --lexicon, else the saved one, else the bundled one."""
+    name = ' '.join(name.split())
+    bundled = fwlib.PLUGIN_ROOT / 'data' / 'lexicons' / f'{name.lower()}.csv'
+    saved_list = home / f'lexicon-{name.lower()}.csv'
+    source = (Path(lexicon).expanduser() if lexicon else saved_list if saved_list.exists()
+              else bundled if bundled.exists() else None)
+    if source is None and name.lower() != fwlib.DEFAULT_LANGUAGE.lower():
+        sys.exit(f'No word list for {name}: pass --lexicon FILE, a CSV with columns word,en,hint (README "Other languages").')
+    try:
+        words = fwlib.load_lexicon(source) if source else []
+    except (OSError, UnicodeDecodeError, csv.Error) as error:
+        sys.exit(f'Could not read the word list: {error.__class__.__name__}.')
+    if source and (not words or not all(w['en'] for w in words)):
+        sys.exit('The word list needs a header row word,en,hint and an English gloss on every row.')
+    name = fwlib.DEFAULT_LANGUAGE if not source else name
+    state = fwlib.load_state(create=False, lock=False)
+    old = fwlib.language(state)
+    if state and old.lower() != name.lower():
+        os.replace(home / 'state.json', home / f'state-{old.lower()}.json')
+        if (home / 'lexicon.csv').exists():
+            os.replace(home / 'lexicon.csv', home / f'lexicon-{old.lower()}.csv')
+        saved = home / f'state-{name.lower()}.json'
+        if saved.exists():
+            os.replace(saved, home / 'state.json')
+    if source:
+        shutil.copyfile(source, home / 'lexicon.csv')
+    elif (home / 'lexicon.csv').exists():
+        (home / 'lexicon.csv').unlink()
+    if saved_list.exists():
+        saved_list.unlink()  # back in use as lexicon.csv, or replaced by --lexicon
+    return name, len(words)
+
+
 def setup(args):
+    if sys.platform == 'win32':
+        sys.exit('French Weave setup supports macOS and Linux only for now. On Windows, run Claude Code or Codex '
+                 'inside WSL, or paste a block from blocks/ into claude.ai or ChatGPT.')
     info = plan(args.user_data_dir)
     if sys.version_info < (3, 9):
         sys.exit(f'French Weave needs Python 3.9 or newer; this is {info["python_version"]}.')
     root, home = fwlib.PLUGIN_ROOT, fwlib.home()
-    if not (root / 'extension' / 'manifest.json').exists():
+    installed = root.resolve() == (home / 'app').resolve()  # run from the copy setup made: nothing to copy
+    if not installed and not (root / 'extension' / 'manifest.json').exists():
         sys.exit(f'No extension/ folder next to {root / "scripts"}; run setup from a full copy of the repo.')
     key = read_key_file(args.gemini_key_file) if args.gemini_key_file else None
+    if args.lexicon and not args.language:
+        sys.exit('--lexicon needs --language NAME too, like --language Spanish --lexicon spanish.csv.')
     if args.dry_run:
         print(json.dumps(dict(info, dry_run=True, gemini_key='would be stored' if key else 'not given',
-                              known_top=args.known_top, sites=args.sites), indent=1))
+                              known_top=args.known_top, sites=args.sites, language=args.language), indent=1))
         if args.codex:
             setup_codex(True)
+        updates = None if args.no_auto_update else enable_auto_update(True)
+        if updates:
+            print(f'updates: {updates}')
         return
     home.mkdir(parents=True, exist_ok=True)
     os.chmod(home, 0o700)
-    # Stable copies: the plugin cache path changes on every update, Chrome needs fixed paths.
-    for name, ignore in (('extension', shutil.ignore_patterns('test', 'node_modules', 'package.json', 'bun.lock')),
-                         ('app/scripts', shutil.ignore_patterns('__pycache__')), ('app/data', None)):
-        source = root / ('extension' if name == 'extension' else name.split('/')[1])
-        target = home / name
-        if target.exists():
-            shutil.rmtree(target)
-        shutil.copytree(source, target, ignore=ignore)
+    if not installed:
+        with fwlib.locked('copies.lock'):
+            fwlib.install_copies(root, home)
     launcher = home / 'app' / 'fw-host'
     launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{home / "app" / "scripts" / "fw_host.py"}" "$@"\n')
     launcher.chmod(0o755)
@@ -184,33 +309,41 @@ def setup(args):
         path.write_text(key + '\n')
         path.chmod(0o600)
     with fwlib.locked():
+        language = set_language(args.language, args.lexicon, home)[0] if args.language else None
         if not (home / 'state.json').exists():  # first run: seed known words before the first learning words
             fwlib.save_state(fwlib.new_state(known_top=args.known_top))
     with fwlib.editing() as state:  # later runs: adds new lexicon words, seeds only words not yet introduced
+        if language:
+            state['language'] = language
         fwlib.seed_known(state, args.known_top)
         if args.sites:
             state.setdefault('prefs', {})['extension_sites'] = args.sites
     if args.codex:
         setup_codex(False)
+    updates = None if args.no_auto_update else enable_auto_update(False)
     print('French Weave is set up.')
-    print(f'  word state:  {home / "state.json"} (Stage {fwlib.stage_for(state)}, '
+    print(f'  word state:  {home / "state.json"} ({named(state)}Stage {fwlib.stage_for(state)}, '
           f'{sum(w["status"] == "known" for w in state["words"])} known, '
           f'{sum(w["status"] == "active" for w in state["words"])} learning words)')
     sites = (state.get('prefs') or {}).get('extension_sites', 'all')
     print(f'  extension:   {"every site; turn any off from the toolbar" if sites == "all" else "only sites you turn on"}')
     print(f'  native host: {", ".join(info["host_manifests"])}')
     print(f'  Gemini key:  {"stored for the extension" if key or (home / "gemini_key").exists() else "not stored; paste it in the extension popup"}')
+    if updates:
+        print(f'  updates:     {updates}')
     print('Human steps left (Chrome blocks scripts from doing these):')
     print('  1. Open chrome://extensions and switch on Developer mode (top right).')
     print(f'  2. Click "Load unpacked" and pick: {home / "extension"}')
     print('  3. Pin the French Weave toolbar icon (puzzle piece menu) and click it:')
     if sites == 'all':
-        print('     click "Allow all websites" (Chrome asks once; until then it runs only on X).')
+        print('     click "Allow all websites" (Chrome asks once; until then it runs only on x.com).')
     else:
-        print('     on each site you want, tick "This site" (Chrome asks for that site).')
+        print("     on each site you want, tick the box next to the site's name (Chrome asks for that site).")
     if not key and not (home / 'gemini_key').exists():
         print('     Paste a Gemini API key (https://aistudio.google.com/apikey).')
-    print('Chat weaving runs wherever the plugin is enabled; sessions opened from now on pick it up.')
+        print('     With a free key, Google may use the page text it is sent to improve its products; a paid key avoids that.')
+    print('Chat weaving and the /french-weave:* commands start in new Claude Code sessions; in an open session, type '
+          '/reload-plugins first.')
 
 
 def check(_args):
@@ -244,7 +377,9 @@ def check(_args):
     groups = (hooks.get('hooks') or {}).get('UserPromptSubmit') or []
     if any(is_ours(h) for g in groups for h in g.get('hooks', [])):
         config = (fwlib.codex_home() / 'config.toml')
-        enabled = config.exists() and enable_codex_hooks(config.read_text()) == config.read_text().rstrip('\n') + '\n'
+        text = config.read_text() if config.exists() else ''
+        enabled = hooks_on(text)
+        enabled = enable_codex_hooks(text) == text.rstrip('\n') + '\n' if enabled is None else enabled
         report(enabled, f'Codex hook in {fwlib.codex_home() / "hooks.json"} with [features] hooks = true '
                         '(Codex asks you to trust it on first start)')
     has_key = (home / 'gemini_key').exists()
@@ -270,6 +405,12 @@ def uninstall(args):
             print(('would remove ' if args.dry_run else 'removed ') + str(path))
             if not args.dry_run:
                 path.unlink()
+        if not args.dry_run:  # setup made these folders even with no Chrome installed; drop them if now empty
+            for folder in (directory, directory.parent):
+                try:
+                    folder.rmdir()
+                except OSError:
+                    break
     print(f'Your word state stays in {fwlib.home()}; delete that folder to start over.')
 
 
@@ -280,7 +421,7 @@ def status(_args):
     for w in state['words']:
         by.setdefault(w['status'], []).append(w)
     stage = fwlib.stage_for(state)
-    print(f'French Weave: Stage {stage}{" (pinned)" if state.get("stage_pinned") else ""}'
+    print(f'French Weave: {named(state)}Stage {stage}{" (pinned)" if state.get("stage_pinned") else ""}'
           f'{", PAUSED" if state.get("paused") else ""}')
     print(f'  known {len(by.get("known", []))}, learning {len(by.get("active", []))}, '
           f'shaky {len(by.get("shaky", []))}, not yet introduced {len(by.get("queue", []))}')
@@ -296,6 +437,9 @@ def status(_args):
 
 def mark(kind):
     def run(args):
+        if not any(arg.strip(' ,') for arg in args.words):
+            print(f'No word given. Name one, for example: {"known" if kind == "known" else "learn"} mais')
+            return
         missing, done = [], []
         with fwlib.editing() as state:
             for chunk in (c for arg in args.words for c in arg.split(',')):
@@ -323,8 +467,33 @@ def pause(value):
     def run(_args):
         with fwlib.editing() as state:
             state['paused'] = value
-        print('French Weave paused: no French in chat or on X until you resume.' if value else 'French Weave resumed.')
+        print('French Weave paused: no French in chat or on websites until you resume (pasted claude.ai or ChatGPT blocks '
+              'stay as they are). Chat stops now; the Chrome extension stops within about 2 minutes, before it sends any '
+              'more page text (the On switch in its toolbar popup turns it off at once).' if value else
+              'French Weave resumed. The Chrome extension picks this up on the next page you open after about 2 minutes, or '
+              'right away from Sync words in its popup.')
     return run
+
+
+def copy_to_clipboard(text):
+    """Best effort: pbcopy (macOS), wl-copy or xclip (Linux). True when one of them took the text."""
+    for cmd in (['pbcopy'], ['wl-copy'], ['xclip', '-selection', 'clipboard']):
+        if shutil.which(cmd[0]):
+            try:
+                subprocess.run(cmd, input=text, text=True, check=True, timeout=5,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return True
+            except (OSError, subprocess.SubprocessError):
+                continue
+    return False
+
+
+def save_export(name, text):
+    """Blocks copied out of a terminal pick up line breaks and indentation, so each one is also saved as a file."""
+    path = fwlib.home() / 'export' / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text + '\n', encoding='utf-8')
+    return path
 
 
 def export_cmd(args):
@@ -332,15 +501,28 @@ def export_cmd(args):
         logged = export.log_chat_day(state) if args.log_day else 0
         export.mark_exported(state, 'chatgpt' if args.chatgpt else 'claude-ai')
     if args.chatgpt:
-        about, respond = export.chatgpt(state)
+        try:
+            about, respond = export.chatgpt(state)
+        except ValueError as error:
+            sys.exit(f'No ChatGPT block: {error}. Use the claude.ai block (fw.py export) instead.')
+        parsed = export.parse_state_line(about)
+        left_out = (sum(w['status'] in ('active', 'shaky') for w in state['words'])
+                    - len(parsed.get('active', [])) - len(parsed.get('shaky', [])))
+        paths = [save_export('chatgpt-about.txt', about), save_export('chatgpt-respond.txt', respond)]
         print(f'ChatGPT > Settings > Personalization > Custom instructions. Each field holds {export.CHATGPT_LIMIT} '
               'characters on every plan.\n')
         print(f'--- "What would you like ChatGPT to know about you?" ({len(about)} characters) ---\n{about}\n')
         print(f'--- "How would you like ChatGPT to respond?" ({len(respond)} characters) ---\n{respond}')
+        print(f'\nAlso saved as {paths[0]} and {paths[1]}.')
+        if left_out:
+            print(f'{left_out} learning words were left out to fit the {export.CHATGPT_LIMIT}-character field.')
     else:
         block = export.claude_ai(state)
+        path = save_export('claude-ai.txt', block)
         print(f'claude.ai > Settings > Profile > personal preferences. Replace the old French Weave block '
               f'({len(block)} characters):\n\n{block}')
+        copied = args.copy and copy_to_clipboard(block)
+        print(f'\n{"Copied to your clipboard, and a" if copied else "A"}lso saved as {path}.')
     if logged:
         print(f'\n(Counted today as chat exposure for {logged} learning words.)')
 
@@ -365,6 +547,9 @@ def main(argv=None):
     p.add_argument('--codex', action='store_true')
     p.add_argument('--known-top', type=int, default=0, metavar='N')
     p.add_argument('--sites', choices=['all', 'ask'])
+    p.add_argument('--language', metavar='NAME')
+    p.add_argument('--lexicon', metavar='FILE')
+    p.add_argument('--no-auto-update', action='store_true', help="leave Claude Code's plugin auto-update setting alone")
     p.add_argument('--dry-run', action='store_true')
     p.set_defaults(run=setup)
     p = sub.add_parser('uninstall')
@@ -388,6 +573,7 @@ def main(argv=None):
     target.add_argument('--claude-ai', action='store_true')
     target.add_argument('--chatgpt', action='store_true')
     p.add_argument('--log-day', action='store_true', help='also count today as exposure (see log-chat-day)')
+    p.add_argument('--copy', action='store_true', help='also copy the claude.ai block to the clipboard')
     p.set_defaults(run=export_cmd)
     sub.add_parser('log-chat-day').set_defaults(run=log_chat_day)
     args = parser.parse_args(argv)

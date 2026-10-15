@@ -26,6 +26,9 @@ export function parseState(data) {
     stage: stage >= 1 && stage <= 4 ? stage : 1,
     paused: data?.paused === true,
     sites: data?.prefs?.extension_sites === 'ask' ? 'ask' : 'all', // setup's default for sites not set in the popup
+    // Another language set up with fw.py setup --language; absent means French.
+    ...(/^[\p{L} ()-]{1,40}$/u.test(String(data?.language ?? '').trim()) && data.language.trim() !== 'French'
+      ? { language: data.language.trim() } : {}),
     words,
   };
 }

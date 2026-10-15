@@ -15,7 +15,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts'))
 os.environ['FRENCH_WEAVE_NO_REFRESH'] = '1'
 for name in ('CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION_ATTENDED', 'FRENCH_WEAVE_FORCE', 'FRENCH_WEAVE_OFF'):
-    os.environ.pop(name, None)  # tests set these explicitly
+    os.environ.pop(name, None)
+os.environ.pop('CLAUDE_CONFIG_DIR', None)  # setup reads and writes Claude Code's settings  # tests set these explicitly
 
 import fwlib  # noqa: E402
 import weave  # noqa: E402
@@ -46,6 +47,35 @@ class Home(unittest.TestCase):
     def tearDown(self):
         self.env.stop()
         self.tmp.cleanup()
+
+
+class Copies(Home):
+    def test_refresh_only_after_setup_and_only_when_stale(self):
+        self.assertEqual(fwlib.refresh_copies(), '')  # setup never ran: nothing to refresh
+        fwlib.install_copies()
+        app = fwlib.home() / 'app'
+        version = fwlib.plugin_version()
+        self.assertTrue(version)
+        self.assertEqual((app / 'VERSION').read_text().strip(), version)
+        self.assertTrue((fwlib.home() / 'extension' / 'manifest.json').exists())
+        self.assertEqual(fwlib.refresh_copies(), '')  # current
+        (app / 'VERSION').unlink()  # copies made before versions were recorded
+        (fwlib.home() / 'extension' / 'stale.js').write_text('old')
+        self.assertEqual(fwlib.refresh_copies(), version)
+        self.assertFalse((fwlib.home() / 'extension' / 'stale.js').exists())
+        self.assertEqual((app / 'VERSION').read_text().strip(), version)
+        self.assertEqual(sorted(p.name for p in fwlib.home().iterdir() if p.name.endswith(('.new', '.old'))), [])
+
+
+class Corrupt(Home):
+    def test_unreadable_state_is_kept_aside_and_replaced(self):
+        fwlib.home().mkdir(parents=True, exist_ok=True)
+        for bad in ('{"words": [', '[]'):
+            (fwlib.home() / 'state.json').write_text(bad)
+            state = fwlib.load_state()
+            self.assertIsInstance(state.get('words'), list)
+            self.assertTrue(any(p.name.startswith('state.json.bad-') for p in fwlib.home().iterdir()))
+            time.sleep(1.1)  # distinct backup names
 
 
 class Matching(unittest.TestCase):
@@ -396,9 +426,13 @@ class Codex(Home):
         self.assertFalse(weave.interactive({}, data, exec_check=lambda: True))
         self.assertTrue(weave.interactive({}, data, exec_check=lambda: False))
         self.assertTrue(weave.interactive({'FRENCH_WEAVE_FORCE': '1'}, data, exec_check=lambda: True))
-        code = f'import sys, os; sys.path.insert(0, {str(ROOT / "scripts")!r}); import weave; print(weave.codex_exec(os.getpid()))'
+        code = (f'import sys, os; sys.path.insert(0, {str(ROOT / "scripts")!r}); import weave; '
+                'print(os.path.basename(weave.process_args(os.getpid())[0][0]), weave.codex_exec(os.getpid()))')
         sh = subprocess.run(['codex', '-c', code, 'exec'], executable=sys.executable, capture_output=True, text=True)
-        self.assertEqual(sh.stdout.strip(), 'True', sh.stderr)
+        name, _, result = sh.stdout.strip().rpartition(' ')
+        if name != 'codex':  # macOS framework Python re-execs itself, so the process no longer shows argv[0]
+            self.skipTest(f'this Python does not keep argv[0] ({name})')
+        self.assertEqual(result, 'True', sh.stderr)
 
     def test_codex_transcript_replies(self):
         lines = [json.dumps({'type': 'response_item', 'timestamp': '2026-10-09T10:00:00Z',
@@ -523,14 +557,26 @@ class Setup(Home):
         self.assertEqual(by['et']['status'], 'shaky')
         self.assertEqual(by['mais']['status'], 'active')
         self.assertEqual(by['mais']['days'], [fwlib.today()])
-        self.assertEqual(sum(w['status'] == 'known' for w in state['words'][:150]), 145)
-        self.assertEqual(fwlib.stage_for(state), 2)  # 145 known: stage 3 comes once the learning words graduate
+        # et (shaky) and mais (seen) keep their progress; today's untouched picks donc, avec, sans become known.
+        self.assertEqual(sum(w['status'] == 'known' for w in state['words'][:150]), 148)
+        self.assertEqual(fwlib.stage_for(state), 2)  # 148 known: stage 3 comes once the learning words graduate
         self.assertEqual(state['prefs'], {'extension_sites': 'ask'})
         before = json.dumps(state)
         state = self.run_setup('--known-top', '40')  # a lower answer later changes nothing
         self.assertEqual(json.dumps(state), before)
         self.assertEqual(state['prefs'], {'extension_sites': 'ask'})  # --sites left out keeps the choice
         self.assertEqual(self.run_setup('--sites', 'all')['prefs'], {'extension_sites': 'all'})
+
+    def test_known_top_after_a_prompt_already_created_the_state(self):
+        # Typing /french-weave:setup runs the chat hook first, which creates the state with the top words learning.
+        with mock.patch.dict(os.environ, {'FRENCH_WEAVE_NO_REFRESH': '1'}), mock.patch('sys.stdout', new=io.StringIO()):
+            weave.main([])
+        self.assertEqual([w['status'] for w in fwlib.load_state()['words'][:5]], ['active'] * 5)
+        state = self.run_setup('--known-top', '40')
+        statuses = [w['status'] for w in state['words']]
+        self.assertEqual(statuses[:40], ['known'] * 40)
+        self.assertEqual(statuses[40:40 + fwlib.NEW_PER_DAY], ['active'] * fwlib.NEW_PER_DAY)
+        self.assertEqual(fwlib.stage_for(state), 2)
 
     def test_dry_run_reports_answers_and_writes_nothing(self):
         with mock.patch.object(Path, 'home', return_value=self.home), \
@@ -549,6 +595,79 @@ class Setup(Home):
         key = json.loads((ROOT / 'extension' / 'manifest.json').read_text())['key']
         digest = hashlib.sha256(base64.b64decode(key)).hexdigest()[:32]
         self.assertEqual(''.join(chr(ord('a') + int(c, 16)) for c in digest), fw.EXTENSION_ID)
+
+
+SPANISH = 'word,en,hint,scan\ny,and,ee,\npero,but,PEH-roh,\nentonces,so,en-TON-ses,\nahora,now,ah-OH-rah,\nsolo,only,SOH-loh,no\n'
+SPANISH += ''.join(f'palabra{i},word {i},pah-LAH-brah,\n' for i in range(200))
+
+
+class Languages(Home):
+    run_setup = Setup.run_setup
+
+    def lexicon(self, text=SPANISH):
+        path = self.home / 'spanish.csv'
+        path.write_text('\ufeff' + text)  # a BOM, as spreadsheet apps save it
+        return path
+
+    def state(self, stage=1, known=0):
+        state = fwlib.new_state('2026-10-01', fwlib.load_lexicon(self.lexicon()), known_top=known)
+        state.update(language='Spanish', stage=stage, stage_pinned=True)
+        return state
+
+    def test_lexicon_format(self):
+        words = fwlib.load_lexicon(self.lexicon())
+        self.assertEqual(words[0], {'fr': 'y', 'en': 'and', 'hint': 'ee'})
+        self.assertEqual(words[4], {'fr': 'solo', 'en': 'only', 'hint': 'SOH-loh', 'scan': False})
+        self.assertFalse(fwlib.measurable(words[4]))
+
+    def test_words_written_without_spaces(self):
+        hits = lambda fr, text: bool(fwlib.pattern(fr).search(fwlib.norm(text)))
+        self.assertTrue(hits('今日', '今日はいい日です。'))
+        self.assertTrue(hits('猫', 'a 猫 who loves boxes'))
+        self.assertTrue(hits('kucing', 'a kucing who'))
+        self.assertFalse(hits('dan', 'dance'))
+
+    def test_brief_and_exports_name_the_language(self):
+        french = weave.brief(dict(self.state(), language=None, words=fwlib.new_state('2026-10-01')['words']), {})
+        for old, _ in weave.CUTS[::2]:  # stage 1-2 cuts; the stage 3+ example is checked below
+            self.assertIn(old, french)
+        self.assertIn(weave.CUTS[1][0], weave.brief(dict(self.state(3), language=None), {}))
+        rules = export.rules() + export.rules(short=True)
+        for old, _ in export.CUTS:
+            self.assertIn(old, rules)
+        for stage, known in ((1, 0), (3, 5), (4, 180)):
+            state = self.state(stage, known)
+            texts = [weave.brief(state, {}), export.claude_ai(state), *export.chatgpt(state)]
+            for text in texts:
+                self.assertNotRegex(text, r'French(?! [Ww]eave)|maintenant|pour never|\bsans\b')
+            self.assertTrue(all('Spanish' in text for text in texts[:2] + [texts[3]]))
+            self.assertIn('(y = and, "ee")', texts[0] + texts[1])
+            self.assertLessEqual(max(map(len, texts[2:])), export.CHATGPT_LIMIT)
+        self.assertIn('most common Spanish words', weave.brief(self.state(4, 180), {}))
+
+    def test_calibration_and_host_carry_the_language(self):
+        state = self.state()
+        reply = 'The build passes ahora, pero the cache is stale, entonces I cleared it, je tu il elle nous. ' * 4
+        self.assertIn('% Spanish', weave.calibration(reply, state))
+        self.assertNotIn('slipped', weave.calibration(reply, state))  # French grammar words mean nothing here
+        self.assertEqual(fwlib.public_state(state)['language'], 'Spanish')
+        self.assertEqual(fwlib.public_state(fwlib.new_state())['language'], 'French')
+
+    def test_setup_switches_language_and_back(self):
+        state = self.run_setup('--language', 'Spanish', '--lexicon', str(self.lexicon()))
+        self.assertEqual((state['language'], state['words'][0]['fr']), ('Spanish', 'y'))
+        with fwlib.editing() as state:
+            fwlib.apply_event(state, 'pero', 'known')
+        self.assertEqual(self.run_setup()['language'], 'Spanish')  # a plain rerun keeps it
+        state = self.run_setup('--language', 'French')
+        self.assertEqual((fwlib.language(state), state['words'][0]['fr']), ('French', 'et'))
+        self.assertFalse((self.home / 'fw' / 'lexicon.csv').exists())
+        state = self.run_setup('--language', 'Spanish', '--lexicon', str(self.lexicon()))
+        self.assertEqual(fwlib.find(state, 'pero')['status'], 'known')  # progress came back
+        self.assertTrue((self.home / 'fw' / 'state-french.json').exists())
+        for flags in (['--language', 'Klingon'], ['--lexicon', str(self.lexicon())]):
+            with self.assertRaises(SystemExit):
+                self.run_setup(*flags)
 
 
 if __name__ == '__main__':

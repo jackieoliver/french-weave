@@ -31,6 +31,8 @@
 <body>
   <div class="row"><h1>French Weave</h1><label>On <input type="checkbox" id="enabled"></label></div>
   <div id="operation" class="small" role="status"></div>
+  <div id="update" class="small" hidden>Update <span id="updateVersion"></span> didn't load by itself: click the
+    reload arrow on French Weave in the extensions page. <button id="openExtensions">Open extensions page</button></div>
   <section>
     <label class="row"><span id="siteName">This site</span><input type="checkbox" id="siteEnabled" aria-label="On for this site"></label>
     <label class="row"><span>Other sites</span><select id="newSitesEnabled"><option value="true">On by default</option><option value="false">Only sites I turn on</option></select></label>
@@ -54,7 +56,7 @@
     <div class="row"><span>Words</span><span id="wordInfo" class="small"></span></div>
     <div class="row"><button id="syncWords">Sync words</button><button id="clearCache">Clear cache</button></div>
   </section>
-  <p class="small">Sites where it's on send readable page text to Gemini with your key. Forms, links, code and editable text are skipped.</p>
+  <p class="small">Sites where it's on send readable page text to Gemini with your key. With a free key, Google may use it to improve its products; a paid key avoids that. Links and inline code go with their sentence but are never changed; code blocks, forms and editable text are skipped.</p>
   <div id="notice" class="small error" role="alert"></div>
   <script type="module" src="popup.js"></script>
 </body>
