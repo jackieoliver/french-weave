@@ -7,7 +7,7 @@ import { cleanSettings, newSitesDefault, siteEnabled, hasSiteAccess } from './se
 import { resolveLevel, exactFr, isZeroFrench, wordCount } from './levels.js';
 import { hashKey } from './hash.js';
 import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from './hostsource.js';
-import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent } from './quota.js';
+import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent, countDropped, droppedToday } from './quota.js';
 
 const store = chrome.storage.local;
 const cache = createCache(chromeStorage);
@@ -96,6 +96,7 @@ async function swaps(msg, sender) {
     return await locked(async () => {
       if (!fresh || (await context()).revision !== ctx.revision) return { results: {}, stale: true };
       await cache.setMany(fresh.results);
+      await countDropped(chromeStorage, fresh.dropped);
       await store.set({ modelStatus: { at: Date.now(), error: '', model: fresh.model } });
       return { results: { ...results, ...fresh.results } };
     });
@@ -169,6 +170,7 @@ async function status() {
   const data = await store.get(['wordState', 'apiKey', 'hostKey', 'modelStatus']);
   return { config, words: data.wordState?.words?.length || 0, fetchedAt: data.wordState?.fetchedAt || 0,
     pastedKey: !!data.apiKey, hostKey: !!data.hostKey, modelStatus: data.modelStatus || null,
+    dropped: await droppedToday(chromeStorage),
     update: await checkUpdate() };
 }
 

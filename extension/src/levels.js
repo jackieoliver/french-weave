@@ -340,11 +340,35 @@ function pluralEntry(idx, hit, o, synonyms, articles, fold) {
 // emphasis and often the sense, so it stays English. OK is written in capitals anyway.
 export const allCaps = (o) => /\p{Lu}.*\p{Lu}/su.test(o) && !/\p{Ll}/u.test(o) && !/^O\.?K\.?$/.test(o);
 
+// Model output sometimes spells accents as HTML entities (tr&#232;s, le probl&egrave;me). Decode them before the
+// list lookup; named accents are built from the letter and a combining mark, so any Latin-script language works.
+const MARKS = { acute: '\u0301', grave: '\u0300', circ: '\u0302', uml: '\u0308', tilde: '\u0303', cedil: '\u0327', ring: '\u030A', caron: '\u030C' };
+const NAMED = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ', rsquo: '’', lsquo: '‘', ldquo: '“', rdquo: '”',
+  szlig: 'ß', oelig: 'œ', OElig: 'Œ', aelig: 'æ', AElig: 'Æ', oslash: 'ø', Oslash: 'Ø', laquo: '«', raquo: '»',
+  iexcl: '¡', iquest: '¿', ordf: 'ª', ordm: 'º', hellip: '…', ndash: '–', mdash: '—' };
+export function decodeEntities(s) {
+  return String(s).replace(/&(?:#(\d{1,7})|#x([\da-f]{1,6})|([a-z]+));/gi, (m, dec, hex, name) => {
+    if (dec || hex) {
+      const cp = parseInt(dec || hex, dec ? 10 : 16);
+      return cp > 0 && cp <= 0x10ffff && (cp < 0xd800 || cp > 0xdfff) ? String.fromCodePoint(cp) : m;
+    }
+    if (Object.hasOwn(NAMED, name)) return NAMED[name];
+    const accent = /^([a-z])(acute|grave|circ|uml|tilde|cedil|ring|caron)$/i.exec(name);
+    return accent ? accent[1] + MARKS[accent[2]] : m;
+  }).normalize('NFC');
+}
+
+// Still broken after decoding, so the swap is dropped and counted: an unknown entity, a control character or
+// replacement mark (raw bytes, tr\x80), an escape written out, or UTF-8 read as Latin-1 (trÃ¨s).
+const MALFORMED = /&#?[a-z\d]+;|[\u0000-\u001f\u007f-\u009f\ufffd]|\\(?:x[\da-f]{2}|u[\da-f]{4})|[ÃÂ][\u0080-\u00bf]/i;
+export const malformed = (s) => MALFORMED.test(s);
+
 // Fail closed: keep only swaps whose French is on the list (the plugin's word state, else the level's bundled list)
 // and whose English matches that word's gloss.
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
 // language: the word state's language (its profile gives the articles and extra synonyms); bundled lists are French.
-export function validateSwaps(level, swaps, sharedWords, language = 'French') {
+// stats: an optional object that counts dropped swaps by reason (malformed, allCaps, notListed, gloss, plural).
+export function validateSwaps(level, swaps, sharedWords, language = 'French', stats = null) {
   if (!Array.isArray(swaps)) return [];
   const lang = sharedWords ? language || 'French' : 'French';
   const articles = articlesFor(lang);
@@ -354,16 +378,21 @@ export function validateSwaps(level, swaps, sharedWords, language = 'French') {
   const synonyms = extra && Object.keys(extra).length ? mergeSynonyms(SYNONYMS, extra) : SYNONYMS;
   const idx = indexFor(level, sharedWords, articles, fold);
   const out = [];
+  const drop = (reason) => { if (stats) stats[reason] = (stats[reason] || 0) + 1; };
   for (const s of swaps) {
-    if (!s || typeof s.o !== 'string' || typeof s.f !== 'string') continue;
-    const o = s.o.trim();
-    if (!o || !s.f.trim() || allCaps(o)) continue;
-    let hit = idx.exact.get(exactFr(s.f)) || idx.folded.get(fold(s.f));
-    const match = hit ? glossMatch(o, hit.en, synonyms) : '';
-    if (!match) continue;
+    if (!s || typeof s.o !== 'string' || typeof s.f !== 'string') { drop('malformed'); continue; }
+    const o = decodeEntities(s.o).trim();
+    const f = decodeEntities(s.f).trim();
+    if (!o || !f) { drop('malformed'); continue; }
+    if (malformed(o) || malformed(f)) { drop('malformed'); continue; }
+    if (allCaps(o)) { drop('allCaps'); continue; }
+    let hit = idx.exact.get(exactFr(f)) || idx.folded.get(fold(f));
+    if (!hit) { drop('notListed'); continue; }
+    const match = glossMatch(o, hit.en, synonyms);
+    if (!match) { drop('gloss'); continue; }
     if (match === 'plural' && (prof || FRENCH_PROFILE).plural_nouns) {
       hit = pluralEntry(idx, hit, o, synonyms, articles, fold);
-      if (!hit) continue;
+      if (!hit) { drop('plural'); continue; }
     }
     // "my problem" -> "my le problème", "the answer" -> "the la réponse": when the English article (or a
     // possessive) stays outside the swap, use the bare noun.
@@ -374,7 +403,7 @@ export function validateSwaps(level, swaps, sharedWords, language = 'French') {
       f: matchCase(hit.canon, o),
       g: hit.en,
       h: hit.hint,
-      ctx: typeof s.ctx === 'string' ? s.ctx.trim() : '',
+      ctx: typeof s.ctx === 'string' ? decodeEntities(s.ctx).trim() : '',
       ...(sharedWords ? { word: hit.word, ...(hit.status ? { status: hit.status } : {}) } : {}),
     });
   }

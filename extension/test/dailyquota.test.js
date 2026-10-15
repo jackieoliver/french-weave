@@ -136,7 +136,9 @@ describe('daily quota', () => {
       expect(res.error).toMatch(/^Daily Gemini limit reached; resumes about \d{1,2}:\d{2}/);
       expect(res.retryAfterMs).toBeGreaterThan(13000000);
       expect(geminiCalls).toBe(1);
-      expect((await dispatch({ type: 'status' }, popup)).modelStatus.error).toBe(res.error);
+      const status = await dispatch({ type: 'status' }, popup);
+      expect(status.modelStatus.error).toBe(res.error);
+      expect(status.dropped.day).toMatch(/^\d{4}-\d{2}-\d{2}$/); // today's dropped-swap counts (none yet)
       expect(data.dailyQuota['gemini-3.5-flash-lite']).toBeGreaterThan(Date.now());
       dispatch = await worker('b'); // a fresh worker has no cooldown in memory, only storage
       const later = await ask(dispatch, 'Another quiet passage with and in it here.');

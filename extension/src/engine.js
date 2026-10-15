@@ -39,11 +39,12 @@ export async function requestSwaps({ apiKey, model, level, batch, words, languag
     try {
       const byId = await callGemini({ fetchImpl, apiKey, model: m, body, timeoutMs: timeoutFor(m, models, timeoutMs) });
       const results = {};
+      const dropped = {}; // swaps the validator dropped, by reason (malformed: broken accents the model sent)
       for (const { id, text } of batch) {
         if (!byId.has(id)) throw new Error('Incomplete model response');
-        results[id] = capSwaps(level, validateSwaps(level, byId.get(id), words, language), text, words);
+        results[id] = capSwaps(level, validateSwaps(level, byId.get(id), words, language, dropped), text, words);
       }
-      return { results, model: m, errors };
+      return { results, model: m, errors, dropped };
     } catch (e) {
       const timeout = e?.name === 'TimeoutError';
       const wait = e?.retryAfterMs || COOLDOWN_MS[timeout ? 'timeout' : e?.status];
