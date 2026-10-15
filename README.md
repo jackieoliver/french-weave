@@ -130,8 +130,8 @@ Stage 2, a month to Stage 3 and 12 weeks to Stage 4. If each word shows up on ab
 7 weeks and 4 months. Starting with some French skips ahead. These are estimates from simulating the rules below.
 Pasted claude.ai and ChatGPT blocks don't advance on their own.
 
-**Japanese, Indonesian, Spanish...?** Not yet. The word list, glosses and sound hints are French, and new alphabets
-would need more than word swaps.
+**Japanese, Indonesian, Spanish...?** Starter lists, yes; see [Other languages](#other-languages). French is the
+only full list so far.
 
 **Do I need a subscription?** You need whichever chat tool you already use. French Weave adds no account. The
 extension needs a Gemini API key; a free one works.
@@ -181,7 +181,8 @@ python3 ~/.french-weave/app/scripts/fw.py setup --language Spanish --lexicon ~/s
 (or `/french-weave:setup --language Spanish --lexicon ~/spanish.csv`). Starter lists of 40-60 words for Spanish,
 Japanese and Indonesian are in [`data/lexicons/`](data/lexicons/); with one of those, `--language Japanese` alone is
 enough. Setup copies the list to `~/.french-weave/lexicon.csv`. Your French progress is kept in
-`state-french.json`, and `setup --language French` brings it back. The starter lists were drafted with AI and not yet checked by a native speaker; corrections are welcome.
+`state-french.json`, and `setup --language French` brings it back. The starter lists were drafted with AI and not
+yet checked by a native speaker; corrections are welcome.
 
 The list is a CSV with the header `word,en,hint` (`fr` works too), most useful words first: connectors and adverbs,
 then everyday nouns, adjectives and verbs.
