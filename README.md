@@ -71,6 +71,7 @@ and paste the block it prints. It carries your real progress; re-export about on
 - Your word list and progress stay in `~/.french-weave` (or `$FRENCH_WEAVE_HOME`).
 - The hook reads your local Claude Code and Codex transcripts to count which words you saw, and never sends them
   anywhere. Its instructions go to Anthropic or OpenAI as part of your message, like the rest of your prompt.
+- Updates come from GitHub through Claude Code's own plugin updater. The hook and scripts make no network calls.
 - The extension sends readable text from the sites where it's on to Google's Gemini API with your key. Links,
   code, forms and editable text are skipped.
 - With a free Gemini key, Google may use that text to improve its products, and human reviewers may read it. If you
@@ -95,14 +96,20 @@ and paste the block it prints. It carries your real progress; re-export about on
 
 ## Update
 
+Setup turns on Claude Code's auto-update for French Weave, so new versions install themselves: a few minutes into
+a session Claude Code shows "Plugin updated", and your next session runs the new version and says so, keeping your
+progress. If you use the extension, click the reload arrow on French Weave in `chrome://extensions` when its
+toolbar icon shows NEW. Auto-update is a switch in `/plugin` (Marketplaces, french-weave); setup leaves it alone
+if you've set it, or with `--no-auto-update`.
+
+To update right away:
+
 ```sh
 claude plugin marketplace update french-weave
 claude plugin update french-weave@french-weave
 ```
 
-Then send any message in a new Claude Code session: French Weave refreshes its installed copies and keeps your
-progress. If you use the extension, click the reload arrow on French Weave in `chrome://extensions` (its toolbar
-icon shows NEW until you do). Or just tell your agent: "Update French Weave from
+Then send any message in a new Claude Code session. Or just tell your agent: "Update French Weave from
 https://github.com/jackieoliver/french-weave".
 
 ## Uninstall

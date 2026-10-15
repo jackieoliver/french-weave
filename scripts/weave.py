@@ -333,6 +333,9 @@ def main(argv):
         if updated:
             update = (f'French Weave updated to {updated}. If you use the Chrome extension, click the reload arrow on '
                       'French Weave in chrome://extensions (its toolbar icon shows NEW until you do).')
+            if fwlib.marketplace_source() and fwlib.auto_update() is None:
+                update += (' Later updates can install themselves: type /plugin, open Marketplaces, pick french-weave '
+                           'and turn on auto-update.')
             notice = f'{update}\n{notice}' if notice else update
         if notice:
             out['systemMessage'] = notice  # shown to the user, outside the brief

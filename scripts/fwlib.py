@@ -483,12 +483,37 @@ def codex_home():
     return Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex').expanduser()
 
 
+def claude_home():
+    return Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude').expanduser()
+
+
+MARKETPLACE = 'french-weave'
+
+
+def marketplace_source():
+    """Where Claude Code installed this marketplace from ({'source': 'github', 'repo': ...}), or None."""
+    known = read_json(claude_home() / 'plugins' / 'known_marketplaces.json', {}) or {}
+    entry = known.get(MARKETPLACE) if isinstance(known, dict) else None
+    return entry.get('source') if isinstance(entry, dict) and isinstance(entry.get('source'), dict) else None
+
+
+def auto_update():
+    """True or False when Claude Code auto-updates this marketplace by a setting or the /plugin toggle, else None
+    (off: Claude Code's default for marketplaces outside Anthropic's)."""
+    settings = read_json(claude_home() / 'settings.json', {}) or {}
+    entry = (settings.get('extraKnownMarketplaces') or {}).get(MARKETPLACE) if isinstance(settings, dict) else None
+    if isinstance(entry, dict) and 'autoUpdate' in entry:
+        return bool(entry['autoUpdate'])
+    known = read_json(claude_home() / 'plugins' / 'known_marketplaces.json', {}) or {}
+    entry = known.get(MARKETPLACE) if isinstance(known, dict) else None
+    return bool(entry['autoUpdate']) if isinstance(entry, dict) and 'autoUpdate' in entry else None
+
+
 def transcript_roots():
     """Chat transcripts to scan: FRENCH_WEAVE_TRANSCRIPTS, else Claude Code's projects and Codex's sessions."""
     if os.environ.get('FRENCH_WEAVE_TRANSCRIPTS'):
         return [Path(os.environ['FRENCH_WEAVE_TRANSCRIPTS']).expanduser()]
-    claude = Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude').expanduser() / 'projects'
-    return [claude, codex_home() / 'sessions']
+    return [claude_home() / 'projects', codex_home() / 'sessions']
 
 
 class Lines:

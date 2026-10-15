@@ -17,7 +17,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts'))
 os.environ['FRENCH_WEAVE_NO_REFRESH'] = '1'
-for name in ('CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION_ATTENDED', 'FRENCH_WEAVE_FORCE', 'FRENCH_WEAVE_OFF'):
+for name in ('CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION_ATTENDED', 'FRENCH_WEAVE_FORCE', 'FRENCH_WEAVE_OFF',
+             'CLAUDE_CONFIG_DIR'):
     os.environ.pop(name, None)  # tests set these explicitly
 
 import fwlib  # noqa: E402

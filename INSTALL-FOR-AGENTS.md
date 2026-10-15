@@ -168,6 +168,9 @@ these instructions, delete that clone (setup keeps its own copy in `~/.french-we
 
 ## Update
 
+Setup turns on Claude Code's auto-update for this marketplace (its `updates:` line; `--no-auto-update` skips
+that, and a choice already made in `/plugin` is kept), so new versions arrive on their own. To update now:
+
 ```sh
 claude plugin marketplace update french-weave
 claude plugin update french-weave@french-weave

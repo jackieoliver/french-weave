@@ -112,6 +112,59 @@ def enable_codex_hooks(text):
     return '\n'.join(lines) + '\n'
 
 
+def claude_settings():
+    """Claude Code's user settings file and its contents ({} when missing, None when it isn't a JSON object)."""
+    path = fwlib.claude_home() / 'settings.json'
+    data = fwlib.read_json(path) if path.exists() else {}
+    return path, data if isinstance(data, dict) else None
+
+
+def write_claude_settings(path, data):
+    backup = path.with_name(path.name + '.before-french-weave')
+    if path.exists() and not backup.exists():
+        shutil.copy2(path, backup)
+    temporary = path.with_name(f'{path.name}.{os.getpid()}.tmp')
+    temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    os.replace(temporary, path)
+
+
+def enable_auto_update(dry_run):
+    """Turns on Claude Code's auto-update for this marketplace (off by default outside Anthropic's marketplaces)
+    with the documented extraKnownMarketplaces setting, unless the person already chose either way. Returns the
+    line for the setup summary, or None when French Weave isn't installed as a Claude Code plugin."""
+    source = fwlib.marketplace_source()
+    if not source:
+        return None
+    choice = fwlib.auto_update()
+    if choice is not None:
+        return 'on' if choice else 'off (your choice; /plugin, Marketplaces, french-weave turns it on)'
+    if source.get('source') not in ('github', 'git', 'url'):
+        return 'off (installed from a folder on this computer; update that folder, then run claude plugin update)'
+    path, settings = claude_settings()
+    extra = settings.get('extraKnownMarketplaces', {}) if settings is not None else None
+    if not isinstance(extra, dict):
+        return f'off ({path} is not valid JSON, so setup left it alone)'
+    if not dry_run:
+        extra[fwlib.MARKETPLACE] = {**(extra.get(fwlib.MARKETPLACE) or {'source': source}), 'autoUpdate': True}
+        settings['extraKnownMarketplaces'] = extra
+        write_claude_settings(path, settings)
+    return 'on (Claude Code checks after you start a session; turn off in /plugin, Marketplaces, french-weave)'
+
+
+def disable_auto_update(dry_run):
+    """Drops the setting enable_auto_update added; left behind, it would add the marketplace back after removal."""
+    path, settings = claude_settings()
+    extra = (settings or {}).get('extraKnownMarketplaces')
+    if not isinstance(extra, dict) or fwlib.MARKETPLACE not in extra:
+        return
+    print(('would remove' if dry_run else 'removed') + f' the {fwlib.MARKETPLACE} marketplace setting from {path}')
+    if not dry_run:
+        del extra[fwlib.MARKETPLACE]
+        if not extra:
+            del settings['extraKnownMarketplaces']
+        write_claude_settings(path, settings)
+
+
 def setup_codex(dry_run):
     codex = fwlib.codex_home()
     hooks_path, config_path = codex / 'hooks.json', codex / 'config.toml'
@@ -205,6 +258,9 @@ def setup(args):
                               known_top=args.known_top, sites=args.sites, language=args.language), indent=1))
         if args.codex:
             setup_codex(True)
+        updates = None if args.no_auto_update else enable_auto_update(True)
+        if updates:
+            print(f'updates: {updates}')
         return
     home.mkdir(parents=True, exist_ok=True)
     os.chmod(home, 0o700)
@@ -233,6 +289,7 @@ def setup(args):
             state.setdefault('prefs', {})['extension_sites'] = args.sites
     if args.codex:
         setup_codex(False)
+    updates = None if args.no_auto_update else enable_auto_update(False)
     print('French Weave is set up.')
     print(f'  word state:  {home / "state.json"} ({named(state)}Stage {fwlib.stage_for(state)}, '
           f'{sum(w["status"] == "known" for w in state["words"])} known, '
@@ -241,6 +298,8 @@ def setup(args):
     print(f'  extension:   {"every site; turn any off from the toolbar" if sites == "all" else "only sites you turn on"}')
     print(f'  native host: {", ".join(info["host_manifests"])}')
     print(f'  Gemini key:  {"stored for the extension" if key or (home / "gemini_key").exists() else "not stored; paste it in the extension popup"}')
+    if updates:
+        print(f'  updates:     {updates}')
     print('Human steps left (Chrome blocks scripts from doing these):')
     print('  1. Open chrome://extensions and switch on Developer mode (top right).')
     print(f'  2. Click "Load unpacked" and pick: {home / "extension"}')
@@ -307,6 +366,7 @@ def uninstall(args):
             if not args.dry_run:
                 data['hooks']['UserPromptSubmit'] = kept
                 fwlib.write_json(path, data)
+    disable_auto_update(args.dry_run)
     for directory in host_dirs():
         path = directory / f'{HOST_NAME}.json'
         if path.exists():
@@ -445,6 +505,7 @@ def main(argv=None):
     p.add_argument('--sites', choices=['all', 'ask'])
     p.add_argument('--language', metavar='NAME')
     p.add_argument('--lexicon', metavar='FILE')
+    p.add_argument('--no-auto-update', action='store_true', help="leave Claude Code's plugin auto-update setting alone")
     p.add_argument('--dry-run', action='store_true')
     p.set_defaults(run=setup)
     p = sub.add_parser('uninstall')

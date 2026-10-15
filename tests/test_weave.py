@@ -15,7 +15,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts'))
 os.environ['FRENCH_WEAVE_NO_REFRESH'] = '1'
 for name in ('CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION_ATTENDED', 'FRENCH_WEAVE_FORCE', 'FRENCH_WEAVE_OFF'):
-    os.environ.pop(name, None)  # tests set these explicitly
+    os.environ.pop(name, None)
+os.environ.pop('CLAUDE_CONFIG_DIR', None)  # setup reads and writes Claude Code's settings  # tests set these explicitly
 
 import fwlib  # noqa: E402
 import weave  # noqa: E402
