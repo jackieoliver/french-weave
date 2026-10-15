@@ -64,8 +64,10 @@ and paste the block it prints. It carries your real progress; re-export about on
 - French Weave itself: nothing.
 - Chat: it runs inside the Claude Code, Codex, claude.ai or ChatGPT you already use. In Claude Code and Codex the
   hook adds about 2.5 KB of instructions to each message you send.
-- Extension: your own Gemini API key. A free AI Studio key works; the extension stops itself at 1,000 Gemini calls
-  a day. No key, no extension; everything else works without one.
+- Extension: your own Gemini API key. A free AI Studio key works (Google's free tier allowed 500 Gemini 3.5
+  Flash-Lite requests a day when tested in October 2026); the extension stops itself at 500 Gemini calls a day, and
+  when Google says the key's daily limit is reached it waits until the time Google gives, showing "Daily Gemini limit
+  reached; resumes about ..." in its popup. No key, no extension; everything else works without one.
 
 ## What leaves your machine
 
