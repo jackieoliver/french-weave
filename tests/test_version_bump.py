@@ -50,11 +50,11 @@ class VersionBump(unittest.TestCase):
         self.git('commit', '-q', '-m', message)
         return self.git('rev-parse', 'HEAD')
 
-    def problems(self, base=None, head=None):
-        return cvb.check(self.repo, base, head)[0]
+    def problems(self, base=None, head=None, release=True):
+        return cvb.check(self.repo, base, head, release)[0]
 
     def test_this_repo_versions_agree(self):
-        problems, _ = cvb.check(ROOT)
+        problems, _, _ = cvb.check(ROOT)
         self.assertEqual(problems, [])
         self.assertEqual(len(set(cvb.versions(ROOT).values())), 1, cvb.versions(ROOT))
 
@@ -75,12 +75,26 @@ class VersionBump(unittest.TestCase):
         problems = self.problems(self.base, head)
         self.assertEqual(len(problems), 1)
         self.assertIn('extension/src/levels.js', problems[0])
-        self.assertIn('Bump the version', problems[0])
+        self.assertIn('must bump the version', problems[0])
         self.assertIn('claude plugin update', problems[0])
         # The working tree is checked when no head is given (local use before a commit).
         self.write_versions('0.2.1')
         self.assertEqual(self.problems(self.base), [])
         self.assertEqual(len(self.problems(self.base, head)), 1)  # the committed head is still unbumped
+
+    # Features land on main under the old version; one release PR bumps it for all of them.
+    def test_missing_bump_only_warns_outside_a_release(self):
+        self.write('scripts/weave.py', 'feature\n')
+        head = self.commit('feature without bump')
+        problems, warnings, _ = cvb.check(self.repo, self.base, head)
+        self.assertEqual(problems, [])
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('scripts/weave.py', warnings[0])
+        # Disagreeing or falling versions still fail outside a release.
+        self.write_versions('0.2.1', extension='0.2.0')
+        self.assertIn('Versions disagree', self.problems(self.base, self.commit('half bump'), release=False)[0])
+        self.write_versions('0.1.9')
+        self.assertIn('down', self.problems(self.base, self.commit('downgrade'), release=False)[0])
 
     def test_shipped_change_with_bump_passes(self):
         for path in ('scripts/weave.py', 'commands/setup.md', 'hooks/hooks.json', 'data/lexicon.csv'):
@@ -103,10 +117,10 @@ class VersionBump(unittest.TestCase):
     def test_missing_or_new_branch_base_skips_the_bump_check(self):
         self.write('scripts/weave.py', 'print(3)\n')
         head = self.commit('no bump')
-        problems, notes = cvb.check(self.repo, '0' * 40, head)  # GitHub's "before" for a new branch
+        problems, _, notes = cvb.check(self.repo, '0' * 40, head, release=True)  # GitHub's "before" for a new branch
         self.assertEqual(problems, [])
         self.assertIn('skipped', notes[0])
-        problems, notes = cvb.check(self.repo, 'f' * 40, head)  # not fetched
+        problems, _, notes = cvb.check(self.repo, 'f' * 40, head, release=True)  # not fetched
         self.assertEqual(problems, [])
         self.assertIn('not in this clone', notes[0])
 
@@ -129,6 +143,10 @@ class VersionBump(unittest.TestCase):
         self.write('scripts/fw.py', 'x\n')
         head = self.commit('no bump')
         result = run('--base', self.base, '--head', head)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn('WARNING: Files the plugin ships changed (scripts/fw.py)', result.stdout)
+        self.assertIn('::warning title=Version check::', result.stdout)
+        result = run('--base', self.base, '--head', head, '--release')
         self.assertEqual(result.returncode, 1)
         self.assertIn('FAIL: Files the plugin ships changed (scripts/fw.py)', result.stdout)
         self.assertIn('::error title=Version check::', result.stdout)
