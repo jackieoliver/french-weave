@@ -8,7 +8,7 @@
     "hint": "sound",
     "hint_name": "sound hint",
     "marks": "accents",
-    "reading": "off"
+    "reading": {"early": "none", "late": "none", "late_from_stage": 0, "late_only_with": "", "known_drop": false}
   },
   "examples": {
     "swap_sentence": "The build passes maintenant, mais the cache is stale, donc I cleared it.",

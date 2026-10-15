@@ -1,4 +1,5 @@
 // Level schedule, word lists, and guards. Pure: no DOM, no chrome APIs.
+import { profileFor, articlePatterns } from './profile.js';
 
 // L3/L4 prompts are not built yet; anything above this uses L2 rules.
 export const MAX_BUILT_LEVEL = 2;
@@ -195,23 +196,25 @@ export function normalizeFr(s) {
     .trim();
 }
 
-const ARTICLE_RE = /^(?:(?:les|le|la|une|un|des)\s+|l')/i;
-const DEFINITE_RE = /^(?:(?:les|le|la)\s+|l')/i;
+// Article patterns from the language profile (French: le, la, les, un, une, des, l'); the bundled lists are French.
+const FRENCH = articlePatterns(profileFor('French'));
+const articlesFor = (language) => (!language || language === 'French' ? FRENCH : articlePatterns(profileFor(language)));
 export const exactFr = (s) => String(s).normalize('NFC').toLowerCase().replace(/[’‘`]/g, "'").replace(/\s+/g, ' ').trim();
 
 const indexCache = new Map();
-function indexFor(level, sharedWords) {
+function indexFor(level, sharedWords, articles = FRENCH) {
   const lvl = level <= 1 ? 1 : 2;
   if (!sharedWords && indexCache.has(lvl)) return indexCache.get(lvl);
   const idx = new Map();
   for (const w of sharedWords || wordsForLevel(lvl)) {
     const full = exactFr(w.fr);
     idx.set(full, { canon: w.fr, en: w.en, hint: w.hint, word: w.fr, status: w.status });
-    const stripped = full.replace(ARTICLE_RE, '');
+    const stripped = articles.any ? full.replace(articles.any, '') : full;
     if (stripped !== full && !idx.has(stripped)) {
       // Accept the bare noun ("problème" for "problem") and keep the accents from the list.
-      const canon = w.fr.replace(ARTICLE_RE, '');
-      idx.set(stripped, { canon, en: w.en.replace(/^the /, ''), hint: w.hint.replace(/^(luh|lah|lay|lee|uhn|ün) /, ''), word: w.fr, status: w.status });
+      const canon = w.fr.replace(articles.any, '');
+      const hint = articles.hint ? w.hint.replace(articles.hint, '') : w.hint;
+      idx.set(stripped, { canon, en: w.en.replace(/^the /, ''), hint, word: w.fr, status: w.status });
     }
   }
   const folded = new Map();
@@ -238,8 +241,9 @@ const cleanEn = (s) => String(s).toLowerCase().replace(/[’‘`]/g, "'").replac
   .replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
 
 // Everyday English variants of a gloss, including the synonyms the prompt itself asks the model to use
-// (prompt.js: "big"/"large"/"huge" -> grand, "other"/"another"/"else" -> autre, "I think" -> je pense que, ...).
-const SYNONYMS = {
+// (the profile's synonym examples: "big"/"large"/"huge" -> grand, "other"/"another"/"else" -> autre, "I think" -> je
+// pense que, ...). English only, so shared by every language; a profile can add more (extension.synonyms).
+export const SYNONYMS = {
   big: ['large', 'huge'],
   only: ['single'],
   other: ['another', 'else'],
@@ -261,14 +265,20 @@ const SYNONYMS = {
   hello: ['hi'],
 };
 
-export function glossMatches(original, en) {
+function mergeSynonyms(base, extra) {
+  const out = { ...base };
+  for (const [k, v] of Object.entries(extra)) out[k.toLowerCase()] = [...(out[k.toLowerCase()] || []), ...v];
+  return out;
+}
+
+export function glossMatches(original, en, synonyms = SYNONYMS) {
   const forms = new Set();
   for (const alt of String(en).split(/\s*[/;,]\s*/)) {
     const g = cleanEn(alt);
     if (!g) continue;
     for (const f of [g, g.replace(EN_LEAD_RE, '')]) {
       forms.add(f);
-      for (const syn of SYNONYMS[f] || []) forms.add(syn);
+      for (const syn of synonyms[f] || []) forms.add(syn);
     }
   }
   const t = cleanEn(original);
@@ -285,19 +295,24 @@ export function glossMatches(original, en) {
 // Fail closed: keep only swaps whose French is on the list (the plugin's word state, else the level's bundled list)
 // and whose English matches that word's gloss.
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
-export function validateSwaps(level, swaps, sharedWords) {
+// language: the word state's language (its profile gives the articles and extra synonyms); bundled lists are French.
+export function validateSwaps(level, swaps, sharedWords, language = 'French') {
   if (!Array.isArray(swaps)) return [];
-  const idx = indexFor(level, sharedWords);
+  const lang = sharedWords ? language || 'French' : 'French';
+  const articles = articlesFor(lang);
+  const extra = lang === 'French' ? null : profileFor(lang).extension.synonyms;
+  const synonyms = extra && Object.keys(extra).length ? mergeSynonyms(SYNONYMS, extra) : SYNONYMS;
+  const idx = indexFor(level, sharedWords, articles);
   const out = [];
   for (const s of swaps) {
     if (!s || typeof s.o !== 'string' || typeof s.f !== 'string') continue;
     const o = s.o.trim();
     if (!o || !s.f.trim()) continue;
     let hit = idx.exact.get(exactFr(s.f)) || idx.folded.get(normalizeFr(s.f));
-    if (!hit || !glossMatches(o, hit.en)) continue;
+    if (!hit || !glossMatches(o, hit.en, synonyms)) continue;
     // "my problem" -> "my le problème", "the answer" -> "the la réponse": when the English article (or a
     // possessive) stays outside the swap, use the bare noun.
-    const bare = exactFr(hit.canon).replace(DEFINITE_RE, '');
+    const bare = articles.definite ? exactFr(hit.canon).replace(articles.definite, '') : exactFr(hit.canon);
     if (bare !== exactFr(hit.canon) && !/^the\s/i.test(o) && idx.exact.has(bare)) hit = idx.exact.get(bare);
     out.push({
       o,

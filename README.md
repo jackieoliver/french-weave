@@ -204,14 +204,22 @@ The starter lists were drafted with AI and not yet checked by a native speaker; 
 The list is a CSV with the header `word,en,hint` (`fr` works too), most useful words first: connectors and adverbs,
 then everyday nouns, adjectives and verbs.
 
-- `en`: the English it replaces. Put a narrow sense in parentheses, like `so (therefore)`; there are no per-language
-  sense notes like the French ones (pour, avant, plus).
+- `en`: the English it replaces. Put a narrow sense in parentheses, like `so (therefore)`. Sense notes for the whole
+  language (French: pour, avant, plus) live in its profile (below).
 - `hint`: the sound hint shown in footers. For a new alphabet, use a romanization (Japanese: romaji) and write the
   word itself in its own script, so you learn to read it.
 - Nouns: write them as they should appear in English sentences. A noun listed with an article (`el problema`) only
-  counts when the reply uses the article too.
+  counts when the reply uses the article too, unless the language's profile lists its articles.
 - Optional `scan` column: `no` for a word that is also an English word (`solo`, `dan`), so English text never counts
   as seeing it.
+- Optional `reading` column: the word in a phonetic script (Japanese: kana), for a profile that shows readings above
+  words on web pages.
+
+Everything else that differs between languages is in a profile, [`data/profiles/<language>.json`](data/profiles/):
+the example sentences in the rules, sense notes, default swaps, the grammar words that show a reply sliding into full
+sentences in the language, articles, and script details. The rules themselves are written once for every language.
+A language without a profile still works: the rules just carry no examples or sense notes. The fields are listed in
+[`data/profiles/README.md`](data/profiles/README.md).
 
 Not covered yet: the ready-made [`blocks/`](blocks/) are French only (use `fw.py export` for a block in your
 language), and the extension without the plugin uses its built-in French lists. In languages written without spaces
@@ -224,8 +232,10 @@ language), and the extension without the plugin uses its built-in French lists. 
 hooks/            UserPromptSubmit hook -> scripts/weave.py
 commands/         /french-weave:* slash commands
 scripts/          fwlib.py (state, rules, transcript scan), weave.py (hook), fw.py (CLI, setup),
-                  fw_host.py (native host), export.py (claude.ai / ChatGPT blocks), make_blocks.py (blocks/)
+                  fw_host.py (native host), export.py (claude.ai / ChatGPT blocks), make_blocks.py (blocks/),
+                  make_profiles.py (checks data/profiles/, writes extension/src/profile-data.js)
 data/lexicon.csv  ranked words: fr, en, sound hint (data/lexicons/: starter lists for other languages)
+data/profiles/    one profile per language: examples, sense notes, articles, script (extension copy generated)
 blocks/           ready-made claude.ai / ChatGPT blocks, one per level (generated)
 extension/        Chrome MV3 extension (no build step, no runtime dependencies)
 tests/            python tests, live model checks, extension end-to-end check
@@ -237,6 +247,7 @@ tests/            python tests, live model checks, extension end-to-end check
 python3 -m unittest discover -s tests            # hook, rules, exports, native host, setup, Codex merge
 python3 tests/check_version_bump.py --base origin/main   # shipped files changed? then the version must change
 python3 scripts/make_blocks.py                   # regenerate blocks/ after changing the rules or lexicon
+python3 scripts/make_profiles.py                 # check data/profiles/ and regenerate the extension's copy
 cd extension && bun install && bun test           # extension (happy-dom)
 python3 tests/model_eval.py --out /tmp/fw-eval    # live check via claude -p, isolated from your own config
 python3 tests/model_eval.py --paste level-01 --stages 1 --out /tmp/fw-eval   # simulate claude.ai with a block

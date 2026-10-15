@@ -83,7 +83,8 @@ def language(state=None):
 
 def load_lexicon(path=None):
     """Rows of fr (or word), en, hint; an optional scan column set to no keeps a word out of exposure counting
-    (it is also an English word, like "solo")."""
+    (it is also an English word, like "solo"); an optional reading column gives the word in a phonetic script (Japanese:
+    kana), which the profile's script.reading can show above the word on web pages."""
     with open(path or lexicon_path(), encoding='utf-8-sig', newline='') as file:
         rows = [r for r in csv.DictReader(file) if (r.get('fr') or r.get('word') or '').strip()]
     seen, out = set(), []
@@ -91,7 +92,9 @@ def load_lexicon(path=None):
         word = (r.get('fr') or r.get('word')).strip()
         if key(word) not in seen:
             seen.add(key(word))
+            reading = (r.get('reading') or '').strip()
             out.append({'fr': word, 'en': (r.get('en') or '').strip(), 'hint': (r.get('hint') or '').strip(),
+                        **({'reading': reading} if reading else {}),
                         **({'scan': False} if (r.get('scan') or '').strip().lower() == 'no' else {})})
     return out
 
@@ -292,11 +295,14 @@ def blank(word):
 
 
 def merge_lexicon(state, lexicon=None):
-    """Adds lexicon words the state doesn't have yet (a plugin update can grow the list); never drops any."""
-    have = {key(w['fr']) for w in state['words']}
+    """Adds lexicon words the state doesn't have yet (a plugin update can grow the list) and their readings to words
+    it has; never drops any."""
+    have = {key(w['fr']): w for w in state['words']}
     for w in lexicon or load_lexicon():
         if key(w['fr']) not in have:
             state['words'].append(blank(w))
+        elif w.get('reading') and have[key(w['fr'])].get('reading') != w['reading']:
+            have[key(w['fr'])]['reading'] = w['reading']  # a list that gained readings reaches words already in use
     return state
 
 
@@ -496,9 +502,10 @@ def version(state):
 
 
 def public_state(state):
-    """What the extension gets: stage, pause flag, and the words in use."""
+    """What the extension gets: stage, pause flag, language, and the words in use (reading only when the list has one)."""
     return {'version': version(state), 'stage': stage_for(state), 'paused': bool(state.get('paused')),
-            'language': language(state), 'words': [{k: w[k] for k in ('fr', 'en', 'hint', 'status')} for w in introduced(state)]}
+            'language': language(state),
+            'words': [{k: w[k] for k in ('fr', 'en', 'hint', 'reading', 'status') if k in w} for w in introduced(state)]}
 
 
 # ---- chat exposure from Claude Code transcripts ----

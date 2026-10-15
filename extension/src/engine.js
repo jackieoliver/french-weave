@@ -28,7 +28,7 @@ export async function requestSwaps({ apiKey, model, level, batch, words, languag
       const results = {};
       for (const { id, text } of batch) {
         if (!byId.has(id)) throw new Error('Incomplete model response');
-        results[id] = capSwaps(level, validateSwaps(level, byId.get(id), words), text, words);
+        results[id] = capSwaps(level, validateSwaps(level, byId.get(id), words, language), text, words);
       }
       return { results, model: m, errors };
     } catch (e) {

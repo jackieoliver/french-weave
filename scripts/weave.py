@@ -114,7 +114,7 @@ def brief(state, seen, recall=None):
     return text
 
 
-DEFAULT_SWAPS = 12  # in band mode: the top-ranked known words (connectors and adverbs) written in French every time
+DEFAULT_SWAPS = 12  # in band mode: the top-ranked known words (connectors and adverbs) written in the language every time
 
 
 def band_line(state):

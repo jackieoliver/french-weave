@@ -8,7 +8,7 @@
     "hint": "sound",
     "hint_name": "sound hint",
     "marks": "accents",
-    "reading": "off"
+    "reading": {"early": "none", "late": "none", "late_from_stage": 0, "late_only_with": "", "known_drop": false}
   },
   "examples": {"swap_sentence": "", "full_sentences": [], "gloss": null, "default_swaps": []},
   "sense_notes": {"brief": "", "export": "", "export_short": ""},

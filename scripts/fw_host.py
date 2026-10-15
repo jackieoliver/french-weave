@@ -3,7 +3,7 @@
 
 Messages (JSON, 4-byte native-endian length prefix, one per line of conversation):
   {"type": "ping"}                      -> {"ok": true, "host": 1}
-  {"type": "state"}                     -> {"ok": true, "version", "stage", "paused", "words": [{fr, en, hint, status}],
+  {"type": "state"}                     -> {"ok": true, "version", "stage", "paused", "language", "words": [{fr, en, hint, reading?, status}],
                                             "prefs": {"extension_sites"?: "all" | "ask"} (absent means "all"),
                                             "geminiKey"?: stored key if setup saved one}
   {"type": "events", "events": [{"word", "kind": "seen"|"flip"|"peek", "day"?}]} -> {"ok": true, "applied": n}
