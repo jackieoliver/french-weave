@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'bun:test';
 import { readFileSync } from 'fs';
 import {
-  resolveLevel, L1_WORDS, L2_WORDS, validateSwaps, glossMatches, wordCount, isZeroFrench, normalizeFr, matchCase,
+  resolveLevel, L1_WORDS, L2_WORDS, validateSwaps, glossMatches, glossMatch, wordCount, isZeroFrench, normalizeFr, matchCase,
 } from '../src/levels.js';
 
 describe('level', () => {
@@ -58,6 +58,32 @@ describe('validateSwaps', () => {
     // A language whose profile has no elided sound leaves the hint alone.
     const es = [{ fr: 'el agua', en: 'the water', hint: 'el AH-gwah', status: 'active' }];
     expect(h('water', 'el agua', es, 'Spanish')).toBe('AH-gwah');
+  });
+  test('a plural English noun never shows the singular word; a listed plural form is used instead', () => {
+    const f = (o, fr, words, lang) => validateSwaps(2, [{ o, f: fr, ctx: '' }], words, lang)[0]?.f;
+    expect(f('problems', 'le problème')).toBeUndefined(); // was problème
+    expect(f('things', 'la chose')).toBeUndefined();
+    expect(f('dogs', 'le chien')).toBeUndefined();
+    expect(f('cities', 'la ville')).toBeUndefined();
+    expect(f('problem', 'le problème')).toBe('problème');
+    // Verbs keep their endings: "starts" for "to start" is not a plural.
+    const verbs = [{ fr: 'commencer', en: 'to start', hint: 'ko-mahn-say', status: 'active' }];
+    expect(f('starts', 'commencer', verbs)).toBe('commencer');
+    // The list has the plural: the model's singular pick becomes it, bare or with its article.
+    const words = [
+      { fr: 'le problème', en: 'the problem', hint: 'luh prob-lem', status: 'active' },
+      { fr: 'les problèmes', en: 'the problems', hint: 'lay prob-lem', status: 'shaky' },
+      { fr: 'les parents', en: 'the parents', hint: 'lay pah-rahn', status: 'active' },
+    ];
+    expect(validateSwaps(2, [{ o: 'problems', f: 'le problème', ctx: '' }], words)[0]).toMatchObject({ f: 'problèmes', g: 'problems', word: 'les problèmes' });
+    expect(f('the problems', 'le problème', words)).toBe('les problèmes');
+    expect(f('parents', 'les parents', words)).toBe('parents'); // listed plural, exact gloss
+    // Languages whose nouns have no plural (Japanese, profile plural_nouns false) keep the swap.
+    const ja = [{ fr: '問題', en: 'problem', hint: 'mondai', status: 'active' }];
+    expect(f('problems', '問題', ja, 'Japanese')).toBe('問題');
+    const es = [{ fr: 'el problema', en: 'the problem', hint: 'el pro-BLEH-mah', status: 'active' }, { fr: 'los problemas', en: 'the problems', hint: 'los pro-BLEH-mahs', status: 'active' }];
+    expect(f('problems', 'el problema', es, 'Spanish')).toBe('problemas');
+    expect(f('problems', 'el problema', es.slice(0, 1), 'Spanish')).toBeUndefined();
   });
   test('keeps list words, canonicalizes accents, fills gloss and hint from the list', () => {
     const out = validateSwaps(1, [{ o: 'very', f: 'tres', g: 'x', h: 'y', ctx: 'is very good' }]);
@@ -149,6 +175,12 @@ describe('glossMatches', () => {
     expect(glossMatches('started', 'to start')).toBe(true);
     expect(glossMatches('making', 'to make')).toBe(true);
     expect(glossMatches('cities', 'the city')).toBe(true);
+    expect(glossMatch('cities', 'the city')).toBe('plural');
+    expect(glossMatch('Problems', 'the problem')).toBe('plural');
+    expect(glossMatch('starts', 'to start')).toBe('inflected');
+    expect(glossMatch('started', 'to start')).toBe('inflected');
+    expect(glossMatch('problem', 'the problem')).toBe('exact');
+    expect(glossMatch('tree', 'the problem')).toBe('');
     expect(glossMatches('so,', 'so')).toBe(true);
     expect(glossMatches('it’s', "it's")).toBe(true);
   });

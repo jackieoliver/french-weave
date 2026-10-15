@@ -34,6 +34,7 @@ it reads (see `french.json`).
 | `sense_notes.export` | The same for the claude.ai block, fuller wording |
 | `sense_notes.export_short` | The same for ChatGPT, under about 100 characters |
 | `drift_words` | Grammar words of the language that are on no word list (pronouns, articles, common verb forms); four or more in a reply mean it slid into full sentences, and the next brief says so. With `script.spaces` false (Japanese particles and endings), they are counted inside runs of text, after the list's words are taken out |
+| `plural_nouns` | `false` for languages whose nouns don't change in the plural (Japanese): the extension then lets a plural English noun ("problems") show the listed word. `true` (default): it shows only a listed plural form, never the singular |
 | `exposure.same_as_english` | Words spelled like an English word, never counted as seen in chat (the lexicon's `scan` column does the same per word) |
 | `exposure.not_followed_by` | `{word: regex}`: a use followed by this doesn't count (`"sans": "\\s+serif"`) |
 | `articles.definite` | Definite articles before a listed noun (`el`, `la`); the bare noun also counts and is accepted |

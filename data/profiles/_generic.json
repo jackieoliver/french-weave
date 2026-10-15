@@ -14,6 +14,7 @@
   "examples": {"swap_sentence": "", "full_sentences": [], "gloss": null, "default_swaps": []},
   "sense_notes": {"brief": "", "export": "", "export_short": ""},
   "drift_words": [],
+  "plural_nouns": true,
   "exposure": {
     "same_as_english": [],
     "not_followed_by": {}

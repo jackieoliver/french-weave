@@ -264,6 +264,8 @@ class BundledLanguages(unittest.TestCase):
         self.assertNotIn('slipped', weave.calibration(swaps, state))
         self.assertIn('slipped into Japanese sentences', weave.calibration(swaps + sentences, state))
         prof = fwlib.profile('Japanese')
+        self.assertFalse(prof['plural_nouns'])  # the extension may show 問題 for "problems"
+        self.assertTrue(fwlib.profile('French')['plural_nouns'])
         self.assertEqual(prof['script']['reading'], {'early': 'romaji', 'late': 'kana', 'late_from_stage': 3,
                                                      'late_only_with': 'kanji', 'known_drop': True})
         readings = {w['fr']: w.get('reading') for w in fwlib.public_state(state)['words']}

@@ -31,6 +31,7 @@ export const GENERIC = {
     "export_short": ""
   },
   "drift_words": [],
+  "plural_nouns": true,
   "exposure": {
     "same_as_english": [],
     "not_followed_by": {}
@@ -1060,6 +1061,7 @@ export const PROFILES = {
       "export": "\"and\" has no single word: と is a particle, so \"and\" between nouns or adjectives stays English, and そして or それから only replace a sentence-opening \"and then\"; でも is the everyday \"but\", never \"except\"; だから only for \"so\" meaning therefore, while the intensifier \"so\" is とても or すごく, and そう is \"like that\", never \"so\"; 今 only for \"at this moment\"; まだ is still or not yet, never \"nevertheless\"; ここ only for a place, never \"here's\"; a filler \"well\" is まあ, and 元気 is \"well\" only as healthy; これ and それ only as pronouns, never before a noun and never \"that\" as a conjunction; question words only in direct questions; はい and いいえ only as answers; no English endings on Japanese words (two 猫, never 猫s), and no particles or です and ます inside English sentences",
       "export_short": "だから only for therefore; and stays English; ここ only for a place"
     },
+    "plural_nouns": false,
     "drift_words": [
       "は",
       "が",

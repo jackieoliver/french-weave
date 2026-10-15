@@ -205,7 +205,8 @@ export function foldFor(profile) {
 }
 
 // Article patterns from the language profile (French: le, la, les, un, une, des, l'); the bundled lists are French.
-const FRENCH = articlePatterns(profileFor('French'));
+const FRENCH_PROFILE = profileFor('French');
+const FRENCH = articlePatterns(FRENCH_PROFILE);
 const articlesFor = (language) => (!language || language === 'French' ? FRENCH : articlePatterns(profileFor(language)));
 export const exactFr = (s) => String(s).normalize('NFC').toLowerCase().replace(/[’‘`]/g, "'").replace(/\s+/g, ' ').trim();
 
@@ -280,25 +281,55 @@ function mergeSynonyms(base, extra) {
   return out;
 }
 
-export function glossMatches(original, en, synonyms = SYNONYMS) {
+const SUFFIXES = [['ies', 'y'], ['es', ''], ['s', ''], ['ed', ''], ['ed', 'e'], ['ing', ''], ['ing', 'e']];
+
+// How the English matches a gloss: 'exact' (a gloss or a synonym), 'plural' (a gloss that is not a verb, plus -s, -es
+// or -ies: "problems" for "the problem"), 'inflected' (a verb gloss with an ending: "starts", "started", "starting"
+// for "to start"), or '' for no match.
+export function glossMatch(original, en, synonyms = SYNONYMS) {
   const forms = new Set();
+  const verbs = new Set();
   for (const alt of String(en).split(/\s*[/;,]\s*/)) {
     const g = cleanEn(alt);
     if (!g) continue;
+    const verb = /^to\s/.test(g);
     for (const f of [g, g.replace(EN_LEAD_RE, '')]) {
-      forms.add(f);
-      for (const syn of synonyms[f] || []) forms.add(syn);
+      for (const form of [f, ...(synonyms[f] || [])]) {
+        forms.add(form);
+        if (verb) verbs.add(form);
+      }
     }
   }
   const t = cleanEn(original);
-  if (!t) return false;
+  if (!t) return '';
+  let found = '';
   for (const c of new Set([t, t.replace(EN_LEAD_RE, '')])) {
-    if (forms.has(c)) return true;
-    for (const [suffix, stem] of [['ies', 'y'], ['es', ''], ['s', ''], ['ed', ''], ['ed', 'e'], ['ing', ''], ['ing', 'e']]) {
-      if (c.endsWith(suffix) && forms.has(c.slice(0, -suffix.length) + stem)) return true;
+    if (forms.has(c)) return 'exact';
+    for (const [suffix, stem] of SUFFIXES) {
+      const base = c.slice(0, -suffix.length) + stem;
+      if (!c.endsWith(suffix) || !forms.has(base)) continue;
+      if (suffix.endsWith('s') && !verbs.has(base)) found ||= 'plural';
+      else found = 'inflected';
     }
   }
-  return false;
+  return found;
+}
+
+export function glossMatches(original, en, synonyms = SYNONYMS) {
+  return !!glossMatch(original, en, synonyms);
+}
+
+// A plural English noun ("problems") must not show the singular list word (problème). The swap stays only when the
+// list has the plural too: an entry glossed with exactly that English whose word starts like the singular one
+// (les problèmes for le problème, problemi for problema).
+function pluralEntry(idx, hit, o, synonyms, articles, fold) {
+  const bare = (w) => fold(articles.any ? exactFr(w).replace(articles.any, '') : exactFr(w));
+  const stem = bare(hit.canon).slice(0, -1);
+  if (stem.length < 3) return null;
+  for (const entry of idx.exact.values()) {
+    if (entry !== hit && bare(entry.canon).startsWith(stem) && glossMatch(o, entry.en, synonyms) === 'exact') return entry;
+  }
+  return null;
 }
 
 // Fail closed: keep only swaps whose French is on the list (the plugin's word state, else the level's bundled list)
@@ -320,7 +351,12 @@ export function validateSwaps(level, swaps, sharedWords, language = 'French') {
     const o = s.o.trim();
     if (!o || !s.f.trim()) continue;
     let hit = idx.exact.get(exactFr(s.f)) || idx.folded.get(fold(s.f));
-    if (!hit || !glossMatches(o, hit.en, synonyms)) continue;
+    const match = hit ? glossMatch(o, hit.en, synonyms) : '';
+    if (!match) continue;
+    if (match === 'plural' && (prof || FRENCH_PROFILE).plural_nouns) {
+      hit = pluralEntry(idx, hit, o, synonyms, articles, fold);
+      if (!hit) continue;
+    }
     // "my problem" -> "my le problème", "the answer" -> "the la réponse": when the English article (or a
     // possessive) stays outside the swap, use the bare noun.
     const bare = articles.definite ? exactFr(hit.canon).replace(articles.definite, '') : exactFr(hit.canon);
