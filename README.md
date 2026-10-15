@@ -104,6 +104,12 @@ Keep Developer mode on in `chrome://extensions`: with it off, Chrome turns the e
 Auto-update is a switch in `/plugin` (Marketplaces, french-weave); setup leaves it alone if you've set it, or with
 `--no-auto-update`.
 
+Setup also turns off Claude Code's mid-turn narration (`CLAUDE_CODE_THINKING_DISPLAY_UPDATES` set to `"0"` in the
+`env` of `~/.claude/settings.json`). With narration on, Claude Code's server rewrites some progress notes into short
+updates of its own, and those drop the French or, now and then, come out entirely in French. Setup keeps a value
+you've already set, `--keep-narration` skips it, and deleting the line turns narration back on. If you installed
+before this, run `/french-weave:setup` again.
+
 To update right away:
 
 ```sh
