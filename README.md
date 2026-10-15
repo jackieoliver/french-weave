@@ -100,8 +100,9 @@ Setup turns on Claude Code's auto-update for French Weave, so new versions insta
 a session Claude Code shows "Plugin updated", and your next session runs the new version and says so, keeping your
 progress. If you use the extension, it reloads itself with the new version within about 30 minutes, or right
 away when you open its toolbar popup (the reload arrow on French Weave in `chrome://extensions` also works).
-Auto-update is a switch in `/plugin` (Marketplaces, french-weave); setup leaves it alone
-if you've set it, or with `--no-auto-update`.
+Keep Developer mode on in `chrome://extensions`: with it off, Chrome turns the extension off when it reloads.
+Auto-update is a switch in `/plugin` (Marketplaces, french-weave); setup leaves it alone if you've set it, or with
+`--no-auto-update`.
 
 To update right away:
 
