@@ -66,6 +66,9 @@ describe('local swaps (no key, no model)', () => {
       'How often do you go to the market on the weekend, roughly?',
       'The person who I met at the station gave me a paper map.',
       "'I'll come with you,' she said as the train pulled into the station.",
+      'He replaced the old wooden kitchen table with a new one from the shop.',
+      'Here are five reasons why I left the city last spring for the coast.',
+      'They replaced Mr. Smith with a robot at the front desk last month.',
     ];
     for (const text of none) expect([text, L2(text)]).toEqual([text, []]);
   });
@@ -87,12 +90,30 @@ describe('local swaps (no key, no model)', () => {
       'Scammers took her whole paycheck and the bank did nothing to help.',
       'He was convicted of fraud and sentenced to five years last week.',
       "'We were left with nothing,' says mother of two after the flood.",
+      'Shells were exploding all night and we hid together in the cellar.',
+      'Her brother was murdered and the family still wants answers today.',
+      'Mass shootings happen almost every week and nothing ever changes.',
+      'The basement flooded and we lost almost everything we owned there.',
     ]) {
       expect(localOff(text)).toBe(true);
       expect(L2(text)).toEqual([]);
     }
     expect(localOff('Does Coffee Cause Cancer? - Example Blog')).toBe(true); // a page title
     expect(localOff('What I learned from a slow week')).toBe(false);
+    // Ordinary English and accented words stay on: \b alone would read "Gymnopédies" as ending in "dies".
+    for (const text of ['Satie wrote the Gymnopédies and the Gnossiennes in Paris.', 'We used trial and error with the new parser.',
+      'Stable Diffusion is fast and also very good at faces.', 'Fire up the terminal and run the tests again.',
+      'She took a great shot of the sunset over the bay last night.',
+      'Starlink saw explosive growth this year and also new rivals.', 'The comédies musicales were always fun to watch.']) {
+      expect([text, localOff(text)]).toEqual([text, false]);
+    }
+  });
+
+  test("an elision's apostrophe opens no quote; a real quote in straight marks ends where it closes", () => {
+    expect(fr(L2("I stayed home 'cause it rained. We played cards and drank tea together. Maybe tomorrow we go out.")))
+      .toEqual(['et', 'ensemble', 'Peut-être', 'demain']);
+    expect(fr(L2("She said 'go with them' and we always did that together."))).toEqual(['toujours', 'ensemble']);
+    expect(fr(L2("It's rock 'n' roll and we always loved it."))).toEqual(['et', 'toujours']);
   });
 
   test('respects the level caps: one per sentence at level 1, two at level 2, each French word once', () => {
@@ -254,6 +275,12 @@ describe('engine tiers in the worker', () => {
       expect(w.badge.text).toBe('');
       expect(w.badge.title).toBe('French Weave');
       expect((await w.ask(TEXT)).config.tier).toBe('local');
+      // A rejection of an old key says nothing about the one setup stores next.
+      w.data.modelStatus = { at: 2, error: 'HTTP 400', kind: 'key', httpStatus: 400 };
+      geminiKey = 'synthetic-other';
+      await w.popup({ type: 'syncWords' });
+      expect(w.data.modelStatus.error).toBe('');
+      expect(w.badge.text).toBe('');
     } finally { w.restore(); }
   });
 

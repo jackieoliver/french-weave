@@ -205,10 +205,11 @@ async function record(msg, sender) {
 async function syncWords() {
   hostChecked = Date.now();
   await flush();
-  const { hostKey: before } = await store.get('hostKey');
+  const { hostKey: before = '' } = await store.get('hostKey');
   const res = await refresh({ storage: chromeStorage, send });
   if (res.changed) await locked(() => cache.clear());
-  if (!!before !== !!(await store.get('hostKey')).hostKey) await showBadge(); // a Gemini error dot goes with the key
+  const { hostKey: after = '' } = await store.get('hostKey');
+  if (before !== after) await keyChanged(); // setup stored, replaced or removed its key
   await broadcast();
   return { ok: !res.error, error: res.error, count: res.state?.words?.length || 0, stage: res.state?.stage || 0 };
 }
@@ -220,6 +221,17 @@ async function clearCache() {
   });
   await broadcast('retry');
   return { ok: true, removed };
+}
+
+// A new key answers "Gemini rejected the key" and has its own limits; the next request says whether it works.
+async function freshKeyPatch() {
+  const { modelStatus } = await store.get('modelStatus');
+  cooldown.clear();
+  return { dailyQuota: {}, ...(['key', 'daily', 'rate'].includes(modelStatus?.kind) ? { modelStatus: { at: Date.now(), error: '' } } : {}) };
+}
+async function keyChanged() {
+  await locked(async () => store.set(await freshKeyPatch()));
+  await showBadge();
 }
 
 // msg.settings: a partial patch; msg.siteOverride: { host, enabled: true | false | null (reset) }; msg.apiKey.
@@ -236,11 +248,7 @@ async function save(msg) {
     if (typeof msg.apiKey === 'string') {
       if (msg.apiKey.length > 500) throw new Error('Key is too long');
       patch.apiKey = msg.apiKey.trim();
-      // A new key answers "Gemini rejected the key" and has its own limits; the next request says whether it works.
-      const { modelStatus } = await store.get('modelStatus');
-      if (['key', 'daily', 'rate'].includes(modelStatus?.kind)) patch.modelStatus = { at: Date.now(), error: '' };
-      patch.dailyQuota = {};
-      cooldown.clear();
+      Object.assign(patch, await freshKeyPatch());
     }
     await store.set(patch);
   });

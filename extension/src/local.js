@@ -6,7 +6,7 @@ import { wordsForLevel, capSwaps, exactFr, isZeroFrench, matchCase } from './lev
 import { locate } from './text.js';
 
 // forms: the English it replaces (lowercase). skipBefore / skipAfter: the word right before or after it (only spaces
-// between) that changes its sense; skipNear: a word up to four words back in the same sentence ("replaced X with Y").
+// between) that changes its sense; skipNear: a word up to six words back in the same sentence ("replaced X with Y").
 const L = (fr, forms, skip = {}) => ({ fr, forms, skipBefore: skip.before || [], skipAfter: skip.after || [], skipNear: skip.near || [] });
 export const LOCAL_WORDS = [
   L('et', ['and']),
@@ -41,7 +41,7 @@ export const LOCAL_WORDS = [
   L('demain', ['tomorrow']),
   L('hier', ['yesterday']),
   L('ce soir', ['tonight']),
-  L('pourquoi', ['why'], { before: ['reason'] }), // "the reason why" is la raison pour laquelle
+  L('pourquoi', ['why'], { before: ['reason', 'reasons'] }), // "the reason why" is la raison pour laquelle
   L('bientôt', ['soon'], { before: ['as', 'how', 'so', 'too', 'very'], after: ['as', 'after', 'enough'] }), // "too soon" is trop tôt
   L('qui', ['who'], { after: ['i', 'you', 'he', 'she', 'we', 'they', 'it'] }), // "the person who I met": que
   L('rien', ['nothing']),
@@ -58,11 +58,13 @@ export const LOCAL_WORDS = [
 // Without a model nothing judges the topic, so this guard is wider than isZeroFrench: crime, death, accidents, money
 // and insurance too. A passage it catches just stays English, and so does every passage on a page whose title it
 // catches ("It's crazy how dangerous driving is"), since one passage alone may not name its topic.
+// JS \b counts é as a boundary ("Gymnopédies" would match "dies"), so whole words are matched with letter lookarounds.
+const words = (list) => new RegExp(`(?<![\\p{L}\\p{N}_])(?:${list})(?![\\p{L}\\p{N}_])`, 'iu');
 const LOCAL_ZERO_FRENCH = [
-  /\b(health|medical|medicine|disease|illness|mortality|deaths?|dead|dies|died|dying|suicid\w*|patients?|clinic\w*|nurses?|drugs?|alcohol|anxiety|depress\w*|injur\w*|wound\w*|pain|covid|virus|pandemic|icu|heart attack|strokes?|abortion\w*|miscarriage\w*)\b/i,
-  /\b(crimes?|criminal|murders?|homicide|violen\w*|theft|robbery|assault\w*|rap(?:e|ed|es|ing|ist)|sexual\w*|police|cops?|fbi|arrest\w*|prison|jail|guns?|shot|shooting|stab\w*|kill\w*|weapons?|terror\w*|abuse\w*|wars?|bomb\w*|attack\w*|explo(?:sion|sive|ded|de)s?|fraud\w*|scam\w*|convict\w*|sentenced)\b/i,
-  /\b(court|judge|trial|legal|illegal|law|laws|sue|suing|crash\w*|accidents?|dangerous|unsafe|drove|reckless|floods?|flooding|fires?|wildfires?)\b/i,
-  /\b(money|insurance|insur\w*|invest\w*|retire\w*|pension|savings|debt|equity|loans?|dollars?|cash|bank\w*|financ\w*|price[sd]?|paid|pay|pays|paycheck\w*|wages?|income|rent|afford\w*|bills|fees|budget\w*|credit card\w*|credit score\w*|cost|costs|tax\w*)\b/i,
+  words(String.raw`health|medical|medicine|disease|illness|mortality|deaths?|dead|deadly|dies|died|dying|suicid\w*|patients?|clinic\w*|nurses?|drugs?|alcohol|anxiety|depress\w*|injur\w*|wound(?:s|ed)?|pain|covid|virus|pandemic|icu|heart attacks?|strokes?|abortions?|miscarriages?`),
+  words(String.raw`crimes?|criminals?|murder\w*|homicides?|violen\w*|theft|robber(?:y|ies)|assault\w*|rap(?:e|ed|es|ing|ists?)|sexual(?:ly)? (?:assault\w*|abuse\w*|harass\w*)|police|cops?|fbi|arrest\w*|prisons?|jail\w*|guns?|gunshots?|gunm[ae]n|shoot(?:ing|ings|er|ers)|shot (?:dead|twice|once|and killed)|(?:was|were|got|been|being|is|are) shot|stab(?:s|bed|bing|bings)?|kill(?:s|ed|ing|ings)?|weapons?|terror\w*|abuse[ds]?|abusive|wars?|warfare|bomb(?:s|ed|ing|ings)?|explo(?:sion|sions|sives|ded|de|des|ding)|hostages?|victims?|soldiers?|kidnap\w*|fraud\w*|scam\w*|convict\w*|sentenced`),
+  words(String.raw`court|judge|on trial|legal|illegal|law|laws|lawsuits?|sue|sued|suing|crash(?:es|ed)?|accidents?|dangerous|unsafe|drove|reckless|flood(?:s|ed|ing)?|wildfires?|house fires?|caught fire`),
+  words(String.raw`money|insurance|insur\w*|invest\w*|retire\w*|pensions?|savings|debts?|equity|loans?|dollars?|cash|bank\w*|financ\w*|price[sd]?|paid|pay|pays|paycheck\w*|wages?|income|rent(?:s|ed|ing)?|afford\w*|bills|fees|budget\w*|credit cards?|credit scores?|cost|costs|tax\w*`),
   /[$€£¥]\s?\d/,
 ];
 export const localOff = (text) => isZeroFrench(text) || LOCAL_ZERO_FRENCH.some((re) => re.test(text));
@@ -71,7 +73,8 @@ const WORD_CHAR = /[\p{L}\p{N}_]/u;
 const SMALL = new Set(['the', 'a', 'an', 'of']);
 const wordBefore = (text, i) => /([\p{L}\p{N}_'’-]+) +$/u.exec(text.slice(Math.max(0, i - 40), i))?.[1] || '';
 const wordAfter = (text, i) => /^ +([\p{L}\p{N}_'’-]+)/u.exec(text.slice(i, i + 40))?.[1] || '';
-const wordsNear = (text, i) => (text.slice(Math.max(0, i - 80), i).split(/[.!?…;:]/).pop().toLowerCase().match(/[\p{L}'’-]+/gu) || []).slice(-4);
+const wordsNear = (text, i) => (text.slice(Math.max(0, i - 100), i).replace(/\b(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|vs|etc|e\.g|i\.e)\./gi, '')
+  .split(/[.!?…;:]/).pop().toLowerCase().match(/[\p{L}'’-]+/gu) || []).slice(-6);
 const capitalized = (w) => /^\p{Lu}/u.test(w) && w !== 'I';
 // Start of a sentence (or after a colon), past any opening quote or bracket.
 const sentenceStart = (text, i) => /(?:^|[.!?…:]) *["“‘'(\[]*$/u.test(text.slice(Math.max(0, i - 6), i));
@@ -95,12 +98,19 @@ function occurrences(text, form) {
 
 // Inside quotation marks: a title ("going out with a whimper") can't be told from quoted speech, so neither is touched.
 // A ' or ’ between two letters is an apostrophe, not a quote; one before a word opens a quote, one after a word closes it.
+// A straight ' only counts when it pairs with a closing one later, so an elision ('cause, 'til, rock 'n roll) quotes nothing.
 function quoted(text, i) {
   const before = text.slice(0, i);
   if ((before.match(/"/g) || []).length % 2) return true;
   if (before.lastIndexOf('“') > before.lastIndexOf('”')) return true;
-  const open = Math.max(before.lastIndexOf('‘'), ...[...before.matchAll(/(?<![\p{L}\p{N}])'(?=\p{L})/gu)].map((m) => m.index));
-  return open !== -1 && !/['’](?![\p{L}])|(?<![\p{L}])’/u.test(before.slice(open + 1));
+  const curly = before.lastIndexOf('‘');
+  if (curly !== -1 && !/’(?![\p{L}])|(?<![\p{L}])’/u.test(before.slice(curly + 1))) return true;
+  for (const open of text.matchAll(/(?<![\p{L}\p{N}'])'(?=\p{L})/gu)) {
+    if (open.index >= i) break;
+    const close = /(?<=[\p{L}\p{N}.,!?])'(?![\p{L}\p{N}])/u.exec(text.slice(open.index + 1));
+    if (close && open.index + 1 + close.index >= i) return true;
+  }
+  return false;
 }
 
 // Names and titles keep their English: "Simon and Garfunkel", "Gone with the Wind", "Always Sunny".
