@@ -6,7 +6,7 @@
 // causal "Since ...", "Never" out of "Never mind", "for" out of "look for", "find" out of "find out", the verb "like",
 // and "app" inside the product name "Home app".
 import { glossMatch, glossForms, matchKeys, SYNONYMS, validateSwaps, breaksEnglishAt, wordsForLevel, MAX_BUILT_LEVEL } from './levels.js';
-import { profileFor } from './profile.js';
+import { profileFor, articlePatterns } from './profile.js';
 import { wantFor } from './prompt.js';
 
 const synonymCache = new Map();
@@ -78,6 +78,7 @@ export function findCandidates(text, words, language = 'French', level = 1) {
   const entries = list || wordsForLevel(lvl);
   const syn = synonymsFor(lang);
   const index = glossIndex(entries, syn);
+  const definite = articlePatterns(profileFor(lang)).definite;
   const toks = tokenize(text);
   const quoted = [...text.matchAll(HANDS_OFF)].map((m) => [m.index, m.index + m[0].length]);
   const inQuote = (a, b) => quoted.some(([s, e]) => a < e && s < b);
@@ -107,8 +108,10 @@ export function findCandidates(text, words, language = 'French', level = 1) {
         if (m !== 'exact' && m !== 'plural') continue;
         // glossMatch ignores a leading article or "to", so "the new" would become "nouveau", "a problem" "problème"
         // and "to work" (the verb) "travail". A span may start with one only when a gloss starts with the same word
-        // ("the problem" -> le problème, "to find" -> trouver); otherwise the shorter span without it is offered.
-        if (lead && !String(w.en).toLowerCase().split(/\s*[/;,]\s*/).some((g) => g.startsWith(`${lead} `))) continue;
+        // ("the problem" -> le problème, "to find" -> trouver) or, for "the", when the listed word has its definite
+        // article ("the music" -> la musique); otherwise the shorter span without it is offered.
+        if (lead && !String(w.en).toLowerCase().split(/\s*[/;,]\s*/).some((g) => g.startsWith(`${lead} `))
+          && !(lead === 'the' && definite?.test(w.fr.toLowerCase().replace(/’/g, "'")))) continue;
         // Offered only as the swap the validator keeps (plural form, bare noun, gloss and hint from the list).
         const [swap] = validateSwaps(lvl, [{ o: span, f: w.fr, g: w.en, h: w.hint || '', ctx }], list, lang, { text });
         if (!swap || breaksEnglishAt(text, from, to, swap.f)) continue;

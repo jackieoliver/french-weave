@@ -114,6 +114,9 @@ describe('model chain', () => {
     const busy = await run(recorder(() => quota429(MINUTE)).fetchImpl, { daily, onOpenRouter }).catch((e) => e);
     expect(busy.kind).toBe('daily');
     expect(busy.retryAfterMs).toBeLessThanOrEqual(60000); // OpenRouter's 429 cooldown, not Google's hour
+    const broken = await run(recorder(() => status(500)).fetchImpl, { daily, onOpenRouter, cooldown: new Map() }).catch((e) => e);
+    expect(broken.kind).toBe('daily');
+    expect(broken.retryAfterMs).toBeLessThanOrEqual(30000); // a 500 sets no cooldown here, and may pass in seconds
   });
   test('a batch without candidates makes no request', async () => {
     const { calls, fetchImpl } = recorder(() => status(500));
@@ -276,6 +279,16 @@ describe('OpenRouter spend', () => {
       data.modelCallsBackup = { day, count: 500 };
       const capped = await ask('The bird and the fish swim all day long.');
       expect(capped.error).toBe('Daily limit of 500 model calls per key reached; French resumes tomorrow');
+      expect(used.length).toBe(1);
+      // The same key pasted as the backup is one key with one cap, not a way past it.
+      data.backupKey = 'synthetic-main';
+      const same = await ask('The cow and the goat eat all day long.');
+      expect(same.error).toBe('Daily limit of 500 model calls reached; French resumes tomorrow');
+      // Only a backup key: its own cap, and the cap notice (not "rejected the key") once it is spent.
+      delete data.apiKey;
+      data.backupKey = 'synthetic-backup';
+      const only = await ask('The fox and the hen run all day long.');
+      expect(only.error).toBe('Daily limit of 500 model calls per key reached; French resumes tomorrow');
       expect(used.length).toBe(1);
     } finally {
       Object.assign(globalThis, saved);

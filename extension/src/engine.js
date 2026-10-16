@@ -132,7 +132,7 @@ export async function requestSwaps({ apiKey, keys: given, model, chain: givenCha
         for (const b of all) if (b.index === a.index && pause) cooldown.set(b.slot, now() + pause);
       }
       errors.push(`${labelFor(a)}: ${timeout ? 'timeout' : e?.message || e}`);
-      failures.push({ provider: a.step.provider, keyName: a.keyName, status: e?.status, googleStatus: e?.googleStatus, keyRejected: e?.keyRejected,
+      failures.push({ provider: a.step.provider, keyName: a.keyName, cooled: !!pause, status: e?.status, googleStatus: e?.googleStatus, keyRejected: e?.keyRejected,
         daily: e?.daily, timeout, network: !!e?.network });
     }
   }
@@ -145,6 +145,9 @@ export async function requestSwaps({ apiKey, keys: given, model, chain: givenCha
     const error = Object.assign(waitError(gemini, cooldown, daily, now()), { googleStatus: geminiFailures.at(-1)?.googleStatus });
     const soon = all.filter((a) => a.keyName === 'openrouter').map((a) => cooldown.get(a.slot) || 0).filter((t) => t > now());
     if (soon.length) error.retryAfterMs = Math.max(1000, Math.min(error.retryAfterMs, Math.min(...soon) - now()));
+    // An OpenRouter failure with no cooldown and no stop (a 500, no connection, a broken reply) may pass in seconds.
+    const passing = failures.some((f) => f.provider === 'openrouter' && !f.cooled && ![401, 402, 403].includes(f.status));
+    if (passing) error.retryAfterMs = Math.min(error.retryAfterMs, COOLDOWN_MS[503]);
     throw error;
   }
   const error = new Error(errors.join('; '));

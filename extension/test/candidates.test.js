@@ -27,6 +27,10 @@ describe('findCandidates', () => {
     const work = [W('le travail', 'work', 'luh tra-vy'), W('trouver', 'to find', 'troo-vay')];
     expect(found('A good way to work is here.', work)).toEqual(['work->travail']); // the span never takes the "to"
     expect(found('I want to find it.', work)).toEqual(['to find->trouver']);
+    // Second review: a listed word with its definite article still takes "the" along, in list order.
+    const nouns = [W('le temps', 'time', 'luh tahn'), W('la fois', 'the time (occasion)', 'lah fwah'), W('la musique', 'music', 'lah mew-zeek'), W('les gens', 'people', 'lay zhahn')];
+    expect(found('We love the time we spend. I like the music here. The people came early.', nouns))
+      .toEqual(['the time->le temps', 'the music->la musique', 'The people->Les gens']);
   });
   test('plurals: offered only when the list has the plural', () => {
     expect(found('Our problems keep growing fast.')).toEqual(['problems->problèmes']);

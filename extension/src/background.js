@@ -43,7 +43,18 @@ const locked = serial(); // storage read-modify-writes one at a time, or concurr
 // is left out of the chain while the backup still has calls.
 const keyCapped = async (which) => await callsToday(chromeStorage, undefined, which) >= DAILY_MODEL_CALLS;
 const localCapError = (perKey) => `Daily limit of ${DAILY_MODEL_CALLS} model calls${perKey ? ' per key' : ''} reached; French resumes tomorrow`;
-const localCapped = async () => await keyCapped('main') && (!(await store.get('backupKey')).backupKey || await keyCapped('backup'));
+// The Gemini keys in use: main (pasted, else from setup) and a backup that differs from it (the same key pasted
+// twice is one key with one cap).
+async function geminiKeys() {
+  const { apiKey, hostKey, backupKey } = await store.get(['apiKey', 'hostKey', 'backupKey']);
+  const main = apiKey || hostKey || '';
+  return { main, backup: backupKey && backupKey !== main ? backupKey : '' };
+}
+// Capped when every key in use has made its calls today (no key at all is the popup's "add a key", not a cap).
+const localCapped = async () => {
+  const { main, backup } = await geminiKeys();
+  return (!!main || !!backup) && (!main || await keyCapped('main')) && (!backup || await keyCapped('backup'));
+};
 // Every key the worker holds, for scrubbing error text: none may reach a page, the popup or storage.
 const KEY_NAMES = ['apiKey', 'hostKey', 'backupKey', 'openRouterKey'];
 
@@ -59,7 +70,7 @@ const ready = (async () => {
   await locked(async () => {
     const { modelStatus, dailyQuota, wordState } = await store.get(['modelStatus', 'dailyQuota', 'wordState']);
     const models = configFor(wordState?.language || 'French', clean.modelChoice).chain.filter((s) => s.provider === 'gemini').map((s) => s.model);
-    const backup = !!(await store.get('backupKey')).backupKey;
+    const backup = !!(await geminiKeys()).backup;
     const replaced = replaceLegacyStatus(modelStatus, dailyQuota, models, Date.now(), (await localCapped()) ? localCapError(backup) : '');
     if (replaced) await store.set({ modelStatus: replaced });
   });
@@ -121,15 +132,16 @@ async function swaps(msg, sender) {
   try {
     const fresh = await modelCall(async () => {
       if ((await context()).revision !== ctx.revision) return null;
-      if (await localCapped()) throw Object.assign(new Error(localCapError(!!(await store.get('backupKey')).backupKey)), { kind: 'local' });
-      const { wordState, apiKey, hostKey, backupKey, openRouterKey } = await store.get(['wordState', 'apiKey', 'hostKey', 'backupKey', 'openRouterKey']);
-      usedKey = apiKey || hostKey || '';
-      const mainOut = await keyCapped('main');
+      const { main, backup: backupKey } = await geminiKeys();
+      if (await localCapped()) throw Object.assign(new Error(localCapError(!!backupKey)), { kind: 'local' });
+      const { wordState, openRouterKey } = await store.get(['wordState', 'openRouterKey']);
+      usedKey = main;
+      const mainOut = !main || await keyCapped('main');
       const backupOut = !backupKey || await keyCapped('backup');
       // Only Gemini calls count toward the local cap, each toward its key's; OpenRouter has its own spend cap.
       const fetchImpl = async (url, init, ...rest) => {
         if (String(url).startsWith(API_BASE)) {
-          const which = backupKey && init?.headers?.['x-goog-api-key'] === backupKey && backupKey !== usedKey ? 'backup' : 'main';
+          const which = backupKey && init?.headers?.['x-goog-api-key'] === backupKey ? 'backup' : 'main';
           await countCall(chromeStorage, undefined, which);
         }
         return fetch(url, init, ...rest);
