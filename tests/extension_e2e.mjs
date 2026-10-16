@@ -7,9 +7,10 @@
 // Loads a temporary copy of ~/.french-weave/extension (or $FRENCH_WEAVE_HOME/extension) with website access
 // granted up front, since Chrome's grant dialog can't be clicked from a script. Serves a fake x.com timeline and a
 // fake article on another site (synthetic text), and prints what happened: native host sync, real Gemini swaps
-// (a few requests), delayed hover tip, click flip, health text untouched, links and forms intact, seen/flip events
-// flushed back to the word state, forged page events ignored, no swaps on webmail, and the article reverting
-// when its site is turned off.
+// (a few requests), instant hover tip with a peek only after a dwell, click flip, health text untouched, links and
+// forms intact, seen/flip events flushed back to the word state, forged page events ignored, no swaps on webmail,
+// and the article reverting when its site is turned off. Expected for the tip: tipWithoutWait and hoverAfter show the gloss text,
+// peeksAfterQuickPass is 0 and peeksAfterDwell is 1 (on a profile that hasn't peeked at that word today).
 import { chromium } from 'playwright';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -77,9 +78,18 @@ try {
   out.texts = await page.$$eval('[data-testid=tweetText]', (els) => els.map((e) => e.textContent));
   if (out.swaps.length) {
     const first = page.locator('.fw-word').first();
+    const peeks = () => sw.evaluate(() => chrome.storage.local.get('seenSent').then((o) => (o.seenSent?.words || []).filter((w) => w.startsWith('peek:'))));
+    const peeksBefore = (await peeks()).length;
+    // The gloss shows on the hover itself (read straight away, no wait); a quick pass is not a peek.
     await first.hover();
-    await page.waitForTimeout(1000); // the gloss shows after a short dwell, which also counts as a peek
+    out.tipWithoutWait = await first.evaluate((e) => getComputedStyle(e, '::after').content);
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(1000);
+    out.peeksAfterQuickPass = (await peeks()).length - peeksBefore;
+    await first.hover();
+    await page.waitForTimeout(1000); // staying on the word counts as one peek
     out.hoverAfter = await first.evaluate((e) => getComputedStyle(e, '::after').content);
+    out.peeksAfterDwell = (await peeks()).length - peeksBefore;
     await first.click();
     out.afterClick = await first.evaluate((e) => ({ text: e.textContent, english: e.classList.contains('fw-en') }));
     await first.click();
@@ -137,6 +147,12 @@ try {
   await popup.goto(`chrome-extension://${out.extensionId}/src/popup.html`);
   await popup.waitForTimeout(1500);
   out.popup = await popup.$eval('body', (b) => b.innerText);
+  // Your words: collapsed at first; opened, it lists the synced learning and shaky words.
+  const wordList = () => popup.$eval('#wordList', (d) => ({ open: d.open, counts: d.querySelector('[data-counts]').textContent,
+    rows: [...d.querySelectorAll('.word')].map((r) => `${r.dataset.status}: ${r.innerText.replace(/\s+/g, ' ')}`) }));
+  out.popupWordsOpenAtStart = (await wordList()).open;
+  await popup.click('#wordList summary');
+  out.popupWords = await wordList();
   // Turning the site off from the popup reverts the open article.
   await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'save', siteOverride: { host: 'reading.example', enabled: false } }));
   await reading.waitForTimeout(1500);

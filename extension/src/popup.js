@@ -2,6 +2,8 @@ import { resolveLevel, MAX_BUILT_LEVEL } from './levels.js';
 import { MODELS } from './gemini.js';
 import { siteEnabled, siteOn, hasSiteAccess } from './settings.js';
 import { modelErrorText } from './modelerror.js';
+import { readCached } from './hostsource.js';
+import { wordSummary, renderWordList } from './wordlist.js';
 
 const $ = (id) => document.getElementById(id);
 const ALL_SITES = ['http://*/*', 'https://*/*'];
@@ -138,3 +140,16 @@ void run(async () => {
 $('openExtensions').addEventListener('click', () => {
   void chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
 });
+
+// "Your words": read from the word state the worker stored, and redrawn when a sync or a level change lands.
+let wordsDrawn = 0;
+async function showWords() {
+  const n = ++wordsDrawn; // a later redraw wins over a slower earlier read
+  const { settings } = await chrome.storage.local.get('settings');
+  const state = await readCached(chrome.storage.local);
+  if (n === wordsDrawn) renderWordList($('wordList'), wordSummary(state, settings));
+}
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && (changes.wordState || changes.settings)) void showWords().catch(() => {});
+});
+void showWords().catch(() => {});
