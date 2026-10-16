@@ -231,7 +231,7 @@ def setup_codex(dry_run):
     print('  Codex never runs a new hook before that. `codex exec` runs stay French-free either way.')
 
 
-KEY_SHAPE = re.compile(r'^[A-Za-z0-9_-]{30,64}$')
+KEY_SHAPE = re.compile(r'^(?:[A-Za-z0-9]{1,8}\.)?[A-Za-z0-9_-]{30,64}$')  # AIza… keys, and newer ones like AQ.…
 
 
 def read_key_file(arg):
@@ -244,7 +244,7 @@ def read_key_file(arg):
     except (OSError, UnicodeDecodeError):
         sys.exit('Could not read the Gemini key file.')
     if not KEY_SHAPE.match(key):
-        sys.exit('The Gemini key file should hold only the key (letters, digits, - and _).')
+        sys.exit('The Gemini key file should hold only the key (AIza… or AQ.…).')
     return key
 
 

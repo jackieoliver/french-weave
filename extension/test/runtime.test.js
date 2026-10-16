@@ -116,24 +116,38 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     await wait(20);
     expect(local.pendingEvents.map((e) => e.kind)).toEqual(['seen']);
     expect(span.dataset.fwStatus).toBe('active');
-    // The gloss waits for a dwell; a passing pointer neither shows it nor records anything.
+    // The gloss shows on the hover itself, with no wait; a passing pointer records nothing.
     span.dispatchEvent(user(new win.MouseEvent('mouseover', { bubbles: true })));
+    expect(span.classList.contains('fw-tip')).toBe(true);
     await wait(100);
     span.dispatchEvent(user(new win.MouseEvent('mouseout', { bubbles: true })));
-    await wait(700);
     expect(span.classList.contains('fw-tip')).toBe(false);
-    expect(local.pendingEvents).toHaveLength(1);
-    // Focus shows the gloss for keyboard readers but never records a peek, since a page can focus a span from script.
-    span.dispatchEvent(user(new win.FocusEvent('focusin', { bubbles: true })));
     await wait(800);
+    expect(local.pendingEvents).toHaveLength(1);
+    // Scrolling during the dwell hides the gloss and cancels the peek too.
+    span.dispatchEvent(user(new win.MouseEvent('mouseover', { bubbles: true })));
+    await wait(100);
+    win.dispatchEvent(new win.Event('scroll'));
+    expect(span.classList.contains('fw-tip')).toBe(false);
+    await wait(800);
+    expect(local.pendingEvents).toHaveLength(1);
+    // Focus shows the gloss at once for keyboard readers but never records a peek, since a page can focus a span from script.
+    span.dispatchEvent(user(new win.FocusEvent('focusin', { bubbles: true })));
     expect(span.classList.contains('fw-tip')).toBe(true);
+    await wait(800);
     expect(local.pendingEvents).toHaveLength(1);
     span.dispatchEvent(user(new win.FocusEvent('focusout', { bubbles: true })));
     expect(span.classList.contains('fw-tip')).toBe(false);
+    // A dwell of PEEK_DWELL_MS on the same word records exactly one peek, however long the pointer stays.
     span.dispatchEvent(user(new win.MouseEvent('mouseover', { bubbles: true })));
-    await wait(800);
     expect(span.classList.contains('fw-tip')).toBe(true);
+    await wait(500);
+    expect(local.pendingEvents).toHaveLength(1);
+    span.dispatchEvent(user(new win.MouseEvent('mouseover', { bubbles: true }))); // moving within the word restarts nothing
+    await wait(300);
     expect(local.pendingEvents.map((e) => e.kind)).toEqual(['seen', 'peek']);
+    await wait(800);
+    expect(local.pendingEvents).toHaveLength(2);
     span.dispatchEvent(user(new win.MouseEvent('mouseout', { bubbles: true })));
     span.dispatchEvent(user(new win.MouseEvent('mouseover', { bubbles: true })));
     await wait(800);
@@ -156,7 +170,9 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     fake.dispatchEvent(user(new win.MouseEvent('click', { bubbles: true })));
     fake.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
     span.dispatchEvent(new win.MouseEvent('click', { bubbles: true })); // untrusted click on a real swap
-    span.dispatchEvent(new win.MouseEvent('mouseover', { bubbles: true }));
+    span.dispatchEvent(user(new win.MouseEvent('mouseout', { bubbles: true })));
+    span.dispatchEvent(new win.MouseEvent('mouseover', { bubbles: true })); // untrusted: no gloss, no peek
+    expect(span.classList.contains('fw-tip')).toBe(false);
     await wait(800);
     expect(fake.textContent).toBe('très');
     expect(span.textContent).toBe('and');
