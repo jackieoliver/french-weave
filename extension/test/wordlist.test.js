@@ -43,7 +43,8 @@ describe('wordSummary', () => {
       expect(s.words.map((w) => w.fr)).toEqual(L1_WORDS.map((w) => w.fr));
     }
     expect(wordSummary(null, { levelOverride: 2 }).words.length).toBe(L2_WORDS.length);
-    expect(wordSummary(null, { levelOverride: 4 }).level).toBe(2); // L3/L4 use the L2 list for now
+    expect(wordSummary(null, { levelOverride: 4 }).level).toBe(4); // L3/L4 are built; they use the L2 list for now
+    expect(wordSummary(null, { levelOverride: 4 }).words.length).toBe(L2_WORDS.length);
     expect(countsLine(wordSummary(null, {}))).toBe('built-in level 1 list');
   });
 });

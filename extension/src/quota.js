@@ -41,3 +41,38 @@ export async function callsToday(storage, day = localDay()) {
 export async function countCall(storage, day = localDay()) {
   await storage.set({ [KEY]: { day, count: (await callsToday(storage, day)) + 1 } });
 }
+
+// OpenRouter spend today in USD, as OpenRouter reports it per request ({ day, usd, stopped }). stopped: 'credits'
+// after a 402 (the account's credits are used up), so no more OpenRouter calls until tomorrow.
+const OPENROUTER_KEY = 'openRouterDay';
+export async function openRouterToday(storage, day = localDay()) {
+  const { [OPENROUTER_KEY]: saved } = await storage.get([OPENROUTER_KEY]);
+  return saved?.day === day ? { usd: 0, stopped: '', ...saved } : { day, usd: 0, stopped: '' };
+}
+
+export async function countOpenRouter(storage, { costUsd = 0, status = 200 } = {}, day = localDay()) {
+  const today = await openRouterToday(storage, day);
+  today.usd = Math.round((today.usd + (Number(costUsd) > 0 ? Number(costUsd) : 0)) * 1e6) / 1e6;
+  if (status === 402) today.stopped = 'credits';
+  await storage.set({ [OPENROUTER_KEY]: today });
+  return today;
+}
+
+// Why OpenRouter is off for the rest of today, or '' while it may be called.
+export function openRouterBlocked(today, capUsd) {
+  if (today?.stopped === 'credits') return 'credits';
+  return today?.usd >= capUsd ? 'cap' : '';
+}
+
+// Batches each model served today ({ day, counts: { model: n } }), for the popup: how often the chain falls through.
+const SERVED_KEY = 'servedToday';
+export async function servedToday(storage, day = localDay()) {
+  const { [SERVED_KEY]: saved } = await storage.get([SERVED_KEY]);
+  return saved?.day === day ? saved : { day, counts: {} };
+}
+
+export async function countServed(storage, model, day = localDay()) {
+  if (!model) return;
+  const today = await servedToday(storage, day);
+  await storage.set({ [SERVED_KEY]: { day, counts: { ...today.counts, [model]: (today.counts[model] || 0) + 1 } } });
+}

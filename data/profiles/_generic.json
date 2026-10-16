@@ -17,7 +17,9 @@
   "plural_nouns": true,
   "english": {
     "phrases": ["right now", "just now", "now and then", "as well", "as well as", "might as well", "at all", "after all",
-      "all right", "as long as", "so far", "so that"],
+      "all right", "as long as", "so far", "so that",
+      "never mind", "look for", "looks for", "looking for", "looked for", "find out", "finds out", "finding out",
+      "found out", "depend on", "depends on", "depending on"],
     "contexts": [
       "[*] of",
       "[before|after|since] i|you|he|she|we|they|it|there|someone|everyone|people|*ing",

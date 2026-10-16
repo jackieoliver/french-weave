@@ -74,7 +74,9 @@ test('churn: live text stops costing model calls, and a page that undoes swaps s
       if (delayed) { release = () => { delayed = null; }; await new Promise((done) => { const free = release; release = () => { free(); done(); }; }); }
       const body = JSON.parse(init.body);
       const items = JSON.parse(body.contents[0].parts[0].text.replace(/^Passages:\n/, ''));
-      const passages = items.map(({ id, text }) => ({ id, swaps: text.includes(' and ') ? [{ o: 'and', f: 'et', ctx: '' }] : [] }));
+      // Free-form replies carry swaps; the candidates design (the default) keeps candidate numbers.
+      const passages = items.map(({ id, text, candidates = [] }) => ({ id, swaps: text.includes(' and ') ? [{ o: 'and', f: 'et', ctx: '' }] : [],
+        keep: candidates.filter((c) => c.o === 'and').map((c) => c.n) }));
       return reply({ candidates: [{ content: { parts: [{ text: JSON.stringify({ passages }) }] } }] });
     },
   });

@@ -45,7 +45,19 @@ export const GENERIC = {
       "all right",
       "as long as",
       "so far",
-      "so that"
+      "so that",
+      "never mind",
+      "look for",
+      "looks for",
+      "looking for",
+      "looked for",
+      "find out",
+      "finds out",
+      "finding out",
+      "found out",
+      "depend on",
+      "depends on",
+      "depending on"
     ],
     "contexts": [
       "[*] of",

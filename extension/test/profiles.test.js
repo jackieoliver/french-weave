@@ -49,16 +49,17 @@ describe('profiles', () => {
     const p = buildSystemPrompt(2, WORDS, [], 'Spanish', prof);
     expect(p).toContain('(including its English synonyms, e.g. "big"/"large"/"huge" -> grande)');
     expect(p).toContain('Do not let common filler like "and" -> y crowd out');
-    expect(p).toContain('in context ("so" as an intensifier is NOT entonces).');
-    expect(p).toContain('readable ("a big win" -> "a grande win" is fine).');
-    expect(p).toContain('ordinary English reading. Use Latin American Spanish words and spellings.');
-    expect(p).toContain('zero Spanish');
-    expect(p).toContain('Zero Spanish in passages about health');
+    expect(p).toContain('the Spanish word means exactly what the English means in this sentence ("so" as an intensifier is NOT entonces).');
+    expect(p).toContain('keeps English word order ("a big win" -> "a grande win" is fine).');
+    expect(p).toContain('in Spanish. Use Latin American Spanish words and spellings.');
+    expect(p).toContain('learning Spanish from zero');
+    expect(p).toContain('set "topic" to "avoid" and return no swaps');
     expect(p).not.toMatch(FRENCH);
     // No profile: the generic prompt, no examples at all.
     const bare = buildSystemPrompt(2, WORDS, [], 'Klingon');
     expect(bare).toContain('sense fits. Use one');
-    expect(bare).toContain('same sense in context. An adjective swap must keep English word order readable.');
+    expect(bare).toContain('Same sense: the Klingon word means exactly what the English means in this sentence.');
+    expect(bare).toContain('an adjective swap keeps English word order.');
     expect(bare).not.toMatch(FRENCH);
   });
 

@@ -10,7 +10,7 @@
   .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 7px 0; }
   .row > span:first-child { flex: 0 0 auto; }
   section { border-top: 1px solid #ddd; margin-top: 10px; padding-top: 6px; }
-  input[type=password], select { width: 150px; padding: 3px 5px; font: inherit; }
+  input[type=password], input[type=number], select { width: 150px; padding: 3px 5px; font: inherit; }
   input[type=checkbox] { width: 18px; height: 18px; }
   button { font: inherit; padding: 3px 9px; }
   .small { color: #666; font-size: 12px; overflow-wrap: anywhere; }
@@ -61,14 +61,21 @@
       </select>
     </label>
     <label class="row"><span>Model</span><select id="model"></select></label>
+    <div class="row"><span>Last batch</span><span id="modelInfo" class="small"></span></div>
     <label class="row"><span>Gemini key</span><input type="password" id="apiKey" placeholder="AIza…" autocomplete="off"></label>
+    <details id="moreKeys"><summary>Backup and paid keys</summary>
+      <label class="row"><span>Backup Gemini key</span><input type="password" id="backupKey" placeholder="optional" autocomplete="off"></label>
+      <label class="row"><span>OpenRouter key</span><input type="password" id="openRouterKey" placeholder="optional, paid" autocomplete="off"></label>
+      <label class="row"><span>OpenRouter cap ($/day)</span><input type="number" id="openRouterDailyUsd" min="0" max="100" step="0.05"></label>
+      <p class="small" id="openRouterInfo"></p>
+    </details>
     <div class="row"><span>Words</span><span id="wordInfo" class="small"></span></div>
     <div class="row"><button id="syncWords">Sync words</button><button id="clearCache">Clear cache</button></div>
   </section>
   <section>
     <details id="wordList"><summary>Your words <span data-counts class="small"></span></summary><div data-rows></div></details>
   </section>
-  <p class="small">Sites where it's on send readable page text to Gemini with your key. With a free key, Google may use it to improve its products; a paid key avoids that. Links and inline code go with their sentence but are never changed; code blocks, forms and editable text are skipped.</p>
+  <p class="small">Sites where it's on send readable page text to Gemini with your key (with an OpenRouter key, also to OpenRouter and the model's provider when Gemini can't answer). With a free key, Google may use it to improve its products; a paid key avoids that. Links and inline code go with their sentence but are never changed; code blocks, forms and editable text are skipped.</p>
   <div id="notice" class="small error" role="alert"></div>
   <script type="module" src="popup.js"></script>
 </body>

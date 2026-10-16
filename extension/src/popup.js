@@ -1,7 +1,7 @@
 import { resolveLevel, MAX_BUILT_LEVEL } from './levels.js';
-import { MODELS } from './gemini.js';
+import { MODELS, modelLabel } from './model-config.js';
 import { siteEnabled, siteOn, hasSiteAccess } from './settings.js';
-import { modelErrorText } from './modelerror.js';
+import { modelErrorText, openRouterText } from './modelerror.js';
 import { readCached } from './hostsource.js';
 import { wordSummary, renderWordList } from './wordlist.js';
 
@@ -45,8 +45,18 @@ async function refresh() {
   const { stage, chosen } = resolveLevel(s, c.stage);
   $('levelInfo').textContent = `L${chosen}${stage && chosen !== stage ? ` (Claude Code stage ${stage})` : ''}${chosen > MAX_BUILT_LEVEL ? ` · L${MAX_BUILT_LEVEL} rules for now` : ''}`;
   $('levelOverride').value = String(s.levelOverride || 0);
-  $('model').value = s.model;
+  $('model').value = s.modelChoice;
+  const last = status.modelStatus?.model;
+  const served = Object.entries(status.served?.counts || {}).map(([m, n]) => `${modelLabel(m)} ${n}`).join(' · ');
+  $('modelInfo').textContent = [last ? `${modelLabel(last)}${status.modelStatus.keyName === 'backup' ? ' (backup key)' : ''}` : 'none yet',
+    served && `today: ${served}`].filter(Boolean).join('; ');
   $('apiKey').value = '';
+  $('backupKey').value = '';
+  $('backupKey').placeholder = status.backupKey ? 'saved (paste to replace)' : 'optional';
+  $('openRouterKey').value = '';
+  $('openRouterKey').placeholder = status.openRouterKey ? 'saved (paste to replace)' : 'optional, paid';
+  $('openRouterDailyUsd').value = String(s.openRouterDailyUsd);
+  $('openRouterInfo').textContent = openRouterText(status, s.openRouterDailyUsd);
   $('apiKey').placeholder = status.pastedKey ? 'saved (paste to replace)' : status.hostKey ? 'from setup (paste to override)' : 'AIza…';
   $('wordInfo').textContent = status.words
     ? `${status.words} from Claude Code · ${ago(status.fetchedAt)}${c.paused ? ' · paused' : ''}`
@@ -94,7 +104,7 @@ async function inject() {
   } catch { $('notice').textContent = 'Reload this page to start. Chrome blocks extensions on some pages.'; }
 }
 
-for (const [id, label] of Object.entries(MODELS)) {
+for (const [id, label] of [['auto', 'Auto (recommended)'], ...Object.entries(MODELS)]) {
   const opt = document.createElement('option');
   opt.value = id;
   opt.textContent = label;
@@ -104,8 +114,11 @@ for (const [id, label] of Object.entries(MODELS)) {
 $('enabled').addEventListener('change', (e) => run(() => save({ settings: { enabled: e.target.checked } })));
 $('newSitesEnabled').addEventListener('change', (e) => run(() => save({ settings: { newSitesEnabled: e.target.value === 'true' } })));
 $('levelOverride').addEventListener('change', (e) => run(() => save({ settings: { levelOverride: Number(e.target.value) || 0 } })));
-$('model').addEventListener('change', (e) => run(() => save({ settings: { model: e.target.value } })));
+$('model').addEventListener('change', (e) => run(() => save({ settings: { modelChoice: e.target.value } })));
 $('apiKey').addEventListener('change', (e) => run(() => save({ apiKey: e.target.value })));
+$('backupKey').addEventListener('change', (e) => run(() => save({ backupKey: e.target.value })));
+$('openRouterKey').addEventListener('change', (e) => run(() => save({ openRouterKey: e.target.value })));
+$('openRouterDailyUsd').addEventListener('change', (e) => run(() => save({ settings: { openRouterDailyUsd: Number(e.target.value) } })));
 $('siteEnabled').addEventListener('change', (e) => run(async () => {
   const enabled = e.target.checked;
   if (enabled && !hasSiteAccess(tab.url, status.config.origins)) {

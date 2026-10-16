@@ -9,7 +9,7 @@ describe('level', () => {
     expect(resolveLevel({})).toEqual({ stage: 0, chosen: 1, effective: 1 });
     expect(resolveLevel({}, 2)).toEqual({ stage: 2, chosen: 2, effective: 2 });
     expect(resolveLevel({ levelOverride: 1 }, 2)).toEqual({ stage: 2, chosen: 1, effective: 1 });
-    expect(resolveLevel({ levelOverride: 4 }, 1)).toEqual({ stage: 1, chosen: 4, effective: 2 });
+    expect(resolveLevel({ levelOverride: 4 }, 1)).toEqual({ stage: 1, chosen: 4, effective: 4 });
     expect(resolveLevel({ levelOverride: 9 }, 7)).toEqual({ stage: 0, chosen: 1, effective: 1 });
   });
 });

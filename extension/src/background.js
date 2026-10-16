@@ -7,9 +7,11 @@ import { cleanSettings, newSitesDefault, siteEnabled, hasSiteAccess } from './se
 import { resolveLevel, exactFr, isZeroFrench, wordCount } from './levels.js';
 import { hashKey } from './hash.js';
 import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from './hostsource.js';
-import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent, countDropped, droppedToday } from './quota.js';
+import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent, countDropped, droppedToday, openRouterToday,
+  countOpenRouter, openRouterBlocked, servedToday, countServed } from './quota.js';
 import { modelErrorText, replaceLegacyStatus } from './modelerror.js';
-import { FALLBACK_MODEL } from './gemini.js';
+import { API_BASE } from './gemini.js';
+import { configFor } from './model-config.js';
 
 const store = chrome.storage.local;
 const cache = createCache(chromeStorage);
@@ -37,8 +39,12 @@ const serial = () => {
 const modelCall = serial(); // one model call at a time
 const locked = serial(); // storage read-modify-writes one at a time, or concurrent ones drop data
 
-const LOCAL_CAP_ERROR = `Daily limit of ${DAILY_MODEL_CALLS} model calls reached; French resumes tomorrow`;
-const localCapped = async () => await callsToday(chromeStorage) >= DAILY_MODEL_CALLS;
+// The local cap is per Gemini key: a backup key brings its own quota.
+const localCap = async () => DAILY_MODEL_CALLS * ((await store.get('backupKey')).backupKey ? 2 : 1);
+const localCapError = (cap) => `Daily limit of ${cap} model calls reached; French resumes tomorrow`;
+const localCapped = async () => await callsToday(chromeStorage) >= await localCap();
+// Every key the worker holds, for scrubbing error text: none may reach a page, the popup or storage.
+const KEY_NAMES = ['apiKey', 'hostKey', 'backupKey', 'openRouterKey'];
 
 const ready = (async () => {
   // Content scripts run on every enabled site, so stored keys are kept out of their reach.
@@ -50,9 +56,9 @@ const ready = (async () => {
   // A status stored before 0.2.2 has no kind, and its text can be wrong (0.2.1 called the per-day quota a rate
   // limit); nothing would clear it until a request worked. Replace it on every worker start, updates included.
   await locked(async () => {
-    const { modelStatus, dailyQuota } = await store.get(['modelStatus', 'dailyQuota']);
-    const models = [clean.model, FALLBACK_MODEL[clean.model]].filter(Boolean);
-    const replaced = replaceLegacyStatus(modelStatus, dailyQuota, models, Date.now(), (await localCapped()) ? LOCAL_CAP_ERROR : '');
+    const { modelStatus, dailyQuota, wordState } = await store.get(['modelStatus', 'dailyQuota', 'wordState']);
+    const models = configFor(wordState?.language || 'French', clean.modelChoice).chain.filter((s) => s.provider === 'gemini').map((s) => s.model);
+    const replaced = replaceLegacyStatus(modelStatus, dailyQuota, models, Date.now(), (await localCapped()) ? localCapError(await localCap()) : '');
     if (replaced) await store.set({ modelStatus: replaced });
   });
 })();
@@ -60,12 +66,12 @@ const ready = (async () => {
 // What pages get. The revision changes whenever anything that affects swaps does, so stale replies are dropped.
 async function context() {
   await ready;
-  const data = await store.get(['settings', 'wordState', 'apiKey', 'hostKey', 'epoch']);
+  const data = await store.get(['settings', 'wordState', 'apiKey', 'hostKey', 'backupKey', 'epoch']);
   const state = data.wordState?.words?.length ? data.wordState : null;
   const saved = cleanSettings(data.settings);
   const settings = { ...saved, newSitesEnabled: newSitesDefault(saved, state?.sites) };
   const level = resolveLevel(saved, state?.stage).effective;
-  const hasKey = !!(data.apiKey || data.hostKey);
+  const hasKey = !!(data.apiKey || data.hostKey || data.backupKey);
   const paused = !!state?.paused;
   const { origins = [] } = await chrome.permissions.getAll();
   const revision = hashKey(JSON.stringify([data.epoch || '', settings, level, state?.version || '', paused, hasKey, origins]));
@@ -93,6 +99,9 @@ async function swaps(msg, sender) {
   if (!Array.isArray(msg.items) || msg.items.length > 8) throw new Error('Invalid text batch');
   const items = msg.items.filter((i) => i && typeof i.text === 'string' && i.text.length <= 2000 &&
     wordCount(i.text) >= 6 && !isZeroFrench(i.text) && i.key === `${ctx.revision}:${hashKey(i.text)}`);
+  // Title guard: a page whose title is about money, health, legal matters, crime, driving or emergencies gets no swaps
+  // at all, not even cached ones from the same text elsewhere, and nothing goes to a model.
+  if (isZeroFrench(String(sender.tab?.title || ''))) return { results: Object.fromEntries(items.map((i) => [i.key, []])) };
   const results = await cache.getMany(items.map((i) => i.key));
   const misses = items.filter((i) => !(i.key in results));
   if (!misses.length) return { results };
@@ -104,13 +113,18 @@ async function swaps(msg, sender) {
   try {
     const fresh = await modelCall(async () => {
       if ((await context()).revision !== ctx.revision) return null;
-      if (await localCapped()) throw Object.assign(new Error(LOCAL_CAP_ERROR), { kind: 'local' });
-      const { wordState, apiKey, hostKey } = await store.get(['wordState', 'apiKey', 'hostKey']);
+      if (await localCapped()) throw Object.assign(new Error(localCapError(await localCap())), { kind: 'local' });
+      const { wordState, apiKey, hostKey, backupKey, openRouterKey } = await store.get(['wordState', 'apiKey', 'hostKey', 'backupKey', 'openRouterKey']);
       usedKey = apiKey || hostKey || '';
-      const fetchImpl = async (...args) => { await countCall(chromeStorage); return fetch(...args); };
+      // Only Gemini calls count toward the local cap; OpenRouter has its own spend cap.
+      const fetchImpl = async (url, ...rest) => { if (String(url).startsWith(API_BASE)) await countCall(chromeStorage); return fetch(url, ...rest); };
       const daily = await spentToday(chromeStorage); // a spent daily quota outlives the worker, so it is kept in storage
+      const openRouterOn = !!openRouterKey && !openRouterBlocked(await openRouterToday(chromeStorage), ctx.settings.openRouterDailyUsd);
+      const { design, chain } = configFor(wordState?.words?.length ? wordState.language || 'French' : 'French', ctx.settings.modelChoice);
       try {
-        return await requestSwaps({ apiKey: apiKey || hostKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, language: wordState?.language, fetchImpl,
+        return await requestSwaps({ keys: { main: apiKey || hostKey, backup: backupKey, openrouter: openRouterOn ? openRouterKey : '' },
+          chain, design, level: ctx.level, words: wordState?.words, language: wordState?.language, fetchImpl,
+          onOpenRouter: (r) => locked(() => countOpenRouter(chromeStorage, r)),
           shownToday: await shownToday(chromeStorage), cooldown, daily, page: pageLabel(sender), batch: misses.map((i) => ({ id: i.key, text: i.text })) });
       } finally {
         await saveSpent(chromeStorage, daily);
@@ -120,7 +134,10 @@ async function swaps(msg, sender) {
       if (!fresh || (await context()).revision !== ctx.revision) return { results: {}, stale: true };
       await cache.setMany(fresh.results);
       await countDropped(chromeStorage, fresh.dropped);
-      await store.set({ modelStatus: { at: Date.now(), error: '', model: fresh.model } });
+      if (!fresh.skipped) { // a batch without candidates made no request: the last model's status stands
+        await store.set({ modelStatus: { at: Date.now(), error: '', model: fresh.model, provider: fresh.provider, keyName: fresh.keyName } });
+        await countServed(chromeStorage, fresh.model);
+      }
       return { results: { ...results, ...fresh.results } };
     }).finally(() => void showBadge());
   } catch (e) {
@@ -132,8 +149,9 @@ async function swaps(msg, sender) {
 // Every candidate model failed (after the engine's own fallback). Stores what the popup and badge need; a wait
 // with no request of its own (every model cooling down) keeps the code and case of the request that started it.
 async function failed(e, usedKey) {
-  const { apiKey, hostKey } = await store.get(['apiKey', 'hostKey']);
-  const keys = [apiKey, hostKey, usedKey].filter((k) => typeof k === 'string' && k.length >= 8);
+  const stored = await store.get(KEY_NAMES);
+  const { apiKey, hostKey } = stored;
+  const keys = [...KEY_NAMES.map((k) => stored[k]), usedKey].filter((k) => typeof k === 'string' && k.length >= 8);
   const error = keys.reduce((text, k) => text.split(k).join('[key]'), String(e?.message || 'Model request failed')).slice(0, 500);
   // A key pasted while this request was out: its refusal says nothing about the new key.
   if (e?.kind === 'key' && usedKey && usedKey !== (apiKey || hostKey)) return error;
@@ -234,6 +252,20 @@ async function save(msg) {
       patch.dailyQuota = {};
       cooldown.clear();
     }
+    // The backup Gemini key and the OpenRouter key: same rules as the main key; a new one starts with a clean slate.
+    for (const name of ['backupKey', 'openRouterKey']) {
+      if (typeof msg[name] !== 'string') continue;
+      if (msg[name].length > 500) throw new Error('Key is too long');
+      patch[name] = msg[name].trim();
+      const prefix = name === 'backupKey' ? 'backup:' : 'openrouter:';
+      const { dailyQuota } = await store.get('dailyQuota');
+      patch.dailyQuota = Object.fromEntries(Object.entries(patch.dailyQuota || dailyQuota || {}).filter(([slot]) => !slot.startsWith(prefix)));
+      for (const slot of [...cooldown.keys()]) if (slot.startsWith(prefix)) cooldown.delete(slot);
+      if (name === 'openRouterKey') {
+        const today = await openRouterToday(chromeStorage);
+        if (today.stopped) await store.set({ openRouterDay: { ...today, stopped: '' } });
+      }
+    }
     await store.set(patch);
   });
   await showBadge();
@@ -243,9 +275,12 @@ async function save(msg) {
 
 async function status() {
   const config = await context();
-  const data = await store.get(['wordState', 'apiKey', 'hostKey', 'modelStatus']);
+  const data = await store.get(['wordState', 'apiKey', 'hostKey', 'backupKey', 'openRouterKey', 'modelStatus']);
+  const openRouter = await openRouterToday(chromeStorage);
   return { config, words: data.wordState?.words?.length || 0, fetchedAt: data.wordState?.fetchedAt || 0,
-    pastedKey: !!data.apiKey, hostKey: !!data.hostKey, modelStatus: data.modelStatus || null,
+    pastedKey: !!data.apiKey, hostKey: !!data.hostKey, backupKey: !!data.backupKey, openRouterKey: !!data.openRouterKey,
+    modelStatus: data.modelStatus || null, served: await servedToday(chromeStorage),
+    openRouter: { ...openRouter, blocked: openRouterBlocked(openRouter, config.settings.openRouterDailyUsd) },
     dropped: await droppedToday(chromeStorage),
     update: await checkUpdate() };
 }

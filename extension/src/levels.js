@@ -446,6 +446,12 @@ export function breaksEnglish(o, f, ctx = '', text = '', rules = ENGLISH) {
   return '';
 }
 
+// The same check for the English at characters [from, to) of text, for code that knows the exact place (candidates.js).
+export function breaksEnglishAt(text, from, to, f, rules = ENGLISH) {
+  const s = tokenize(String(text).slice(0, from)).length;
+  return splitAt(tokenize(text), s, s + tokenize(String(text).slice(from, to)).length, f, rules);
+}
+
 // Fail closed: keep only swaps whose French is on the list (the plugin's word state, else the level's bundled list)
 // and whose English matches that word's gloss.
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
@@ -524,8 +530,15 @@ const ZERO_FRENCH = [
   /\b(doctor|hospital|diagnos\w*|symptoms?|medication|meds|ibuprofen|tylenol|prescription|overdose|vaccine|cancer|surgery|pregnan\w*|therapist|antidepressants?|ssri|adderall|stimulants?|chemo)\b/i,
   /\b(lawsuit|attorney|lawyer|sued|indict\w*|court order|legal advice|subpoena)\b/i,
   /\b(invest\w*|stock market|crypto|bitcoin|mortgage|loan|taxes|salary|bank account|financial advice)\b/i,
+  // Funds and accounts people put money in (2026-10-16: "The best index funds to buy this year" leaked). Bare "funds"
+  // and "retirement" stay out ("funds for open source", "the API's retirement"); IRA and ETF only in capitals (Ira).
+  /\b((index|mutual|hedge|pension|retirement) funds?|funds to (buy|own)|retirement (savings|account|plan|income|age)|stocks|dividends?|401\(?k\)?|roth)\b/i,
+  /\b(IRAs?|ETFs?)\b/,
   /\b(911|emergency|evacuat\w*|shooting|wildfire|earthquake|hurricane|tornado|active shooter)\b/i,
   /\b(driving|drunk driv\w*|car crash|dui|speed limit|seat ?belt)\b/i,
+  // Road accidents ("Teen driver injured in crash on Route 9"). Bare "crash" and "driver" stay out ("the crash of a
+  // program", "a driver update"): only injuries, collisions, a crash on a road or of a vehicle, and kinds of driver.
+  /\b(injur(ed|ies|y)|collisions?|(car|bus|truck|plane|train|motorcycle|bike|highway|fatal|deadly|head-on|traffic) crash(es)?|crash(es|ed)? (on|near) (route|highway|interstate|i-\d+|us-\d+|hwy)|(teen|teenage|student|drunk|truck|bus|taxi|delivery|uber|lyft) drivers?|hit-and-run)\b/i,
 ];
 
 export function isZeroFrench(text) {

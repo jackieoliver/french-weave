@@ -98,7 +98,7 @@ describe('model status stored before 0.2.2', () => {
 
   test('worker start shows the daily notice when the per-day quota is still spent', async () => {
     const until = Date.now() + 3 * 3600000;
-    const { data, badge, worker } = await startWorker('daily', { dailyQuota: { 'gemini-3.5-flash-lite': until } });
+    const { data, badge, worker } = await startWorker('daily', { dailyQuota: { 'gemini-3.1-flash-lite': until, 'gemini-3.5-flash-lite': until } });
     expect(data.modelStatus).toMatchObject({ kind: 'daily', retryAt: until, httpStatus: 429 });
     expect(badge).toMatchObject({ text: worker.BADGE_ERROR.text, color: worker.PLACEHOLDER_GRAY, textColor: worker.ERROR_DOT_COLOR });
     expect(badge.title).toMatch(/^French Weave: Daily Gemini limit reached \(429\); resumes (tomorrow )?about /);

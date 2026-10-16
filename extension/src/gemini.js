@@ -1,26 +1,24 @@
 // Gemini generateContent call. No chrome APIs; fetch is injectable for tests.
-export const MODELS = {
-  'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
-  'gemini-3.8-flash': 'Gemini 3.8 Flash',
-};
 export const FALLBACK_MODEL = { 'gemini-3.8-flash': 'gemini-3.5-flash-lite' };
 export const THINKING_LEVEL = 'low';
 export const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
-export function buildRequest({ system, user, schema, thinkingLevel = THINKING_LEVEL }) {
+// thinkingLevel "off" (or none) sends no thinking config; so does a Gemma model, which rejects one.
+export function buildRequest({ system, user, schema, thinkingLevel = THINKING_LEVEL, model = '' }) {
+  const thinking = thinkingLevel && thinkingLevel !== 'off' && !/^gemma/.test(model);
   return {
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts: [{ text: user }] }],
     generationConfig: {
       responseMimeType: 'application/json',
       responseSchema: schema,
-      thinkingConfig: { thinkingLevel },
+      ...(thinking ? { thinkingConfig: { thinkingLevel } } : {}),
     },
   };
 }
 
-// Returns Map<id, swaps[]> from the model's JSON. Throws on HTTP error, timeout, or unparseable output.
-export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, body, timeoutMs = 20000, now = Date.now }) {
+// Returns the model's JSON read by parse (default: Map<id, swaps[]>). Throws on HTTP error, timeout, or unparseable output.
+export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, body, timeoutMs = 20000, now = Date.now, parse = parseSwapsResponse }) {
   let res;
   try {
     res = await fetchImpl(`${API_BASE}${model}:generateContent`, {
@@ -51,7 +49,7 @@ export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, 
   }
   const data = await res.json();
   const text = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
-  return parseSwapsResponse(text);
+  return parse(text);
 }
 
 // Per-day Gemini quotas reset at midnight Pacific time; calls start again this long after it.
