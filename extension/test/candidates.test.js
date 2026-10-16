@@ -101,13 +101,15 @@ describe('candidates request and reply', () => {
 describe('title guard', () => {
   test('pages about money, health, legal matters, crime, driving or emergencies by their title', () => {
     for (const t of ['The best index funds to buy this year', 'Teen driver injured in crash on Route 9', 'Best ETFs for 2026',
-      'The Roth IRA explained', 'Stocks fall as rates rise', 'Fatal highway crash closes lanes', 'Two hurt in collision downtown']) {
+      'The Roth IRA explained', 'Stocks fall as rates rise', 'Fatal highway crash closes lanes', 'Two hurt in collision downtown',
+      'Springfield Crime Rates', 'My bank froze my account', 'Arrested after a bar fight', 'Murder trial opens', 'Bank fees are rising']) {
       expect(isZeroFrench(t)).toBe(true);
     }
   });
   test('ordinary pages that share a word stay on', () => {
     for (const t of ['Why my program crashed: the crash of a program', 'A driver update for Linux', 'NVIDIA driver 560 released',
-      'Ira Glass on radio', 'Funds for open source', 'Retirement of the v1 API', 'App crash on startup fixed', 'Graphics driver crash on Windows']) {
+      'Ira Glass on radio', 'Funds for open source', 'Retirement of the v1 API', 'App crash on startup fixed', 'Graphics driver crash on Windows',
+      'Memory banks in a GPU', 'Hacker News', 'The Police: Every Breath You Take', 'Arresting design ideas for small rooms']) {
       expect(isZeroFrench(t)).toBe(false);
     }
   });

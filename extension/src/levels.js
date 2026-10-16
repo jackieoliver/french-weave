@@ -565,6 +565,9 @@ const ZERO_FRENCH = [
   /\b((index|mutual|hedge|pension|retirement) funds?|funds to (buy|own)|retirement (savings|account|plan|income|age)|stocks|dividends?|401\(?k\)?|roth)\b/i,
   /\b(IRAs?|ETFs?)\b/,
   /\b(911|emergency|evacuat\w*|shooting|wildfire|earthquake|hurricane|tornado|active shooter)\b/i,
+  // Crime and banking by name (2026-10-16: "Springfield Crime Rates" got swaps with a key, "My bank froze my account"
+  // and "Arrested after a bar fight" passed too). Bare "bank" and "police" stay out ("memory banks", "Police (the band)").
+  /\b(crimes?|criminals?|murder\w*|homicides?|arrest(ed|s)?|robber(y|ies)|assault(ed|s)?|stabb(ed|ing)|bar fight|(my|your|our|the) bank|banks? (froze|frozen|closed|fees?|accounts?))\b/i,
   /\b(driving|drunk driv\w*|car crash|dui|speed limit|seat ?belt)\b/i,
   // Road accidents ("Teen driver injured in crash on Route 9"). Bare "crash" and "driver" stay out ("the crash of a
   // program", "a driver update"): only injuries, collisions, a crash on a road or of a vehicle, and kinds of driver.

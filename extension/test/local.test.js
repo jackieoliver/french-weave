@@ -193,7 +193,10 @@ async function startWorker(name, data, native = async () => ({ ok: false })) {
     if (!String(url).startsWith('https://generativelanguage.googleapis.com/')) return { ok: true, json: async () => ({ version: '0.2.3' }) };
     gemini.push(init);
     const items = JSON.parse(JSON.parse(init.body).contents[0].parts[0].text.replace(/^Passages:\n/, ''));
-    const passages = items.map(({ id }) => ({ id, swaps: [{ o: 'walk', f: 'et', ctx: '' }, { o: 'and', f: 'et', ctx: '' }] }));
+    // Free-form design reads swaps; the candidates design (the default) reads keep: the numbers of the "and" spots.
+    const passages = items.map(({ id, candidates = [] }) => ({ id, topic: 'ok',
+      keep: candidates.filter((c) => /^and$/i.test(c.o)).map((c) => c.n),
+      swaps: [{ o: 'walk', f: 'et', ctx: '' }, { o: 'and', f: 'et', ctx: '' }] }));
     return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ passages }) }] } }] }) };
   };
   const send = (msg, sender) => new Promise((done) => {
@@ -232,7 +235,8 @@ describe('engine tiers in the worker', () => {
       expect(w.data.modelCalls).toBeUndefined(); // nothing counts toward the daily Gemini cap
       expect(Object.keys(w.data).filter((k) => k.startsWith('c:'))).toHaveLength(0); // nothing cached
       expect((await w.ask(TEXT, "It's crazy how dangerous driving is")).swaps).toEqual([]);
-      expect((await w.ask('The crime rate here is always rising and nobody seems to care.')).swaps).toEqual([]);
+      // A crime passage is now dropped before the lookup (isZeroFrench), so it has no entry at all: still no swaps.
+      expect((await w.ask('The crime rate here is always rising and nobody seems to care.')).swaps ?? []).toEqual([]);
       expect(w.badge.text).toBe(''); // no key, no Gemini calls to fail
     } finally { w.restore(); }
   });
