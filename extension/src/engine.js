@@ -39,7 +39,7 @@ export async function requestSwaps({ apiKey, model, level, batch, words, languag
   if (!models.length) throw waitError(candidates, cooldown, daily, now());
   for (const m of models) {
     try {
-      const byId = await callGemini({ fetchImpl, apiKey, model: m, body, timeoutMs: timeoutFor(m, models, timeoutMs) });
+      const byId = await callGemini({ fetchImpl, apiKey, model: m, body, timeoutMs: timeoutFor(m, models, timeoutMs), now });
       const results = {};
       for (const { id, text } of batch) {
         if (!byId.has(id)) throw new Error('Incomplete model response');

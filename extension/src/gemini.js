@@ -20,7 +20,7 @@ export function buildRequest({ system, user, schema, thinkingLevel = THINKING_LE
 }
 
 // Returns Map<id, swaps[]> from the model's JSON. Throws on HTTP error, timeout, or unparseable output.
-export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, body, timeoutMs = 20000 }) {
+export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, body, timeoutMs = 20000, now = Date.now }) {
   let res;
   try {
     res = await fetchImpl(`${API_BASE}${model}:generateContent`, {
@@ -43,7 +43,10 @@ export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, 
     const delay = Number(/"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(detail)?.[1] || res.headers?.get?.('retry-after'));
     if (delay > 0) error.retryAfterMs = Math.min(delay, 86400) * 1000;
     Object.assign(error, quotaFailure(detail), googleError(detail));
-    if (error.daily && !error.retryAfterMs) error.retryAfterMs = DAILY_RECHECK_MS;
+    // Google's retryDelay for a per-day quota counts down to midnight UTC, but the quota resets at midnight Pacific
+    // (seen 2026-10-15: still 429 at 17:08 PDT with "retry in 23h51m"). So a spent day waits until just after the next
+    // Pacific midnight, or Google's time if that is sooner; a 429 on the probe after it waits for the next one.
+    if (error.daily) error.retryAfterMs = Math.min(error.retryAfterMs || Infinity, dailyReset(now()) - now());
     throw error;
   }
   const data = await res.json();
@@ -51,8 +54,23 @@ export async function callGemini({ fetchImpl = globalThis.fetch, apiKey, model, 
   return parseSwapsResponse(text);
 }
 
-// A daily quota without a retry time is checked again after this long.
-export const DAILY_RECHECK_MS = 3600000;
+// Per-day Gemini quotas reset at midnight Pacific time; calls start again this long after it.
+export const DAILY_RESET_ZONE = 'America/Los_Angeles';
+export const DAILY_RESET_SLACK_MS = 60000;
+const zoneParts = new Intl.DateTimeFormat('en-US', { timeZone: DAILY_RESET_ZONE, hourCycle: 'h23',
+  year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+// Pacific wall-clock time at ms, read as if it were UTC; minus ms, that is the zone's offset then (DST included).
+function wallClock(ms) {
+  const p = Object.fromEntries(zoneParts.formatToParts(ms).map(({ type, value }) => [type, Number(value)]));
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+}
+// The first Pacific midnight after ms, plus the slack. Midnight is never skipped or repeated there (DST moves 2 AM).
+export function dailyReset(ms) {
+  const wall = new Date(wallClock(ms));
+  const midnight = Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate() + 1);
+  const guess = midnight - (wallClock(midnight) - midnight);
+  return midnight - (wallClock(guess) - guess) + DAILY_RESET_SLACK_MS;
+}
 
 // The quota a 429 names (google.rpc.QuotaFailure): daily when its quotaId is a per-day one
 // ("GenerateRequestsPerDayPerProjectPerModel-FreeTier"), with the day's limit when given (quotaValue "500").

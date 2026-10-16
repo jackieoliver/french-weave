@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { callGemini, quotaFailure, DAILY_RECHECK_MS } from '../src/gemini.js';
+import { callGemini, quotaFailure, dailyReset } from '../src/gemini.js';
 import { requestSwaps, clockTime } from '../src/engine.js';
 import { DAILY_MODEL_CALLS, spentToday, saveSpent } from '../src/quota.js';
 import { memoryStorage } from '../src/cache.js';
@@ -23,13 +23,15 @@ describe('daily quota', () => {
   test('the 429 body says which quota ran out', async () => {
     expect(quotaFailure('nope')).toEqual({});
     expect(quotaFailure('{"error":{"details":[{"retryDelay":"36s"}]}}')).toEqual({});
-    const day = await callGemini({ fetchImpl: async () => quota429(DAY, '13634s'), apiKey: 'K', model: 'gemini-3.5-flash-lite', body: {} }).catch((e) => e);
+    const t = Date.UTC(2026, 9, 15, 20, 12); // 13:12 PDT
+    const now = () => t;
+    const day = await callGemini({ fetchImpl: async () => quota429(DAY, '13634s'), apiKey: 'K', model: 'gemini-3.5-flash-lite', body: {}, now }).catch((e) => e);
     expect(day).toMatchObject({ status: 429, daily: true, dailyLimit: 500, quotaId: DAY, retryAfterMs: 13634000 });
-    const minute = await callGemini({ fetchImpl: async () => quota429(MINUTE, '36s', '15'), apiKey: 'K', model: 'gemini-3.5-flash-lite', body: {} }).catch((e) => e);
+    const minute = await callGemini({ fetchImpl: async () => quota429(MINUTE, '36s', '15'), apiKey: 'K', model: 'gemini-3.5-flash-lite', body: {}, now }).catch((e) => e);
     expect(minute.daily).toBeUndefined();
     expect(minute.retryAfterMs).toBe(36000);
-    const noDelay = await callGemini({ fetchImpl: async () => quota429(DAY, ''), apiKey: 'K', model: 'gemini-3.5-flash-lite', body: {} }).catch((e) => e);
-    expect(noDelay.retryAfterMs).toBe(DAILY_RECHECK_MS);
+    const noDelay = await callGemini({ fetchImpl: async () => quota429(DAY, ''), apiKey: 'K', model: 'gemini-3.5-flash-lite', body: {}, now }).catch((e) => e);
+    expect(noDelay.retryAfterMs).toBe(dailyReset(t) - t); // no time given: just after midnight Pacific
   });
 
   test('a per-day 429 stops calls until the retry time and says when French resumes; a per-minute one keeps the short backoff', async () => {
@@ -69,6 +71,40 @@ describe('daily quota', () => {
     } };
     expect((await requestSwaps(both)).model).toBe('gemini-3.5-flash-lite'); // Flash spent for the day, Lite answers
     expect(daily.has('gemini-3.8-flash')).toBe(true);
+  });
+
+  // Google's retryDelay for a per-day quota counts down to midnight UTC (17:00 PDT), but the quota resets at midnight
+  // Pacific: at 17:08 PDT on 2026-10-15 it still said 429 with "retry in 23h51m". Trusting it blocked French ~17 hours.
+  test('a per-day limit resumes just after the next Pacific midnight, or at Google\'s time if sooner', async () => {
+    const at = (iso) => Date.parse(iso);
+    // Before and after 17:00 PDT: both resume at 00:01 PDT (07:01 UTC) the next calendar day in Pacific time.
+    expect(dailyReset(at('2026-10-15T23:04:00Z'))).toBe(at('2026-10-16T07:01:00Z')); // 16:04 PDT
+    expect(dailyReset(at('2026-10-16T00:08:00Z'))).toBe(at('2026-10-16T07:01:00Z')); // 17:08 PDT
+    expect(dailyReset(at('2026-10-16T06:59:00Z'))).toBe(at('2026-10-16T07:01:00Z')); // 23:59 PDT
+    expect(dailyReset(at('2026-10-16T07:00:30Z'))).toBe(at('2026-10-17T07:01:00Z')); // 00:00:30 PDT: the next one
+    // DST ends 2026-11-01 (PDT -> PST): midnight that day is still PDT, the next is PST.
+    expect(dailyReset(at('2026-11-01T03:00:00Z'))).toBe(at('2026-11-01T07:01:00Z')); // Oct 31 20:00 PDT
+    expect(dailyReset(at('2026-11-01T20:00:00Z'))).toBe(at('2026-11-02T08:01:00Z')); // Nov 1 12:00 PST
+    // DST starts 2027-03-14 (PST -> PDT).
+    expect(dailyReset(at('2027-03-14T04:00:00Z'))).toBe(at('2027-03-14T08:01:00Z')); // Mar 13 20:00 PST
+    expect(dailyReset(at('2027-03-14T19:00:00Z'))).toBe(at('2027-03-15T07:01:00Z')); // Mar 14 12:00 PDT
+
+    const call = (t, delay) => callGemini({ fetchImpl: async () => quota429(DAY, delay), apiKey: 'K', model: 'gemini-3.5-flash-lite', body: {}, now: () => t }).catch((e) => e);
+    // 17:08 PDT, Google says 23h51m: wait only until 00:01 PDT.
+    const late = at('2026-10-16T00:08:00Z');
+    expect((await call(late, '85860s')).retryAfterMs).toBe(at('2026-10-16T07:01:00Z') - late);
+    // 16:04 PDT, Google says 55m40s: sooner than midnight, so Google's time; the probe then gets 23h58m -> 00:01 PDT.
+    const early = at('2026-10-15T23:04:00Z');
+    expect((await call(early, '3340s')).retryAfterMs).toBe(3340000);
+    const probe = at('2026-10-16T00:01:00Z');
+    expect((await call(probe, '86280s')).retryAfterMs).toBe(at('2026-10-16T07:01:00Z') - probe);
+
+    // Through the engine with a fake clock: the popup line names the Pacific reset in the reader's own time.
+    const daily = new Map();
+    const err = await requestSwaps({ apiKey: 'K', model: 'gemini-3.5-flash-lite', level: 1, batch: [{ id: 'a', text: 'x' }], daily,
+      fetchImpl: async () => quota429(DAY, '85860s'), now: () => late }).catch((e) => e);
+    expect(err).toMatchObject({ daily: true, resumeAt: at('2026-10-16T07:01:00Z') });
+    expect(err.message).toBe(`Daily Gemini limit reached; resumes about ${clockTime(at('2026-10-16T07:01:00Z'))}`);
   });
 
   test('the local cap matches the free tier, and spent days are kept in storage', async () => {
@@ -134,7 +170,8 @@ describe('daily quota', () => {
       let dispatch = await worker('a');
       const res = await ask(dispatch, 'The garden was quiet and the book was good.');
       expect(res.error).toMatch(/^Daily Gemini limit reached; resumes about \d{1,2}:\d{2}/);
-      expect(res.retryAfterMs).toBeGreaterThan(13000000);
+      expect(res.retryAfterMs).toBeGreaterThan(0);
+      expect(res.retryAfterMs).toBeLessThanOrEqual(13634000); // Google's time, or the Pacific midnight if sooner
       expect(geminiCalls).toBe(1);
       expect((await dispatch({ type: 'status' }, popup)).modelStatus.error).toBe(res.error);
       expect(data.dailyQuota['gemini-3.5-flash-lite']).toBeGreaterThan(Date.now());
