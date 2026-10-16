@@ -43,7 +43,8 @@ describe('wordSummary', () => {
       expect(s.words.map((w) => w.fr)).toEqual(L1_WORDS.map((w) => w.fr));
     }
     expect(wordSummary(null, { levelOverride: 2 }).words.length).toBe(L2_WORDS.length);
-    expect(wordSummary(null, { levelOverride: 4 }).level).toBe(2); // L3/L4 use the L2 list for now
+    expect(wordSummary(null, { levelOverride: 4 }).level).toBe(4); // L3/L4 are built; they use the L2 list for now
+    expect(wordSummary(null, { levelOverride: 4 }).words.length).toBe(L2_WORDS.length);
     expect(countsLine(wordSummary(null, {}))).toBe('built-in level 1 list');
   });
 });
@@ -107,7 +108,7 @@ test('popup.js draws the word list from storage and redraws when the word state 
   Object.assign(globalThis, {
     window: doc.defaultView, document: doc,
     chrome: {
-      runtime: { id: 'fw-test', sendMessage: async () => ({ config: { settings, hasKey: true, paused: false, origins: [], stage: 0 }, words: 0, fetchedAt: 0 }) },
+      runtime: { id: 'fw-test', sendMessage: async () => ({ config: { settings, hasKey: true, tier: 'gemini', paused: false, origins: [], stage: 0 }, words: 0, fetchedAt: 0 }) },
       tabs: { query: async () => [{ id: 1, url: 'https://example.com/' }], create: async () => {} },
       permissions: { contains: async () => true },
       storage: {

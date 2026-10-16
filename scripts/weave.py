@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""UserPromptSubmit hook: prints a short French Weave brief as additional context for the next reply.
+"""UserPromptSubmit hook: prints a short French Weave brief as additional context for the next reply, in the
+language the user is learning (French by default; other languages through data/profiles/).
 
 Usage: weave.py --hook   (reads the hook JSON on stdin, prints hook JSON)
        weave.py          (prints the plain brief, for checking)
@@ -24,14 +25,6 @@ SHORT = 40  # replies with fewer prose words are too short to measure
 RECALL_EVERY = 3
 # Most known words listed per tier, so the brief stays small at Stages 3-4 (hundreds of known words).
 LIMITS = {'rare': 24, 'some': 60, 'lot': 80}
-# French grammar words on no list: several in one reply mean it slipped into French sentences.
-GRAMMAR = set("je tu il elle nous vous ils elles les une des du sont était été suis avez avons ont cette ces notre votre "
-              "leur j'ai c'était n'est qu'il".split())
-# French-only parts of the brief, cut or replaced for other languages (fwlib.localize; a test checks each occurs).
-CUTS = [(', like "The build passes maintenant, mais the cache is stale, donc I cleared it."', '.'),
-        (', like "Le test passe maintenant." or "C\'est la bonne approche."', '.'),
-        (' (pour never after ask or wait, or for a duration; avant, pendant and après only before a noun; plus means more, '
-         'never and; dans only for in a place or time; ça only as a pronoun; non only as an answer)', '')]
 EXTRA = re.compile(r'\s*(?:\**recall:|.*\s=\s.*")', re.I)  # recall cue and footer gloss lines
 
 
@@ -64,8 +57,12 @@ def tier(word, seen):
 
 
 def brief(state, seen, recall=None):
+    """The hook brief: shared rules in the state's language, with that language's profile filling the slots
+    (example sentences, sense notes, gloss example; data/profiles/). Slots a profile leaves empty are left out."""
     stage = fwlib.stage_for(state)
     target, cap, per_sentence = STAGES[min(stage, 4)]
+    lang, prof = fwlib.language(state), fwlib.profile(state)
+    examples = prof['examples']
     entry = lambda w: w['fr'] if w['status'] == 'known' else f'{w["fr"]} = {w["en"]}' + (f', "{w["hint"]}"' if stage <= 2 else '')
     words = sorted(fwlib.introduced(state), key=lambda w: (w['status'] != 'shaky', -seen.get(w['fr'], {}).get('n', 0)))
     swap = lambda w: f'{w["en"]} → {w["fr"]}'
@@ -75,53 +72,58 @@ def brief(state, seen, recall=None):
             picked.sort(key=lambda w: seen.get(w['fr'], {}).get('n', 0))
         return '; '.join(show(w) for w in picked[:LIMITS.get(name)]) or 'none'
     banded = sum(w['status'] == 'known' for w in state['words']) >= fwlib.COLLAPSE_AT
-    grammar = ('Every sentence stays an English sentence with French words swapped in, like "The build passes maintenant, '
-               'mais the cache is stale, donc I cleared it." Never a French sentence or clause, and no French outside these '
-               'lists (no French articles, verbs or numbers); if a sentence starts turning French, rewrite it in English. '
+    swap_example = f', like "{examples["swap_sentence"]}"' if examples['swap_sentence'] else '.'
+    full_examples = (', like ' + ' or '.join(f'"{s}"' for s in examples['full_sentences'])
+                     if examples['full_sentences'] else '.')
+    notes = f' ({prof["sense_notes"]["brief"]})' if prof['sense_notes']['brief'] else ''
+    grammar = (f'Every sentence stays an English sentence with {lang} words swapped in{swap_example} Never a {lang} '
+               f'sentence or clause, and no {lang} outside these lists (no {lang} articles, verbs or numbers); if a '
+               f'sentence starts turning {lang}, rewrite it in English. '
                if stage < 3 else
-               f'About {"one sentence in five" if stage == 3 else "two sentences in five"} should be fully French '
+               f'About {"one sentence in five" if stage == 3 else "two sentences in five"} should be fully {lang} '
                f'({"2" if stage == 3 else "4"} in a ten-sentence reply): short, simple and guessable from the English '
-               'around it, like "Le test passe maintenant." or "C\'est la bonne approche." Steps stay English, so put '
-               'the French sentences in the explanation, summary and advice around them. The other sentences stay English '
-               'with French words swapped in. At this stage use any common French word the user would follow, not only '
-               'the lists. ')
-    text = (f'French Weave (Stage {stage}): the user is a native English speaker learning French passively. Write your chat '
-            f'reply in English and swap in French words from the lists below: about {target}% of the words in a reply (about '
-            f'{round(target * 1.5)} in a 150-word reply{", so most sentences carry one or two" if stage <= 2 else ""}), '
-            f'never over {cap}%, at most {per_sentence} in one sentence. Under target is the usual miss, so count as you write. '
+               f'around it{full_examples} Steps stay English, so put the {lang} sentences in the explanation, summary '
+               f'and advice around them. The other sentences stay English with {lang} words swapped in. At this stage '
+               f'use any common {lang} word the user would follow, not only the lists. ')
+    text = (f'French Weave (Stage {stage}): the user is a native English speaker learning {lang} passively.'
+            f'{fwlib.variety_note(prof)} Write your chat reply in English and swap in {lang} words from the lists '
+            f'below: about {target}% of the words in a reply (about {round(target * 1.5)} in a 150-word reply'
+            f'{", so most sentences carry one or two" if stage <= 2 else ""}), never over {cap}%, at most '
+            f'{per_sentence} in one sentence. Under target is the usual miss, so count as you write. '
             f'{grammar}Use a word only where it means exactly what the English word would mean there; where one doesn\'t '
-            'fit, use another from the lists instead (pour never after ask or wait, or for a duration; avant, pendant and '
-            'après only before a noun; plus means more, never and; dans only for in a place or time; ça only as a pronoun; '
-            f'non only as an answer). If a reply runs long on French, cut {"known" if banded else "seen-a-lot"} words first. Plain English for code, '
-            'commands, paths, numbers, names, IDs, option letters and steps the user will follow, and no French right before '
-            'a path; zero French, and no recall cue, for health, medication, legal, money, safety, emergency, driving or '
-            'urgent topics. French goes only in your chat reply: never in files, code, configs, commit or PR text, messages '
-            'to other agents, subagent prompts, or drafts and documents meant to be shared. No bold on French words and no '
-            'inline glosses. End the reply with one footer line glossing the learning words you used that are not glossed '
-            'earlier in this chat, at most 8, like: (sans = without, "sahn"); nothing to gloss, no footer.\n'
+            f'fit, use another from the lists instead{notes}. If a reply runs long on {lang}, cut '
+            f'{"known" if banded else "seen-a-lot"} words first. Plain English for code, commands, paths, numbers, '
+            f'names, IDs, option letters and steps the user will follow, and no {lang} right before a path; zero '
+            f'{lang}, and no recall cue, for health, medication, legal, money, safety, emergency, driving or urgent '
+            f'topics. {lang} goes only in your chat reply: never in files, code, configs, commit or PR text, messages '
+            f'to other agents, subagent prompts, or drafts and documents meant to be shared. No bold on {lang} words '
+            f'and no inline glosses. End the reply with one footer line glossing the learning words you used that are '
+            f'not glossed earlier in this chat, at most 8, like: {fwlib.gloss_example(state, prof)}; nothing to gloss, '
+            f'no footer.\n'
             f'Learning now (use 2 to 4 per reply): {group("learn")}\n'
             f'Rarely seen (pepper in a couple per reply where the sentence makes the meaning obvious): {group("rare")}\n'
             + (band_line(state) if banded else
                f'Seen sometimes (about 2 in 3 places one fits): {group("some")}\n'
-               f'Seen a lot, as default swaps (write the French every time the English word has that meaning): {group("lot", swap)}'))
+               f'Seen a lot, as default swaps (write the {lang} every time the English word has that meaning): '
+               f'{group("lot", swap)}'))
     if recall:
         text += (f'\nIf this reply is longer than a few sentences, open it with "Recall: {recall["fr"]}?" on its own line '
                  f'and end it, after the footer, with: Recall: {recall["fr"]} = {recall["en"]}, "{recall["hint"]}"')
     else:  # without this, models repeat the last recall cue on every turn
         text += '\nNo recall cue in this reply: no "Recall:" lines, even if an earlier reply had one.'
-    return fwlib.localize(text, state, CUTS + [('(sans = without, "sahn")', fwlib.gloss_example(state))])
+    return text
 
 
-DEFAULT_SWAPS = 12  # in band mode: the top-ranked known words (connectors and adverbs) written in French every time
+DEFAULT_SWAPS = 12  # in band mode: the top-ranked known words (connectors and adverbs) written in the language every time
 
 
 def band_line(state):
     n, missing, extra = fwlib.known_band(state)
     swaps = [w for w in state['words'] if w['status'] == 'known'][:DEFAULT_SWAPS]
-    defaults = ('Default swaps (write the French every time the English word has that meaning): '
+    defaults = (f'Default swaps (write the {fwlib.language(state)} every time the English word has that meaning): '
                 + '; '.join(f'{w["en"]} → {w["fr"]}' for w in swaps) + '\n') if swaps else ''
     cut = lambda xs: ', '.join(xs[:fwlib.EXCEPTIONS_MAX]) + (f' and {len(xs) - fwlib.EXCEPTIONS_MAX} more' if len(xs) > fwlib.EXCEPTIONS_MAX else '')
-    return defaults + (f'Known (use freely, never gloss): roughly the {n} most common French words and phrases'
+    return defaults + (f'Known (use freely, never gloss): roughly the {n} most common {fwlib.language(state)} words and phrases'
             + (f', except these not learned yet: {cut(missing)}' if missing else '')
             + (f'; also known: {cut(extra)}' if extra else '') + '.')
 
@@ -138,40 +140,54 @@ def last_reply(path):
     return texts[-1] if texts else None
 
 
-def share(text, words, grammar_words=GRAMMAR):
-    """(French words, prose words, learning words used, French grammar words off the lists) in a reply.
+def share(text, words, prof=None):
+    """(target-language words, prose words, learning words used, drift words off the lists) in a reply.
 
-    Code, links, glosses and the recall cue are skipped."""
-    prose = fwlib.norm(fwlib.CODE.sub(' ', text))
+    Drift words are the profile's grammar words (French: je, nous, était, ...): several in one reply mean it slid
+    into full sentences in the language. Code, links, glosses and the recall cue are skipped. prof: the language
+    profile (default French). In a language written without spaces (Japanese) a run of script is one word, and its
+    grammar words (particles, endings) are found inside the runs, longest first, after the listed words are removed."""
+    prof = prof or fwlib.profile(fwlib.DEFAULT_LANGUAGE)
+    prose = fwlib.fold(fwlib.norm(fwlib.CODE.sub(' ', text)), prof)
     prose = '\n'.join(line for line in prose.split('\n') if not EXTRA.match(line))
     total = len(re.findall(r"[^\W\d_]+(?:['-][^\W\d_]+)*", prose))
     french = learning = 0
     rest = prose
     # Longest first, each match removed before the next search: "faire attention" is not also "faire".
     for word in sorted(words, key=lambda w: -len(w['fr'])):
-        if fwlib.measurable(word):
-            regex = fwlib.pattern(word['fr'])
+        if fwlib.measurable(word, prof):
+            regex = fwlib.pattern(word['fr'], prof)
             uses = len(regex.findall(rest))
             french += uses * len(word['fr'].split())
             learning += uses if word['status'] != 'known' else 0
             rest = regex.sub(' ', rest)
-    grammar = sum(token in grammar_words for token in re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", rest))
+    drift = {fwlib.fold(fwlib.norm(word), prof) for word in prof['drift_words']}
+    if prof['script']['spaces']:
+        grammar = sum(token in drift for token in re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", rest))
+    else:
+        for word in sorted(words, key=lambda w: -len(w['fr'])):  # unmeasured list words (でも) hold particle kana too
+            rest = rest.replace(fwlib.fold(fwlib.norm(word['fr']), prof), ' ')
+        grammar = 0
+        for word in sorted(drift, key=len, reverse=True):
+            grammar += rest.count(word)
+            rest = rest.replace(word, ' ')
     return french, total, learning, grammar
 
 
 def calibration(text, state):
-    """One line on how much French the last reply in this chat had, so the next one corrects toward the target."""
-    french, total, learning, grammar = share(text, fwlib.introduced(state), GRAMMAR if fwlib.language(state) == 'French' else ())
+    """One line on how much of the language the last reply in this chat had, so the next one corrects toward the target."""
+    french, total, learning, grammar = share(text, fwlib.introduced(state), fwlib.profile(state))
     if total < SHORT:
         return ''
     target, cap, _ = STAGES[min(fwlib.stage_for(state), 4)]
     percent = 100 * french / total
-    verdict = ('it slipped into French sentences, so this time write English sentences with only list words in French'
-               if grammar >= 4 else f'over the {cap}% cap, so use less French this time' if percent > cap else
-               f'under the {target}% target, so use more this time unless the topic needs zero French'
+    lang = fwlib.language(state)
+    verdict = (f'it slipped into {lang} sentences, so this time write English sentences with only list words in {lang}'
+               if grammar >= 4 else f'over the {cap}% cap, so use less {lang} this time' if percent > cap else
+               f'under the {target}% target, so use more this time unless the topic needs zero {lang}'
                if percent < 0.7 * target else 'on target')
-    return fwlib.localize(f'\nYour last reply in this chat was {percent:.0f}% French ({french} of {total} words, {learning} '
-            f'learning word{"" if learning == 1 else "s"}): {verdict}.', state)
+    return (f'\nYour last reply in this chat was {percent:.0f}% {lang} ({french} of {total} words, {learning} '
+            f'learning word{"" if learning == 1 else "s"}): {verdict}.')
 
 
 def next_recall(state, session):

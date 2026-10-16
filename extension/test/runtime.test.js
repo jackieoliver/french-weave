@@ -74,7 +74,9 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
       if (delayed) { release = () => { delayed = null; }; await new Promise((done) => { const free = release; release = () => { free(); done(); }; }); }
       const body = JSON.parse(init.body);
       const items = JSON.parse(body.contents[0].parts[0].text.replace(/^Passages:\n/, ''));
-      const passages = items.map(({ id, text }) => ({ id, swaps: text.includes(' and ') ? [{ o: 'and', f: 'et', ctx: '' }] : [] }));
+      // Free-form replies carry swaps; the candidates design (the default) keeps candidate numbers.
+      const passages = items.map(({ id, text, candidates = [] }) => ({ id, swaps: text.includes(' and ') ? [{ o: 'and', f: 'et', ctx: '' }] : [],
+        keep: candidates.filter((c) => c.o === 'and').map((c) => c.n) }));
       return reply({ candidates: [{ content: { parts: [{ text: JSON.stringify({ passages }) }] } }] });
     },
   });
@@ -136,8 +138,16 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     expect(span.classList.contains('fw-tip')).toBe(true);
     await wait(800);
     expect(local.pendingEvents).toHaveLength(1);
+    // The gloss is one fixed box outside the text (so overflow: hidden can't clip it), never inside the word.
+    const gloss = win.document.querySelector('fw-gloss');
+    expect(gloss.parentNode).toBe(win.document.documentElement);
+    expect(gloss.textContent).toBe(span.getAttribute('data-tip'));
+    expect(gloss.classList.contains('fw-gloss-on')).toBe(true);
+    expect(gloss.style.top).toMatch(/px$/);
+    expect(span.contains(gloss) || el.contains(gloss)).toBe(false);
     span.dispatchEvent(user(new win.FocusEvent('focusout', { bubbles: true })));
     expect(span.classList.contains('fw-tip')).toBe(false);
+    expect(gloss.classList.contains('fw-gloss-on')).toBe(false);
     // A dwell of PEEK_DWELL_MS on the same word records exactly one peek, however long the pointer stays.
     span.dispatchEvent(user(new win.MouseEvent('mouseover', { bubbles: true })));
     expect(span.classList.contains('fw-tip')).toBe(true);
@@ -229,7 +239,7 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     expect(el.querySelector('.fw-word')).not.toBeNull();
 
     // A failed model call is retried after a backoff instead of leaving the passage English.
-    modelThrows = 1; // Flash-Lite, the default, has no fallback: one failed request, then the retry
+    modelThrows = 2; // the default chain's two Gemini steps (one key) both fail, then the retry
     const retried = win.document.createElement('p');
     retried.textContent = 'They walk home and talk about the long week.';
     win.document.querySelector('main').append(retried); await wait();

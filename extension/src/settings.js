@@ -1,8 +1,12 @@
-// Preferences, stored under chrome.storage.local["settings"]. The Gemini key is stored apart from these, so
-// the config pages get never carries it.
+// Preferences, stored under chrome.storage.local["settings"]. The keys are stored apart from these, so the config
+// pages get never carries them.
+import { MODELS } from './model-config.js';
+import { DEFAULT_DAILY_CAP_USD } from './openrouter.js';
+
 export const DEFAULT_SETTINGS = {
   enabled: true,
-  model: 'gemini-3.5-flash-lite', // on free keys 3.8 Flash mostly answered 503 or timed out (QA, 2026-10-15)
+  modelChoice: 'auto', // 'auto': the language's chain (model-config.js); else a Gemini model tried first
+  openRouterDailyUsd: DEFAULT_DAILY_CAP_USD, // OpenRouter stops for the day once its reported spend reaches this
   levelOverride: 0, // 0 = follow the Claude Code stage (Level 1 without the plugin)
   newSitesEnabled: null, // null = what setup chose (prefs.extension_sites), else on
   siteOverrides: {}, // hostname -> true/false, set from the popup
@@ -12,7 +16,12 @@ export function cleanSettings(s = {}) {
   const d = { ...DEFAULT_SETTINGS, siteOverrides: {} };
   if (typeof s.enabled === 'boolean') d.enabled = s.enabled;
   if (typeof s.newSitesEnabled === 'boolean') d.newSitesEnabled = s.newSitesEnabled;
-  if (['gemini-3.8-flash', 'gemini-3.5-flash-lite'].includes(s.model)) d.model = s.model;
+  // Builds before the chain stored model, always set (default gemini-3.5-flash-lite, now step 2 of Auto); only the
+  // paid 3.8 Flash was a choice worth keeping.
+  if (s.modelChoice === 'auto' || Object.hasOwn(MODELS, s.modelChoice)) d.modelChoice = s.modelChoice;
+  else if (s.model === 'gemini-3.8-flash') d.modelChoice = s.model;
+  const cap = Number(s.openRouterDailyUsd);
+  if (Number.isFinite(cap) && cap >= 0 && cap <= 100) d.openRouterDailyUsd = Math.round(cap * 100) / 100;
   if (Number.isInteger(s.levelOverride) && s.levelOverride >= 0 && s.levelOverride <= 4) d.levelOverride = s.levelOverride;
   for (const [host, enabled] of Object.entries(s.siteOverrides || {})) {
     if (/^(?=.{1,253}$)[a-z0-9]+(?:[a-z0-9.-]*[a-z0-9])?$/.test(host) && typeof enabled === 'boolean') d.siteOverrides[host] = enabled;

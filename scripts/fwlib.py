@@ -39,11 +39,7 @@ ASSUMED_WEIGHT = 1      # a day with only opt-in "assumed" exposure (fw.py log-c
 STAGES = [(400, 4), (150, 3), (40, 2)]  # (known words, stage): first match wins; otherwise Stage 1
 
 
-# Same spelling as an English word, so French use can't be told apart in English prose: never counted.
-UNMEASURABLE = {'important', 'possible', 'plus', 'comment', 'grand', 'simple', 'long', 'normal', 'excellent',
-                'terrible', 'impossible', 'mars', 'bravo', 'pardon', 'rouge', 'mince', 'sec', 'dire', 'porter',
-                'planter', 'charger', 'lever', 'lancer', 'quitter', 'payer', 'signer', 'proposer', 'copier', 'derrière'}
-DETERMINER = r"(?:le|la|les|l'|un|une|du|de la|ce|cette|mon|ma|ton|ta)\s*"
+PROFILE_DIR = PLUGIN_ROOT / 'data' / 'profiles'  # one JSON profile per language (data/profiles/README.md)
 NO_SPACES = re.compile('[\u0e00-\u0e7f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]')  # Thai, kana, CJK
 CODE = re.compile(r"```.*?```|`[^`\n]*`|https?://\S+", re.S)
 DEDUPE_DAYS = 45
@@ -87,7 +83,8 @@ def language(state=None):
 
 def load_lexicon(path=None):
     """Rows of fr (or word), en, hint; an optional scan column set to no keeps a word out of exposure counting
-    (it is also an English word, like "solo")."""
+    (it is also an English word, like "solo"); an optional reading column gives the word in a phonetic script (Japanese:
+    kana), which the profile's script.reading can show above the word on web pages."""
     with open(path or lexicon_path(), encoding='utf-8-sig', newline='') as file:
         rows = [r for r in csv.DictReader(file) if (r.get('fr') or r.get('word') or '').strip()]
     seen, out = set(), []
@@ -95,28 +92,83 @@ def load_lexicon(path=None):
         word = (r.get('fr') or r.get('word')).strip()
         if key(word) not in seen:
             seen.add(key(word))
+            reading = (r.get('reading') or '').strip()
             out.append({'fr': word, 'en': (r.get('en') or '').strip(), 'hint': (r.get('hint') or '').strip(),
+                        **({'reading': reading} if reading else {}),
                         **({'scan': False} if (r.get('scan') or '').strip().lower() == 'no' else {})})
     return out
 
 
-def localize(text, state, cuts=()):
-    """Brief or export text for the state's language: French-only examples cut or replaced, then French -> the name."""
-    if language(state) == DEFAULT_LANGUAGE:
-        return text
-    for old, new in cuts:
-        text = text.replace(old, new)
-    return re.sub(r'French(?! [Ww]eave)', language(state), text)
+# ---- language profiles ----
+
+def _merged(base, own):
+    """base with own's values on top; nested objects merge, anything else (lists included) replaces."""
+    out = dict(base)
+    for k, v in (own or {}).items():
+        out[k] = _merged(base[k], v) if isinstance(base.get(k), dict) and isinstance(v, dict) else v
+    return out
 
 
-def gloss_example(state):
-    """The footer example, from the first word of the list: (sans = without, "sahn")."""
-    w = (state.get('words') or [{'fr': 'sans', 'en': 'without', 'hint': 'sahn'}])[0]
-    return f'({w["fr"]} = {w["en"]}, "{w["hint"]}")'
+_profiles = {}
 
 
-def measurable(word):
-    return norm(word['fr']) not in UNMEASURABLE and word.get('scan', True)
+def _read_profile(path):
+    """Parsed profile file ({} when missing or unreadable), cached by path and modification time."""
+    try:
+        stamp = path.stat().st_mtime_ns
+    except OSError:
+        return {}
+    if _profiles.get(path, (None,))[0] != stamp:
+        data = read_json(path, {})
+        _profiles[path] = (stamp, data if isinstance(data, dict) else {})
+    return _profiles[path][1]
+
+
+def profile(state_or_name=None):
+    """The language profile for a state (or a language name): data/profiles/<name>.json over _generic.json. A
+    language with no profile, or a profile missing fields, gets the generic values: no examples, sense notes,
+    articles or drift words, so nothing French ever leaks into another language."""
+    name = state_or_name if isinstance(state_or_name, str) else language(state_or_name)
+    merged = _merged(_read_profile(PROFILE_DIR / '_generic.json'), _read_profile(PROFILE_DIR / f'{name.strip().lower()}.json'))
+    merged['language'] = merged.get('language') or name
+    return merged
+
+
+def gloss_example(state, prof=None):
+    """The footer example: the profile's, else the first word of the list: (sans = without, "sahn")."""
+    w = (prof or profile(state))['examples'].get('gloss') or (state.get('words') or [{}])[0]
+    return f'({w.get("word") or w.get("fr", "")} = {w.get("en", "")}, "{w.get("hint", "")}")'
+
+
+def default_swaps(state, prof=None, n=10):
+    """[(English, word)] named as default swaps in exports: the profile's, else the first n words of the list."""
+    pairs = (prof or profile(state))['examples'].get('default_swaps')
+    return [tuple(p) for p in pairs] if pairs else [(w['en'], w['fr']) for w in (state.get('words') or [])[:n]]
+
+
+def variety_note(prof, short=False):
+    """' Use Latin American Spanish words and spellings.' when the profile names a variety, else ''."""
+    variety = prof.get('variety')
+    return '' if not variety else f' Use {variety}.' if short else f' Use {variety} words and spellings.'
+
+
+def fold(text, prof):
+    """Normalized text with the profile's script.fold spellings (German: ä -> ae, ß -> ss), so a word typed without
+    its letters still matches; text as is for a profile without any (French: accents always count)."""
+    for letter, plain in (prof['script'].get('fold') or {}).items():
+        text = text.replace(letter, plain)
+    return text
+
+
+def fixed_phrase(fr, prof):
+    """True for a listed entry that starts like an article but is a fixed phrase (Portuguese o que, a partir de):
+    never split into an article and a bare noun."""
+    return key(fr) in {key(p) for p in prof['articles'].get('fixed') or ()}
+
+
+def measurable(word, prof=None):
+    same = (prof or profile(DEFAULT_LANGUAGE))['exposure']['same_as_english']
+    return norm(word['fr']) not in same and word.get('scan', True)
 
 
 # ---- files ----
@@ -257,11 +309,14 @@ def blank(word):
 
 
 def merge_lexicon(state, lexicon=None):
-    """Adds lexicon words the state doesn't have yet (a plugin update can grow the list); never drops any."""
-    have = {key(w['fr']) for w in state['words']}
+    """Adds lexicon words the state doesn't have yet (a plugin update can grow the list) and their readings to words
+    it has; never drops any."""
+    have = {key(w['fr']): w for w in state['words']}
     for w in lexicon or load_lexicon():
         if key(w['fr']) not in have:
             state['words'].append(blank(w))
+        elif w.get('reading') and have[key(w['fr'])].get('reading') != w['reading']:
+            have[key(w['fr'])]['reading'] = w['reading']  # a list that gained readings reaches words already in use
     return state
 
 
@@ -298,13 +353,15 @@ def editing():
 
 
 def find(state, fr):
-    k = key(fr)
+    prof = profile(state)
+    k = fold(key(fr), prof)
     for w in state['words']:
-        if key(w['fr']) == k:
+        if fold(key(w['fr']), prof) == k:
             return w
-    # Accept the bare noun for "le problème" style entries.
-    for w in state['words']:
-        if re.sub(r"^(le |la |les |l')", '', key(w['fr'])) == k:
+    # Accept the bare noun for "le problème" style entries (the profile's definite articles).
+    lead = definite_lead(prof)
+    for w in state['words'] if lead else ():
+        if not fixed_phrase(w['fr'], prof) and fold(re.sub(f'^({lead})', '', key(w['fr'])), prof) == k:
             return w
     return None
 
@@ -460,23 +517,36 @@ def version(state):
 
 
 def public_state(state):
-    """What the extension gets: stage, pause flag, and the words in use."""
+    """What the extension gets: stage, pause flag, language, and the words in use (reading only when the list has one)."""
     return {'version': version(state), 'stage': stage_for(state), 'paused': bool(state.get('paused')),
-            'language': language(state), 'words': [{k: w[k] for k in ('fr', 'en', 'hint', 'status')} for w in introduced(state)]}
+            'language': language(state),
+            'words': [{k: w[k] for k in ('fr', 'en', 'hint', 'reading', 'status') if k in w} for w in introduced(state)]}
 
 
 # ---- chat exposure from Claude Code transcripts ----
 
-def pattern(fr):
-    word = norm(fr)
-    if NO_SPACES.search(word):  # written without spaces between words: no word boundaries to look for
+def definite_lead(prof):
+    """Regex alternation for a definite article at the start of a listed noun ("le |la |les |l'"), or ''."""
+    articles = prof['articles']
+    return '|'.join([re.escape(a) + ' ' for a in articles['definite']] + [re.escape(a) for a in articles['elided']])
+
+
+def pattern(fr, prof=None):
+    """Regex for a word in normalized prose. Nouns listed with a definite article (le problème) also count bare, and
+    with any of the profile's determiners when the bare noun is ASCII (le chat, not the English "chat")."""
+    prof = prof or profile(DEFAULT_LANGUAGE)
+    word = fold(norm(fr), prof)  # prose is folded the same way (scan, weave.share)
+    if NO_SPACES.search(word) or not prof['script']['spaces']:  # no spaces between words: no boundaries to look for
         return re.compile(re.escape(word))
-    noun = re.match(r"(?:le |la |les |l')(.+)", word)
+    lead = definite_lead(prof)
+    noun = re.match(f'(?:{lead})(.+)', word) if lead and not fixed_phrase(fr, prof) else None
     if noun:
         noun = noun.group(1)
-        lead = r"(?<!\w)" + (DETERMINER if noun.isascii() else '')
+        determiners = '|'.join(re.escape(d) for d in prof['articles']['determiners'])
+        lead = r"(?<!\w)" + (f'(?:{determiners})' + r'\s*' if determiners and noun.isascii() else '')
         return re.compile(lead + re.escape(noun) + r"s?(?![\w])")
-    tail = {'sans': r"(?![\w-])(?!\s+serif)", 'et': r"(?![\w-])(?!\s+al\b)"}.get(word, r"(?![\w-])")
+    after = prof['exposure']['not_followed_by'].get(word)
+    tail = r"(?![\w-])" + (f'(?!{after})' if after else '')
     return re.compile(r"(?<![\w'-])" + re.escape(word) + tail)
 
 
@@ -574,10 +644,13 @@ def local_day(stamp):
         return str(stamp)[:10]
 
 
-def scan(words, index, roots=None, start='0000-00-00'):
-    """Fold new transcript lines into the exposure index (mutated and returned)."""
+def scan(words, index, roots=None, start='0000-00-00', prof=None):
+    """Fold new transcript lines into the exposure index (mutated and returned). prof: the language profile
+    (default French)."""
+    prof = prof or profile(DEFAULT_LANGUAGE)
     roots = [Path(r) for r in ([roots] if isinstance(roots, (str, Path)) else roots)] if roots else transcript_roots()
-    patterns = {fr: pattern(fr) for fr in words if norm(fr) not in UNMEASURABLE}
+    same = set(prof['exposure']['same_as_english'])
+    patterns = {fr: pattern(fr, prof) for fr in words if norm(fr) not in same}
     counts, offsets, recent = index.setdefault('words', {}), index.setdefault('offsets', {}), index.setdefault('recent', {})
     for fr in patterns:
         counts.setdefault(fr, {'n': 0, 'days': []})
@@ -602,7 +675,7 @@ def scan(words, index, roots=None, start='0000-00-00'):
             if digest in recent:
                 continue
             recent[digest] = day
-            prose = norm(CODE.sub(' ', text))
+            prose = fold(norm(CODE.sub(' ', text)), prof)
             for fr, regex in patterns.items():
                 if regex.search(prose):
                     entry = counts[fr]
@@ -624,7 +697,7 @@ def refresh_exposure():
             return False
         state = load_state()
         path = home() / 'exposure.json'
-        index = scan([w['fr'] for w in state['words'] if w.get('scan', True)], read_json(path, {}) or {}, start=state.get('created', '0000-00-00'))
+        index = scan([w['fr'] for w in state['words'] if w.get('scan', True)], read_json(path, {}) or {}, start=state.get('created', '0000-00-00'), prof=profile(state))
         write_json(path, index)
     with editing():
         pass  # promotion runs on save

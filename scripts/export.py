@@ -11,97 +11,91 @@ import fwlib
 
 CHATGPT_LIMIT = 1500   # characters per ChatGPT custom-instructions field (Free and Go; paid plans allow 5,000)
 KNOWN_LIST_MAX = fwlib.COLLAPSE_AT  # above this many known words, the state line names a rank band instead
-STAGE_SHAPES = {1: '', 2: '', 3: ' plus about one short, fully French sentence in five (2 in a ten-sentence reply, '
+STAGE_SHAPES = {1: '', 2: '', 3: ' plus about one short, fully {lang} sentence in five (2 in a ten-sentence reply, '
                 'in the explanation around any steps)',
                 4: ' plus about two in five (4 in ten), English for complex or technical ideas'}
 
-# (full text for claude.ai, short text for ChatGPT). Order matters: it is the order of the pasted block.
+# (full text for claude.ai, short text for ChatGPT). Order matters: it is the order of the pasted block. Written once
+# for every language: {lang} is the language name, and the other slots come from its profile (data/profiles/), each
+# left out when the profile has nothing for it (see rules()).
 RULES = [
-    ("I'm a native English speaker learning French from zero, passively. Weave French into your normal answers. "
-     "Answer my real question as usual. Never make French the topic.",
-     "I'm learning French passively: weave French words into normal answers; never make French the topic."),
+    ("I'm a native English speaker learning {lang} from zero, passively.{variety} Weave {lang} into your normal "
+     "answers. Answer my real question as usual. Never make {lang} the topic.",
+     "I'm learning {lang} passively: weave {lang} words into normal answers; never make {lang} the topic.{variety_short}"),
     ("Apply only in chat replies to me. Everything else stays plain English: code, files, configs, commit messages, "
-     "and drafts, posts or documents meant to be presentable or shared. If I'm not reading it, or unlikely to, no French.",
+     "and drafts, posts or documents meant to be presentable or shared. If I'm not reading it, or unlikely to, no {lang}.",
      "Only in chat replies I read; plain English in code, files and shareable drafts."),
     ("My stage and words are in the French Weave state line below (I update it from time to time). Active and Shaky are "
      "the words I'm learning; Known words I've seen a lot. Learning should cost me almost nothing: lean on Known "
      "words, use Active and Shaky words where the sentence makes their meaning obvious, and keep every reply easy to read.",
      "Words are in my French Weave state line: lean on Known, use Active/Shaky where meaning is obvious."),
     ("How much, by stage: {stages}. Aim for the target, not the minimum, in technical replies as much as casual "
-     "ones; most sentences carry one or two French words. When a word doesn't fit a spot, use another from the lists "
-     "rather than leaving the sentence all English. Keep track of how much French you've used in this chat and "
-     "correct toward the target. Stage 5: all French, only when I ask.",
-     "Share of words in French: {stages_short}. Aim for the target; most sentences carry one or two."),
-    ("Connectors and adverbs on my lists are default swaps: write the French every time the English word has that "
-     "meaning in your chat prose (and = et, but = mais, so = donc, with = avec, without = sans, very = très, also = "
-     "aussi, now = maintenant, because = parce que, for = pour, and the like once they're on my lists). Under target "
+     "ones; most sentences carry one or two {lang} words. When a word doesn't fit a spot, use another from the lists "
+     "rather than leaving the sentence all English. Keep track of how much {lang} you've used in this chat and "
+     "correct toward the target. Stage 5: all {lang}, only when I ask.",
+     "Share of words in {lang}: {stages_short}. Aim for the target; most sentences carry one or two."),
+    ("Connectors and adverbs on my lists are default swaps: write the {lang} every time the English word has that "
+     "meaning in your chat prose ({swaps}, and the like once they're on my lists). Under target "
      "is the usual miss, so count as you write.",
-     "Default swaps every time the meaning fits: et, mais, donc, avec, sans, très, aussi, maintenant, parce que, pour."),
-    ("Below Stage 3, French words drop into English sentences and English grammar stays: no fully French sentences "
-     "or clauses, and no French articles, verbs or other words that aren't on my lists, like \"The build passes "
-     "maintenant, mais the cache is stale, donc I cleared it.\" At Stage 3+, French sentences are short and guessable "
-     "from the surrounding English.",
-     "Below Stage 3 every sentence stays English grammar with list words swapped in; no French outside my lists."),
-    ("Use a word only where it means exactly what the English would there: pour never follows ask, wait or look and "
-     "never marks a duration; avant, pendant and après go before nouns, never clauses; plus means \"more\", never "
-     "\"and\"; dans only for in a place or time; ça only as a pronoun; non only as an answer; pas du tout is \"not at "
-     "all\", never a plain \"not\"; tout le monde means people. Obvious cognates are free.",
-     "Exact sense only: pour not after ask/wait or for durations; avant/pendant/après before nouns; plus = more."),
-    ("Comprehension beats the stage. If a reply would be hard to follow, use simpler French, then less French.",
+     "Default swaps every time the meaning fits: {swaps_short}."),
+    ("Below Stage 3, {lang} words drop into English sentences and English grammar stays: no fully {lang} sentences "
+     "or clauses, and no {lang} articles, verbs or other words that aren't on my lists{swap_example} At Stage 3+, "
+     "{lang} sentences are short and guessable from the surrounding English.",
+     "Below Stage 3 every sentence stays English grammar with list words swapped in; no {lang} outside my lists."),
+    ("Use a word only where it means exactly what the English would there{sense}. Obvious cognates are free.",
+     "Exact sense only{sense_short}."),
+    ("Comprehension beats the stage. If a reply would be hard to follow, use simpler {lang}, then less {lang}.",
      "Comprehension beats the stage."),
-    ("Never gloss inline, and no bold on French words. End with one footer line glossing the Active and Shaky words "
-     "you used that haven't been glossed earlier in this chat, max 8, with the sound hint: (sans = without, \"sahn\"). "
-     "At Stage 3+, also gloss up to 3 uncommon words from French sentences. Nothing to gloss, no footer.",
-     "No inline glosses or bold. Footer line glossing new Active/Shaky words, max 8: (sans = without, \"sahn\")."),
+    ("Never gloss inline, and no bold on {lang} words. End with one footer line glossing the Active and Shaky words "
+     "you used that haven't been glossed earlier in this chat, max 8, with the {hint_name}: {gloss}. "
+     "At Stage 3+, also gloss up to 3 uncommon words from {lang} sentences. Nothing to gloss, no footer.",
+     "No inline glosses or bold. Footer line glossing new Active/Shaky words, max 8: {gloss}."),
     ("Recall cue: in your first response, if it's longer than a few sentences, and in every third response after "
-     "that, open with \"Recall: X?\" and end with the answer and its sound hint. Pick X from Shaky first, then "
+     "that, open with \"Recall: X?\" and end with the answer and its {hint_name}. Pick X from Shaky first, then "
      "Active, not yet used in this chat.",
      "First reply and every third: open \"Recall: X?\" (Shaky, then Active word); answer at the end."),
-    ("I'll sometimes type French words myself. Accept missing accents, and keep answering in English with French "
+    ("I'll sometimes type {lang} words myself. Accept missing {marks}, and keep answering in English with {lang} "
      "woven in.",
      ""),
-    ("Zero French, and no recall cue, in health, medication, legal, money, safety, emergency, or driving answers, or "
-     "anything urgent. No French in code, commands, paths, numbers, names, IDs, option letters, or steps I'll follow, "
+    ("Zero {lang}, and no recall cue, in health, medication, legal, money, safety, emergency, or driving answers, or "
+     "anything urgent. No {lang} in code, commands, paths, numbers, names, IDs, option letters, or steps I'll follow, "
      "and none right before a path.",
-     "Zero French for health, legal, money, safety, emergency, driving, urgent. None in code, commands, steps."),
+     "Zero {lang} for health, legal, money, safety, emergency, driving, urgent. None in code, commands, steps."),
     ("\"word?\" = translate in one line. \"quiz\" = ask me what 3 recent words meant. \"story\" = retell your last "
      "answer as a short story at my stage. \"easier\" / \"harder\" shifts one stage for this chat. Apart from the "
      "recall cue, never quiz me or comment on the method.",
      "\"word?\" = translate. \"quiz\" = ask me 3 recent words. \"easier\"/\"harder\" = one stage. Never comment on the method."),
 ]
 
-# French-only examples and sense notes in RULES: (text, replacement for another language, given the state). A test
-# checks each still occurs in the rules, so the French wording can change without silently leaking into others.
-SWAPS = lambda state, n=10: (state.get('words') or [])[:n]
-CUTS = [
-    ("(and = et, but = mais, so = donc, with = avec, without = sans, very = très, also = aussi, now = maintenant, because "
-     "= parce que, for = pour, and the like once they're on my lists)",
-     lambda st: '(' + ', '.join(f'{w["en"]} = {w["fr"]}' for w in SWAPS(st)) + ", and the like once they're on my lists)"),
-    ("et, mais, donc, avec, sans, très, aussi, maintenant, parce que, pour.", lambda st: ', '.join(w['fr'] for w in SWAPS(st)) + '.'),
-    (', like "The build passes maintenant, mais the cache is stale, donc I cleared it."', lambda st: '.'),
-    (': pour never follows ask, wait or look and never marks a duration; avant, pendant and après go before nouns, never '
-     'clauses; plus means "more", never "and"; dans only for in a place or time; ça only as a pronoun; non only as an '
-     'answer; pas du tout is "not at all", never a plain "not"; tout le monde means people', lambda st: ''),
-    (': pour not after ask/wait or for durations; avant/pendant/après before nouns; plus = more.', lambda st: '.'),
-    ('(sans = without, "sahn")', fwlib.gloss_example),
-]
 
-
-def localize(text, state):
-    return fwlib.localize(text, state, [(old, new(state)) for old, new in CUTS])
-
-
-def stage_text(short=False):
+def stage_text(short=False, lang=fwlib.DEFAULT_LANGUAGE):
     from weave import STAGES
     if short:
         return '; '.join(f'S{n} ~{t}%, ~{round(t * 1.5)} per 150 words (max {c}%, {p}/sentence)'
                          for n, (t, c, p) in STAGES.items())
-    return '; '.join(f'Stage {n} about {t}% of words, about {round(t * 1.5)} French words in a 150-word reply '
-                     f'(cap {c}%, at most {p} in a sentence){STAGE_SHAPES[n]}' for n, (t, c, p) in STAGES.items())
+    return '; '.join(f'Stage {n} about {t}% of words, about {round(t * 1.5)} {lang} words in a 150-word reply '
+                     f'(cap {c}%, at most {p} in a sentence){STAGE_SHAPES[n].format(lang=lang)}'
+                     for n, (t, c, p) in STAGES.items())
 
 
-def rules(short=False):
-    fill = {'stages': stage_text(), 'stages_short': stage_text(short=True)}
+def slots(state=None):
+    """The values RULES are filled with, for the state's language (no state: French)."""
+    state = state or {}
+    lang, prof = fwlib.language(state), fwlib.profile(state)
+    swaps = fwlib.default_swaps(state, prof)
+    example, notes = prof['examples']['swap_sentence'], prof['sense_notes']
+    return {'lang': lang, 'stages': stage_text(lang=lang), 'stages_short': stage_text(short=True, lang=lang),
+            'variety': fwlib.variety_note(prof), 'variety_short': fwlib.variety_note(prof, short=True),
+            'swaps': ', '.join(f'{en} = {word}' for en, word in swaps), 'swaps_short': ', '.join(w for _, w in swaps),
+            'swap_example': f', like "{example}"' if example else '.',
+            'sense': f': {notes["export"]}' if notes['export'] else '',
+            'sense_short': f': {notes["export_short"]}' if notes['export_short'] else '',
+            'gloss': fwlib.gloss_example(state, prof), 'hint_name': prof['script']['hint_name'],
+            'marks': prof['script']['marks']}
+
+
+def rules(short=False, state=None):
+    fill = slots(state)
     parts = [(s if short else f).format(**fill) for f, s in RULES]
     return ('FRENCH WEAVE. ' if short else 'FRENCH WEAVE\n\n') + ('\n' if short else '\n\n').join(
         p if short else f'- {p}' for p in parts if p)
@@ -169,7 +163,7 @@ def parse_state_line(line):
 
 def claude_ai(state, now=None, tail=None, known_max=KNOWN_LIST_MAX, dates=True):
     """Personal preferences for claude.ai (Settings > Profile): the rules, then the state line."""
-    return localize(rules(), state) + '\n\n' + state_line(state, now, tail=tail, known_max=known_max, dates=dates)
+    return rules(state=state) + '\n\n' + state_line(state, now, tail=tail, known_max=known_max, dates=dates)
 
 
 def chatgpt(state, now=None, limit=CHATGPT_LIMIT, tail=None):
@@ -182,7 +176,7 @@ def chatgpt(state, now=None, limit=CHATGPT_LIMIT, tail=None):
         tries = [dict(known_max=k) for k in list(range(known, 0, -10)) + [0]]
     learning = max(sum(w['status'] == s for w in state['words']) for s in ('active', 'shaky'))
     tries += [dict(tries[-1], learning_max=n) for n in range(learning - 1, -1, -1)]
-    respond = localize(rules(short=True), state)
+    respond = rules(short=True, state=state)
     if len(respond) > limit:
         raise ValueError(f'the rules need {len(respond)} characters, more than the {limit} a field holds')
     for kwargs in tries:

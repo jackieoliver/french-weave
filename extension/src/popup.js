@@ -1,9 +1,10 @@
 import { resolveLevel, MAX_BUILT_LEVEL } from './levels.js';
-import { MODELS } from './gemini.js';
+import { MODELS, modelLabel } from './model-config.js';
 import { siteEnabled, siteOn, hasSiteAccess } from './settings.js';
-import { modelErrorText } from './modelerror.js';
+import { modelErrorText, openRouterText } from './modelerror.js';
 import { readCached } from './hostsource.js';
 import { wordSummary, renderWordList } from './wordlist.js';
+import { tierText } from './tier.js';
 
 const $ = (id) => document.getElementById(id);
 const ALL_SITES = ['http://*/*', 'https://*/*'];
@@ -45,20 +46,34 @@ async function refresh() {
   const { stage, chosen } = resolveLevel(s, c.stage);
   $('levelInfo').textContent = `L${chosen}${stage && chosen !== stage ? ` (Claude Code stage ${stage})` : ''}${chosen > MAX_BUILT_LEVEL ? ` · L${MAX_BUILT_LEVEL} rules for now` : ''}`;
   $('levelOverride').value = String(s.levelOverride || 0);
-  $('model').value = s.model;
+  $('model').value = s.modelChoice;
+  const last = status.lastServed;
+  const served = Object.entries(status.served?.counts || {}).map(([m, n]) => `${modelLabel(m)} ${n}`).join(' · ');
+  $('modelInfo').textContent = [last?.model ? `${modelLabel(last.model)}${last.keyName === 'backup' ? ' (backup key)' : ''}` : 'none yet',
+    served && `today: ${served}`].filter(Boolean).join('; ');
   $('apiKey').value = '';
+  $('backupKey').value = '';
+  $('backupKey').placeholder = status.backupKey ? 'saved (paste to replace)' : 'optional';
+  $('openRouterKey').value = '';
+  $('openRouterKey').placeholder = status.openRouterKey ? 'saved (paste to replace)' : 'optional, paid';
+  $('openRouterDailyUsd').value = String(s.openRouterDailyUsd);
+  $('openRouterInfo').textContent = openRouterText(status, s.openRouterDailyUsd);
   $('apiKey').placeholder = status.pastedKey ? 'saved (paste to replace)' : status.hostKey ? 'from setup (paste to override)' : 'AIza…';
   $('wordInfo').textContent = status.words
     ? `${status.words} from Claude Code · ${ago(status.fetchedAt)}${c.paused ? ' · paused' : ''}`
     : 'built-in list';
+  const tier = tierText(c.tier);
+  $('tierInfo').textContent = tier.label;
+  $('tierNote').textContent = tier.note;
+  $('privacyNote').textContent = tier.privacy;
   $('operation').textContent = !s.enabled ? 'Off'
-    : !c.hasKey ? 'Add a Gemini key to start'
+    : c.tier === 'none' ? 'Add a Gemini key to start'
     : c.paused ? 'Paused from Claude Code'
     : host && !siteEnabled(s, tab.url) ? 'Off on this site'
     : host && !hasSiteAccess(tab.url, c.origins) ? 'This site needs your OK'
     : 'On';
   // Gemini failures get their own line, shown on every site (also ones that are off), apart from the site status.
-  $('modelError').textContent = modelErrorText(status.modelStatus);
+  $('modelError').textContent = c.tier === 'gemini' ? modelErrorText(status.modelStatus) : '';
   const list = $('siteList');
   list.replaceChildren();
   for (const [name, enabled] of Object.entries(s.siteOverrides)) {
@@ -94,7 +109,7 @@ async function inject() {
   } catch { $('notice').textContent = 'Reload this page to start. Chrome blocks extensions on some pages.'; }
 }
 
-for (const [id, label] of Object.entries(MODELS)) {
+for (const [id, label] of [['auto', 'Auto (recommended)'], ...Object.entries(MODELS)]) {
   const opt = document.createElement('option');
   opt.value = id;
   opt.textContent = label;
@@ -104,8 +119,13 @@ for (const [id, label] of Object.entries(MODELS)) {
 $('enabled').addEventListener('change', (e) => run(() => save({ settings: { enabled: e.target.checked } })));
 $('newSitesEnabled').addEventListener('change', (e) => run(() => save({ settings: { newSitesEnabled: e.target.value === 'true' } })));
 $('levelOverride').addEventListener('change', (e) => run(() => save({ settings: { levelOverride: Number(e.target.value) || 0 } })));
-$('model').addEventListener('change', (e) => run(() => save({ settings: { model: e.target.value } })));
+$('model').addEventListener('change', (e) => run(() => save({ settings: { modelChoice: e.target.value } })));
 $('apiKey').addEventListener('change', (e) => run(() => save({ apiKey: e.target.value })));
+$('backupKey').addEventListener('change', (e) => run(() => save({ backupKey: e.target.value })));
+$('openRouterKey').addEventListener('change', (e) => run(() => save({ openRouterKey: e.target.value })));
+// An emptied field keeps the saved cap (0 is a real choice: OpenRouter off).
+$('openRouterDailyUsd').addEventListener('change', (e) => run(() => (e.target.value.trim() === '' ? refresh()
+  : save({ settings: { openRouterDailyUsd: Number(e.target.value) } }))));
 $('siteEnabled').addEventListener('change', (e) => run(async () => {
   const enabled = e.target.checked;
   if (enabled && !hasSiteAccess(tab.url, status.config.origins)) {

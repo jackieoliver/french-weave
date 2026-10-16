@@ -9,8 +9,8 @@ describe('prompt', () => {
     for (const w of L1_WORDS) expect(p).toContain(w.fr);
     expect(p).toContain('très');
     expect(p).not.toContain('"very"->tres');
-    expect(p).toContain('Zero French in passages about health');
-    expect(p).toContain('Default is to swap');
+    expect(p).toContain('set "topic" to "avoid" and return no swaps');
+    expect(p).toContain('about one French word every sentence or two');
   });
   test('L2 lists the fixed phrases; L3/L4 fall back to L2 for now', () => {
     const p = buildSystemPrompt(2);
@@ -20,8 +20,10 @@ describe('prompt', () => {
     expect(buildSystemPrompt(4)).toBe(p);
   });
   test('user content and schema shape', () => {
-    expect(buildUserContent([{ id: 'a', text: 'hi', extra: 1 }])).toBe('Passages:\n[{"id":"a","text":"hi"}]');
-    expect(RESPONSE_SCHEMA.properties.passages.items.required).toEqual(['id', 'swaps']);
+    expect(buildUserContent([{ id: 'a', text: 'hi', extra: 1 }])).toBe('Passages:\n[{"id":"a","page":"unknown","want":1,"text":"hi"}]');
+    expect(buildUserContent([{ id: 'a', text: "I like it. You like it. We like it. They like it." }], 2, 'Title (site.com)'))
+      .toBe('Passages:\n[{"id":"a","page":"Title (site.com)","want":6,"text":"I like it. You like it. We like it. They like it."}]');
+    expect(RESPONSE_SCHEMA.properties.passages.items.required).toEqual(['id', 'topic', 'swaps']);
     expect(RESPONSE_SCHEMA.properties.passages.items.properties.swaps.items.required).toEqual(['o', 'f', 'g', 'h', 'ctx']);
   });
   test('shared state: learning words are the target, unshown ones first; known words are filler; no fixed examples', () => {
@@ -36,14 +38,14 @@ describe('prompt', () => {
     expect(p).toContain('petit = small; vrai = true; grand = big');
     expect(p).toContain('KNOWN words (filler only):\net');
     expect(p).not.toContain('"but"->mais');
-    expect(p).toContain('four or more swaps');
-    expect(buildSystemPrompt(1, words)).toContain('two or more swaps');
+    expect(p).toContain('one or two French words in every sentence');
+    expect(buildSystemPrompt(1, words)).toContain('about one French word every sentence or two');
   });
   test('another language from the plugin: its name, no French examples; French stays as it was', () => {
     const words = [{ fr: '猫', en: 'cat', hint: 'neko', status: 'active' }, { fr: 'でも', en: 'but', hint: 'demo', status: 'known' }];
     const p = buildSystemPrompt(1, words, [], 'Japanese');
     expect(p).toContain('French Weave engine');
-    expect(p).toContain('zero Japanese');
+    expect(p).toContain('learning Japanese from zero');
     expect(p).not.toMatch(/French(?! Weave)|donc|grand|-> et/);
     expect(buildSystemPrompt(1, words, [], 'French')).toBe(buildSystemPrompt(1, words));
     expect(buildSystemPrompt(1, undefined, [], 'Japanese')).toBe(buildSystemPrompt(1)); // bundled lists are French

@@ -199,7 +199,7 @@ describe('model error notice', () => {
       // Whatever an error message says, the key in it is never stored or shown.
       gemini = () => { throw new Error(`proxy refused ${KEY}`); };
       const leaky = await ask('One more quiet passage and a book to read.');
-      expect(data.modelStatus.error).toBe('gemini-3.5-flash-lite: proxy refused [key]');
+      expect(data.modelStatus.error).toBe('gemini-3.1-flash-lite: proxy refused [key]; gemini-3.5-flash-lite: proxy refused [key]');
       expect(JSON.stringify([data.modelStatus, leaky, badge])).not.toContain(KEY);
       expect(badge.text).toBe(BADGE_ERROR.text);
 
@@ -215,14 +215,14 @@ describe('model error notice', () => {
 
       // A minute later the next success clears the error, and NEW shows again.
       Date.now = () => realNow() + 61000;
-      await dispatch({ type: 'save', settings: { model: 'gemini-3.8-flash' } }, popupSender);
+      await dispatch({ type: 'save', settings: { modelChoice: 'gemini-3.8-flash' } }, popupSender);
       const { revision } = await dispatch({ type: 'config' }, page);
       const text = 'Maybe the best part was walking home and reading.';
       const key = `${revision}:${hashKey(text)}`;
-      gemini = (m) => (m === 'gemini-3.8-flash' ? fail(503, 'UNAVAILABLE') : ok([key])); // Flash busy, Lite answers
+      gemini = (m) => (m === 'gemini-3.8-flash' ? fail(503, 'UNAVAILABLE') : ok([key])); // Flash busy, the chain's next step answers
       await dispatch({ type: 'swaps', revision, items: [{ key, text }] }, page);
       for (let i = 0; i < 20; i++) await tick();
-      expect(data.modelStatus).toMatchObject({ error: '', model: 'gemini-3.5-flash-lite' });
+      expect(data.modelStatus).toMatchObject({ error: '', model: 'gemini-3.1-flash-lite', provider: 'gemini', keyName: 'main' });
       expect(badge.text).toBe('NEW');
       expect(badge.title).toBe('French Weave');
       expect((await openPopup()).modelError).toBe('');

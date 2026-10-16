@@ -29,7 +29,8 @@ export function modelErrorText(modelStatus, now = Date.now()) {
     case 'daily': return `Daily Gemini limit reached (${code || 429})${!s.retryAt ? '' : s.retryAt > now
       ? `; resumes ${when(s.retryAt, now)}` : '; should work again with the next page'}`;
     case 'rate': return `Gemini rate limit (${code || 429}). Retrying shortly.`;
-    case 'key': return `Gemini rejected the key (${code}). Paste a new one below.`;
+    case 'key': return s.keyName === 'backup' ? `Gemini rejected the backup key (${code}). Paste a new one under Backup and paid keys.`
+      : `Gemini rejected the key (${code}). Paste a new one below.`;
     case 'busy': return `Gemini is busy (${code || 'timed out'}). Retrying.`;
     case 'network': return "Can't reach Gemini.";
     case 'other': return code ? `Gemini request failed (${[code, s.googleStatus].filter(Boolean).join(' ')}).` : `Gemini request failed: ${s.error}`;
@@ -50,4 +51,14 @@ export function replaceLegacyStatus(modelStatus, dailyQuota, models, now = Date.
   const retryAt = Math.min(...until);
   return { at: now, error: `Daily Gemini limit reached; resumes about ${clockTime(retryAt)}`, kind: 'daily', retryAt,
     httpStatus: 429, googleStatus: '' };
+}
+
+// The popup's OpenRouter line: today's spend against the cap, or why it stopped (st: the worker's status reply).
+export function openRouterText(st, cap) {
+  if (!st.openRouterKey) return 'Optional last step, paid: used only when every Gemini step fails.';
+  const spent = `OpenRouter today: $${(st.openRouter?.usd || 0).toFixed(4)} of $${Number(cap).toFixed(2)}`;
+  if (st.openRouter?.blocked === 'credits') return `${spent}. Credits used up (402): stopped until tomorrow.`;
+  if (st.openRouter?.blocked === 'cap') return `${spent}. Daily cap reached: stopped until tomorrow.`;
+  if (st.openRouter?.blocked === 'key') return `${spent}. OpenRouter rejected the key: stopped until tomorrow or a new key.`;
+  return spent;
 }

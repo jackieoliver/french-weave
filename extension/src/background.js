@@ -1,15 +1,18 @@
 // Service worker: word state and the Gemini key from the Claude Code plugin (native host), site access,
 // one model call at a time, results back to pages, seen/flip/peek events back to the plugin.
-// Keys stay here; pages only get a config without them.
+// Keys stay here; pages only get a config without them. Without a key, swaps come from local.js, with no model.
 import { createCache, chromeStorage } from './cache.js';
 import { requestSwaps } from './engine.js';
 import { cleanSettings, newSitesDefault, siteEnabled, hasSiteAccess } from './settings.js';
 import { resolveLevel, exactFr, isZeroFrench, wordCount } from './levels.js';
 import { hashKey } from './hash.js';
 import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from './hostsource.js';
-import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent } from './quota.js';
+import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent, countDropped, droppedToday, openRouterToday,
+  countOpenRouter, openRouterBlocked, servedToday, countServed } from './quota.js';
 import { modelErrorText, replaceLegacyStatus } from './modelerror.js';
-import { FALLBACK_MODEL } from './gemini.js';
+import { API_BASE } from './gemini.js';
+import { configFor } from './model-config.js';
+import { localSwaps, localOff } from './local.js';
 
 const store = chrome.storage.local;
 const cache = createCache(chromeStorage);
@@ -37,8 +40,24 @@ const serial = () => {
 const modelCall = serial(); // one model call at a time
 const locked = serial(); // storage read-modify-writes one at a time, or concurrent ones drop data
 
-const LOCAL_CAP_ERROR = `Daily limit of ${DAILY_MODEL_CALLS} model calls reached; French resumes tomorrow`;
-const localCapped = async () => await callsToday(chromeStorage) >= DAILY_MODEL_CALLS;
+// The local cap is per Gemini key, each with its own count: a backup key brings its own quota, and a spent main key
+// is left out of the chain while the backup still has calls.
+const keyCapped = async (which) => await callsToday(chromeStorage, undefined, which) >= DAILY_MODEL_CALLS;
+const localCapError = (perKey) => `Daily limit of ${DAILY_MODEL_CALLS} model calls${perKey ? ' per key' : ''} reached; French resumes tomorrow`;
+// The Gemini keys in use: main (pasted, else from setup) and a backup that differs from it (the same key pasted
+// twice is one key with one cap).
+async function geminiKeys() {
+  const { apiKey, hostKey, backupKey } = await store.get(['apiKey', 'hostKey', 'backupKey']);
+  const main = apiKey || hostKey || '';
+  return { main, backup: backupKey && backupKey !== main ? backupKey : '' };
+}
+// Capped when every key in use has made its calls today (no key at all is the popup's "add a key", not a cap).
+const localCapped = async () => {
+  const { main, backup } = await geminiKeys();
+  return (!!main || !!backup) && (!main || await keyCapped('main')) && (!backup || await keyCapped('backup'));
+};
+// Every key the worker holds, for scrubbing error text: none may reach a page, the popup or storage.
+const KEY_NAMES = ['apiKey', 'hostKey', 'backupKey', 'openRouterKey'];
 
 const ready = (async () => {
   // Content scripts run on every enabled site, so stored keys are kept out of their reach.
@@ -50,9 +69,10 @@ const ready = (async () => {
   // A status stored before 0.2.2 has no kind, and its text can be wrong (0.2.1 called the per-day quota a rate
   // limit); nothing would clear it until a request worked. Replace it on every worker start, updates included.
   await locked(async () => {
-    const { modelStatus, dailyQuota } = await store.get(['modelStatus', 'dailyQuota']);
-    const models = [clean.model, FALLBACK_MODEL[clean.model]].filter(Boolean);
-    const replaced = replaceLegacyStatus(modelStatus, dailyQuota, models, Date.now(), (await localCapped()) ? LOCAL_CAP_ERROR : '');
+    const { modelStatus, dailyQuota, wordState } = await store.get(['modelStatus', 'dailyQuota', 'wordState']);
+    const models = configFor(wordState?.language || 'French', clean.modelChoice).chain.filter((s) => s.provider === 'gemini').map((s) => s.model);
+    const backup = !!(await geminiKeys()).backup;
+    const replaced = replaceLegacyStatus(modelStatus, dailyQuota, models, Date.now(), (await localCapped()) ? localCapError(backup) : '');
     if (replaced) await store.set({ modelStatus: replaced });
   });
 })();
@@ -60,24 +80,42 @@ const ready = (async () => {
 // What pages get. The revision changes whenever anything that affects swaps does, so stale replies are dropped.
 async function context() {
   await ready;
-  const data = await store.get(['settings', 'wordState', 'apiKey', 'hostKey', 'epoch']);
+  const data = await store.get(['settings', 'wordState', 'apiKey', 'hostKey', 'backupKey', 'epoch']);
   const state = data.wordState?.words?.length ? data.wordState : null;
   const saved = cleanSettings(data.settings);
   const settings = { ...saved, newSitesEnabled: newSitesDefault(saved, state?.sites) };
   const level = resolveLevel(saved, state?.stage).effective;
-  const hasKey = !!(data.apiKey || data.hostKey);
+  const hasKey = !!(data.apiKey || data.hostKey || data.backupKey);
   const paused = !!state?.paused;
-  const { origins = [] } = await chrome.permissions.getAll();
-  const revision = hashKey(JSON.stringify([data.epoch || '', settings, level, state?.version || '', paused, hasKey, origins]));
-  return { settings, level, revision, hasKey, paused, origins, stage: state?.stage || 0 };
+  const origins = await grantedOrigins();
+  const { openRouterDailyUsd, ...affecting } = settings; // the spend cap changes no swap, so cached ones stay
+  const revision = hashKey(JSON.stringify([data.epoch || '', affecting, level, state?.version || '', paused, hasKey, origins]));
+  return { settings, level, revision, hasKey, tier: tierFor(hasKey, state), paused, origins, stage: state?.stage || 0 };
 }
 
-const activeOn = (ctx, url) => ctx.hasKey && !ctx.paused && siteEnabled(ctx.settings, url) && hasSiteAccess(url, ctx.origins);
+// The model APIs' own host permissions (manifest) are not sites the reader granted: openrouter.ai is also a website,
+// which needs its own grant like any other.
+const API_ORIGINS = ['https://generativelanguage.googleapis.com/*', 'https://openrouter.ai/*'];
+const grantedOrigins = async () => ((await chrome.permissions.getAll()).origins || []).filter((o) => !API_ORIGINS.includes(o));
+
+// Which engine makes the swaps: 'gemini' with a key; else 'local' (a fixed list, no model), which has French words
+// only, so another language set up in the plugin gets 'none'. On-device Gemini Nano was tested for this and rejected
+// (an internal test run, 2026-10-16: 14-25% of its swaps were wrong, and it swapped words in sensitive passages).
+export const tierFor = (hasKey, state) => hasKey ? 'gemini' : state?.language ? 'none' : 'local';
+
+const activeOn = (ctx, url) => ctx.tier !== 'none' && !ctx.paused && siteEnabled(ctx.settings, url) && hasSiteAccess(url, ctx.origins);
 
 async function broadcast(type = 'config') {
   const config = await context();
   const tabs = await chrome.tabs.query({});
   await Promise.allSettled(tabs.map((t) => chrome.tabs.sendMessage(t.id, { type, config })));
+}
+
+// "Field Notes (example.org)": the tab's title and site, for the model's page-level topic check.
+function pageLabel(sender) {
+  let host = '';
+  try { host = new URL(sender.url).hostname; } catch { /* no site */ }
+  return [String(sender.tab?.title || '').slice(0, 200), host && `(${host})`].filter(Boolean).join(' ');
 }
 
 async function swaps(msg, sender) {
@@ -86,6 +124,17 @@ async function swaps(msg, sender) {
   if (!Array.isArray(msg.items) || msg.items.length > 8) throw new Error('Invalid text batch');
   const items = msg.items.filter((i) => i && typeof i.text === 'string' && i.text.length <= 2000 &&
     wordCount(i.text) >= 6 && !isZeroFrench(i.text) && i.key === `${ctx.revision}:${hashKey(i.text)}`);
+  // Title guard: a page whose title is about money, health, legal matters, crime, driving or emergencies gets no swaps
+  // at all, not even cached ones from the same text elsewhere, and nothing goes to a model.
+  if (isZeroFrench(String(sender.tab?.title || ''))) return { results: Object.fromEntries(items.map((i) => [i.key, []])) };
+  if (ctx.tier === 'local') {
+    // Nothing leaves the machine and nothing is cached: the list lookup is cheaper than a storage read. A page whose
+    // title names a sensitive topic stays English throughout.
+    const offPage = localOff(String(msg.title || '').slice(0, 300));
+    const { wordState } = await store.get('wordState');
+    const words = wordState?.words?.length ? wordState.words : undefined;
+    return { results: Object.fromEntries(items.map((i) => [i.key, offPage ? [] : localSwaps(ctx.level, i.text, words)])) };
+  }
   const results = await cache.getMany(items.map((i) => i.key));
   const misses = items.filter((i) => !(i.key in results));
   if (!misses.length) return { results };
@@ -97,14 +146,28 @@ async function swaps(msg, sender) {
   try {
     const fresh = await modelCall(async () => {
       if ((await context()).revision !== ctx.revision) return null;
-      if (await localCapped()) throw Object.assign(new Error(LOCAL_CAP_ERROR), { kind: 'local' });
-      const { wordState, apiKey, hostKey } = await store.get(['wordState', 'apiKey', 'hostKey']);
-      usedKey = apiKey || hostKey || '';
-      const fetchImpl = async (...args) => { await countCall(chromeStorage); return fetch(...args); };
+      const { main, backup: backupKey } = await geminiKeys();
+      if (await localCapped()) throw Object.assign(new Error(localCapError(!!backupKey)), { kind: 'local' });
+      const { wordState, openRouterKey } = await store.get(['wordState', 'openRouterKey']);
+      usedKey = main;
+      const mainOut = !main || await keyCapped('main');
+      const backupOut = !backupKey || await keyCapped('backup');
+      // Only Gemini calls count toward the local cap, each toward its key's; OpenRouter has its own spend cap.
+      const fetchImpl = async (url, init, ...rest) => {
+        if (String(url).startsWith(API_BASE)) {
+          const which = backupKey && init?.headers?.['x-goog-api-key'] === backupKey ? 'backup' : 'main';
+          await countCall(chromeStorage, undefined, which);
+        }
+        return fetch(url, init, ...rest);
+      };
       const daily = await spentToday(chromeStorage); // a spent daily quota outlives the worker, so it is kept in storage
+      const openRouterOn = !!openRouterKey && !openRouterBlocked(await openRouterToday(chromeStorage), ctx.settings.openRouterDailyUsd);
+      const { design, chain } = configFor(wordState?.words?.length ? wordState.language || 'French' : 'French', ctx.settings.modelChoice);
       try {
-        return await requestSwaps({ apiKey: apiKey || hostKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, language: wordState?.language, fetchImpl,
-          shownToday: await shownToday(chromeStorage), cooldown, daily, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
+        return await requestSwaps({ keys: { main: mainOut ? '' : usedKey, backup: backupOut ? '' : backupKey, openrouter: openRouterOn ? openRouterKey : '' },
+          chain, design, level: ctx.level, words: wordState?.words, language: wordState?.language, fetchImpl,
+          onOpenRouter: (r) => locked(() => countOpenRouter(chromeStorage, r)),
+          shownToday: await shownToday(chromeStorage), cooldown, daily, page: pageLabel(sender), batch: misses.map((i) => ({ id: i.key, text: i.text })) });
       } finally {
         await saveSpent(chromeStorage, daily);
       }
@@ -112,7 +175,12 @@ async function swaps(msg, sender) {
     return await locked(async () => {
       if (!fresh || (await context()).revision !== ctx.revision) return { results: {}, stale: true };
       await cache.setMany(fresh.results);
-      await store.set({ modelStatus: { at: Date.now(), error: '', model: fresh.model } });
+      await countDropped(chromeStorage, fresh.dropped);
+      if (!fresh.skipped) { // a batch without candidates made no request: the last model's status stands
+        const served = { at: Date.now(), model: fresh.model, provider: fresh.provider, keyName: fresh.keyName };
+        await store.set({ modelStatus: { ...served, error: '' }, lastServed: served }); // lastServed outlives a later failure
+        await countServed(chromeStorage, fresh.model);
+      }
       return { results: { ...results, ...fresh.results } };
     }).finally(() => void showBadge());
   } catch (e) {
@@ -124,8 +192,9 @@ async function swaps(msg, sender) {
 // Every candidate model failed (after the engine's own fallback). Stores what the popup and badge need; a wait
 // with no request of its own (every model cooling down) keeps the code and case of the request that started it.
 async function failed(e, usedKey) {
-  const { apiKey, hostKey } = await store.get(['apiKey', 'hostKey']);
-  const keys = [apiKey, hostKey, usedKey].filter((k) => typeof k === 'string' && k.length >= 8);
+  const stored = await store.get(KEY_NAMES);
+  const { apiKey, hostKey } = stored;
+  const keys = [...KEY_NAMES.map((k) => stored[k]), usedKey].filter((k) => typeof k === 'string' && k.length >= 8);
   const error = keys.reduce((text, k) => text.split(k).join('[key]'), String(e?.message || 'Model request failed')).slice(0, 500);
   // A key pasted while this request was out: its refusal says nothing about the new key.
   if (e?.kind === 'key' && usedKey && usedKey !== (apiKey || hostKey)) return error;
@@ -136,7 +205,7 @@ async function failed(e, usedKey) {
     const kind = wait ? (prev?.error && prev.kind !== 'local' && prev.kind) || 'rate' : e?.kind || 'other';
     const same = prev?.error && prev.kind === kind ? prev : {}; // a daily limit read from storage has no body of its own
     const retryAt = e?.resumeAt || (e?.retryAfterMs ? now + e.retryAfterMs : 0);
-    await store.set({ modelStatus: { at: now, error, kind, retryAt,
+    await store.set({ modelStatus: { at: now, error, kind, retryAt, ...(kind === 'key' && e?.keyName ? { keyName: e.keyName } : {}),
       httpStatus: (wait ? same.httpStatus : e?.status) || 0,
       googleStatus: (wait ? same.googleStatus : e?.googleStatus) || (kind === 'daily' && same.googleStatus) || '' } });
   });
@@ -156,8 +225,8 @@ export const BADGE_NEW = { text: 'NEW', color: '#1a73e8', textColor: '#ffffff' }
 let updateWaiting = null; // set by checkUpdate; null until it has run in this worker
 async function showBadge(checkFirst = true) {
   try {
-    const { modelStatus } = await store.get('modelStatus');
-    const problem = modelErrorText(modelStatus);
+    const { modelStatus, apiKey, hostKey } = await store.get(['modelStatus', 'apiKey', 'hostKey']);
+    const problem = apiKey || hostKey ? modelErrorText(modelStatus) : ''; // no key: no Gemini calls to fail
     if (!problem && updateWaiting === null) { if (checkFirst) await checkUpdate(); return; }
     const badge = problem ? BADGE_ERROR : updateWaiting ? BADGE_NEW : null;
     await chrome.action.setBadgeText({ text: badge?.text || '' });
@@ -191,8 +260,11 @@ async function record(msg, sender) {
 async function syncWords() {
   hostChecked = Date.now();
   await flush();
+  const { hostKey: before = '' } = await store.get('hostKey');
   const res = await refresh({ storage: chromeStorage, send });
   if (res.changed) await locked(() => cache.clear());
+  const { hostKey: after = '' } = await store.get('hostKey');
+  if (before !== after) await keyChanged(); // setup stored, replaced or removed its key
   await broadcast();
   return { ok: !res.error, error: res.error, count: res.state?.words?.length || 0, stage: res.state?.stage || 0 };
 }
@@ -204,6 +276,17 @@ async function clearCache() {
   });
   await broadcast('retry');
   return { ok: true, removed };
+}
+
+// A new key answers "Gemini rejected the key" and has its own limits; the next request says whether it works.
+async function freshKeyPatch() {
+  const { modelStatus } = await store.get('modelStatus');
+  cooldown.clear();
+  return { dailyQuota: {}, ...(['key', 'daily', 'rate'].includes(modelStatus?.kind) ? { modelStatus: { at: Date.now(), error: '' } } : {}) };
+}
+async function keyChanged() {
+  await locked(async () => store.set(await freshKeyPatch()));
+  await showBadge();
 }
 
 // msg.settings: a partial patch; msg.siteOverride: { host, enabled: true | false | null (reset) }; msg.apiKey.
@@ -220,11 +303,24 @@ async function save(msg) {
     if (typeof msg.apiKey === 'string') {
       if (msg.apiKey.length > 500) throw new Error('Key is too long');
       patch.apiKey = msg.apiKey.trim();
-      // A new key answers "Gemini rejected the key" and has its own limits; the next request says whether it works.
+      Object.assign(patch, await freshKeyPatch());
+    }
+    // The backup Gemini key and the OpenRouter key: same rules as the main key; a new one starts with a clean slate.
+    for (const name of ['backupKey', 'openRouterKey']) {
+      if (typeof msg[name] !== 'string') continue;
+      if (msg[name].length > 500) throw new Error('Key is too long');
+      patch[name] = msg[name].trim();
+      const prefix = name === 'backupKey' ? 'backup:' : 'openrouter:';
+      const { dailyQuota } = await store.get('dailyQuota');
+      patch.dailyQuota = Object.fromEntries(Object.entries(patch.dailyQuota || dailyQuota || {}).filter(([slot]) => !slot.startsWith(prefix)));
+      for (const slot of [...cooldown.keys()]) if (slot.startsWith(prefix)) cooldown.delete(slot);
+      // A new backup key answers its own "rejected the backup key".
       const { modelStatus } = await store.get('modelStatus');
-      if (['key', 'daily', 'rate'].includes(modelStatus?.kind)) patch.modelStatus = { at: Date.now(), error: '' };
-      patch.dailyQuota = {};
-      cooldown.clear();
+      if (name === 'backupKey' && modelStatus?.kind === 'key' && modelStatus.keyName === 'backup') patch.modelStatus = { at: Date.now(), error: '' };
+      if (name === 'openRouterKey') {
+        const today = await openRouterToday(chromeStorage);
+        if (today.stopped) await store.set({ openRouterDay: { ...today, stopped: '' } });
+      }
     }
     await store.set(patch);
   });
@@ -235,9 +331,13 @@ async function save(msg) {
 
 async function status() {
   const config = await context();
-  const data = await store.get(['wordState', 'apiKey', 'hostKey', 'modelStatus']);
+  const data = await store.get(['wordState', 'apiKey', 'hostKey', 'backupKey', 'openRouterKey', 'modelStatus', 'lastServed']);
+  const openRouter = await openRouterToday(chromeStorage);
   return { config, words: data.wordState?.words?.length || 0, fetchedAt: data.wordState?.fetchedAt || 0,
-    pastedKey: !!data.apiKey, hostKey: !!data.hostKey, modelStatus: data.modelStatus || null,
+    pastedKey: !!data.apiKey, hostKey: !!data.hostKey, backupKey: !!data.backupKey, openRouterKey: !!data.openRouterKey,
+    modelStatus: data.modelStatus || null, lastServed: data.lastServed || null, served: await servedToday(chromeStorage),
+    openRouter: { ...openRouter, blocked: openRouterBlocked(openRouter, config.settings.openRouterDailyUsd) },
+    dropped: await droppedToday(chromeStorage),
     update: await checkUpdate() };
 }
 
@@ -287,9 +387,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 let registrations = Promise.resolve();
 function registerSites() {
   const p = registrations.then(async () => {
-    const { origins = [] } = await chrome.permissions.getAll();
+    const origins = await grantedOrigins();
     const matches = [...new Set(origins.flatMap((o) => o === '<all_urls>' ? ['http://*/*', 'https://*/*'] : [o]))]
-      .filter((o) => /^(https?|\*):\/\//.test(o) && !o.includes('googleapis.com'));
+      .filter((o) => /^(https?|\*):\/\//.test(o));
     const existing = await chrome.scripting.getRegisteredContentScripts({ ids: ['weave-sites'] });
     if (!matches.length) {
       if (existing.length) await chrome.scripting.unregisterContentScripts({ ids: ['weave-sites'] });

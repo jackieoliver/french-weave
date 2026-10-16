@@ -51,7 +51,7 @@ const send = (msg) => {
     return Promise.reject(e);
   }
 };
-const on = () => !orphaned && config?.hasKey && !config.paused && siteEnabled(config.settings, location.href) && hasSiteAccess(location.href, config.origins);
+const on = () => !orphaned && config?.tier && config.tier !== 'none' && !config.paused && siteEnabled(config.settings, location.href) && hasSiteAccess(location.href, config.origins);
 const targets = () => selector(location.href);
 // Only real user input on spans this extension made; pages can't forge flips, peeks or seen events.
 const swapFor = (e) => {
@@ -70,17 +70,40 @@ function record(span, event) {
     if (!r?.ok && daily) seen.delete(id);
   }).catch(() => { if (daily) seen.delete(id); });
 }
+// The gloss is one box for the whole page, fixed to the viewport and placed over the word, so a container with
+// overflow: hidden (quoted posts on X, comment threads) can't clip or hide it the way a box inside the word could.
+// It sits outside every text block the extension reads, never takes the pointer, and is hidden from screen readers
+// (the word's aria-label carries the gloss).
+let tipBox = null;
+const TIP_GAP = 4;
+function placeTip(span) {
+  if (!tipBox?.isConnected) {
+    tipBox = document.createElement('fw-gloss');
+    tipBox.className = 'fw-gloss';
+    tipBox.setAttribute('aria-hidden', 'true');
+    document.documentElement.append(tipBox);
+  }
+  tipBox.textContent = span.getAttribute('data-tip') || '';
+  tipBox.classList.add('fw-gloss-on');
+  const word = span.getBoundingClientRect();
+  const box = tipBox.getBoundingClientRect();
+  const width = document.documentElement.clientWidth || window.innerWidth;
+  const top = word.top - box.height - TIP_GAP >= 0 ? word.top - box.height - TIP_GAP : word.bottom + TIP_GAP;
+  tipBox.style.left = `${Math.max(TIP_GAP, Math.min(word.left, width - box.width - TIP_GAP))}px`;
+  tipBox.style.top = `${top}px`;
+}
 // The gloss shows on the same event that brings the pointer or focus to a word; a dwell counts as a peek.
 function hideTip() {
   clearTimeout(peekTimer); peekTimer = null;
   for (const el of document.querySelectorAll(`.${SWAP_CLASS}.fw-tip`)) el.classList.remove('fw-tip');
+  tipBox?.classList.remove('fw-gloss-on');
 }
 function showTip(e) {
   const span = swapFor(e);
   if (!span || !on()) return;
   if (!alive()) { orphan(); return; } // reloaded: no gloss that would vanish when the peek can't be sent
   if (span.classList.contains('fw-en')) { hideTip(); return; } // English showing: nothing to gloss
-  if (!span.classList.contains('fw-tip')) { hideTip(); span.classList.add('fw-tip'); }
+  if (!span.classList.contains('fw-tip')) { hideTip(); span.classList.add('fw-tip'); placeTip(span); }
   if (e.type !== 'mouseover' || peekTimer) return; // a page can focus a span from script, so focus never counts
   peekTimer = setTimeout(() => {
     peekTimer = null;
@@ -138,7 +161,7 @@ async function flush() {
   if (!items.length) return;
   for (const i of items) inflight.add(i.key);
   let result;
-  try { result = await send({ type: 'swaps', revision: config.revision, items }); }
+  try { result = await send({ type: 'swaps', revision: config.revision, items, title: document.title }); }
   catch { result = { error: 'Extension unavailable' }; }
   if (gen !== generation || !on()) return;
   for (const i of items) {

@@ -156,6 +156,20 @@ function wrap(place, swap) {
   return span;
 }
 
+// True when raw text up to index ends a sentence: nothing before it, a line break, or . ! ? … (closing quotes and
+// brackets allowed), then only spaces and opening quotes.
+export function sentenceStart(raw, index) {
+  return /(?:^|[\n.!?…]["'”’)\]»]*)[\s"'“‘(\[«]*$/u.test(raw.slice(0, index));
+}
+
+// Pronoun "I" carries a capital anywhere, so validateSwaps leaves "I think" -> je pense que in lower case; capitalize it
+// here when it starts a sentence.
+const PRONOUN_I = /^I(?!\p{L})/u;
+function caseAt(flat, m, swap) {
+  if (!PRONOUN_I.test(swap.o) || !sentenceStart(flat.raw, flat.map[m.start])) return swap;
+  return { ...swap, f: swap.f.charAt(0).toUpperCase() + swap.f.slice(1) };
+}
+
 // Applies validated swaps [{o, f, g, h, ctx}] to root. Returns the number placed.
 export function applySwaps(root, swaps) {
   const flat = flatten(root);
@@ -168,7 +182,7 @@ export function applySwaps(root, swaps) {
     const place = toNode(flat, m, swap.o);
     if (!place) continue;
     used.push(m);
-    placed.push({ place, swap });
+    placed.push({ place, swap: caseAt(flat, m, swap) });
   }
   // Later positions first, so earlier offsets in the same text node stay valid.
   placed.sort((a, b) => b.place.seg - a.place.seg || b.place.offset - a.place.offset);

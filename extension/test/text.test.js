@@ -1,6 +1,8 @@
 import { describe, test, expect } from 'bun:test';
 import { Window } from 'happy-dom';
-import { flatten, locate, applySwaps, revert, toggle, tipFor } from '../src/text.js';
+import { flatten, locate, applySwaps, revert, toggle, tipFor, sentenceStart } from '../src/text.js';
+import { validateSwaps } from '../src/levels.js';
+import { TIER_TEXT } from '../src/tier.js';
 
 const win = new Window();
 const document = win.document;
@@ -138,6 +140,23 @@ describe('applySwaps', () => {
     expect(applySwaps(el, [S({ o: 'and', f: 'et', ctx: '' }), S({ o: 'zebra', f: 'et', ctx: 'zebra' })])).toBe(0);
     expect(el.innerHTML).toBe(before);
   });
+  test('"I think" takes its capital from the sentence, not from the pronoun', () => {
+    const swap = validateSwaps(2, [{ o: 'I think', f: 'je pense que', ctx: '' }])[0];
+    expect(swap.f).toBe('je pense que');
+    const shown = (html) => {
+      const el = tweet(html);
+      applySwaps(el, [swap]);
+      return el.querySelector('.fw-word')?.textContent;
+    };
+    expect(shown('<span>Honestly, I think it works.</span>')).toBe('je pense que');
+    expect(shown('<span>I think it works.</span>')).toBe('Je pense que');
+    expect(shown('<span>It broke. I think it works now.</span>')).toBe('Je pense que');
+    expect(shown('<span>He said: "I think so."</span>')).toBe('je pense que');
+    expect(shown('<span>Done!</span><br><span>I think so.</span>')).toBe('Je pense que');
+    expect(shown('<span>"Wait." "I think so."</span>')).toBe('Je pense que');
+    expect(sentenceStart('so ', 3)).toBe(false);
+    expect(sentenceStart('', 0)).toBe(true);
+  });
   test('tip without hint is just the gloss', () => {
     expect(tipFor({ g: 'and', h: '' })).toBe('and');
     expect(tipFor({ g: 'and', h: 'ay' })).toBe('and · "ay"');
@@ -210,7 +229,7 @@ describe('what leaves the page', () => {
     expect(applySwaps(el, [S({ o: 'and', f: 'et', ctx: 'push and then' })])).toBe(1);
     expect(el.querySelector('code').textContent).toBe('git commit and push');
     expect(el.querySelector('a').textContent).toBe('the docs and notes');
-    const note = await Bun.file(new URL('../src/popup.html', import.meta.url)).text();
+    const note = TIER_TEXT.gemini.privacy;
     expect(note).not.toMatch(/links, code[^.]*skipped/i);
     expect(note).toContain('Links and inline code go with their sentence but are never changed');
   });

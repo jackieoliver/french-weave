@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "language": "",
+  "variety": "",
+  "script": {
+    "spaces": true,
+    "direction": "ltr",
+    "hint": "sound",
+    "hint_name": "sound hint",
+    "marks": "accents",
+    "fold": {},
+    "reading": {"early": "none", "late": "none", "late_from_stage": 0, "late_only_with": "", "known_drop": false}
+  },
+  "examples": {"swap_sentence": "", "full_sentences": [], "gloss": null, "default_swaps": []},
+  "sense_notes": {"brief": "", "export": "", "export_short": ""},
+  "drift_words": [],
+  "plural_nouns": true,
+  "english": {
+    "phrases": ["right now", "just now", "now and then", "as well", "as well as", "might as well", "at all", "after all",
+      "all right", "as long as", "so far", "so that",
+      "never mind", "look for", "looks for", "looking for", "looked for", "find out", "finds out", "finding out",
+      "found out", "depend on", "depends on", "depending on", "in mind"],
+    "contexts": [
+      "[*] of",
+      "[before|after|since] i|you|he|she|we|they|it|there|someone|everyone|people|*ing",
+      "[it's|that's|there's] finally|already|just|never|ever|really|actually|not|still|also|now? been|got|gotten|had|done|gone|become|come|taken|seen|made|happened|given",
+      "[like] ,|\"|“|#",
+      "[like] really|totally|literally|so|very|just|actually|basically|super",
+      "[in|on] .|,|!|?|;|:|with|and|at"
+    ]
+  },
+  "exposure": {
+    "same_as_english": [],
+    "not_followed_by": {}
+  },
+  "articles": {"definite": [], "indefinite": [], "elided": [], "determiners": [], "hint_prefixes": [], "elided_hint_prefixes": [], "fixed": []},
+  "extension": {
+    "synonym_examples": [],
+    "filler_example": null,
+    "sense_note": "",
+    "adjective_example": null,
+    "level_examples": {},
+    "synonyms": {}
+  }
+}

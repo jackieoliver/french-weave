@@ -12,7 +12,7 @@ test('hover tip is instant and only a dwell on one word records a peek', async (
     unobserve(el) { this.els.delete(el); }
     disconnect() { this.els.clear(); }
   }
-  const config = { settings: { enabled: true, newSitesEnabled: true, siteOverrides: {} }, level: 1, revision: 'r1', hasKey: true, paused: false, origins: ['<all_urls>'], stage: 1 };
+  const config = { settings: { enabled: true, newSitesEnabled: true, siteOverrides: {} }, level: 1, revision: 'r1', hasKey: true, tier: 'gemini', paused: false, origins: ['<all_urls>'], stage: 1 };
   const events = [];
   const runtime = {
     id: 'fw-test',
