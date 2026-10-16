@@ -58,6 +58,14 @@ describe('local swaps (no key, no model)', () => {
       'The tree grew as soon as spring arrived in the small garden.',
       'He made a change of course halfway through the long project.',
       'Nothing Is Better Than This, the oral history, came out last fall.',
+      'She fell in love with him the summer they both lived in Lyon.',
+      'Compared with last year, the garden looks much greener this spring.',
+      'He replaced the old tiles with new ones from the shop down the road.',
+      'What should I do with all these old boxes in the hall closet?',
+      'That is the reason why I left the party early last night.',
+      'How often do you go to the market on the weekend, roughly?',
+      'The person who I met at the station gave me a paper map.',
+      "'I'll come with you,' she said as the train pulled into the station.",
     ];
     for (const text of none) expect([text, L2(text)]).toEqual([text, []]);
   });
@@ -69,6 +77,16 @@ describe('local swaps (no key, no model)', () => {
       'I always think it is kinda nuts how dangerous it is, and nobody talks about it.',
       'My doctor changed the dose and the side effects are still there.',
       'It cost me $200 and I would buy it again without a second thought.',
+      'He was shot twice and the suspect fled before anyone could stop him.',
+      'My dad had a heart attack yesterday and is in the ICU right now.',
+      'Two soldiers were dead and dozens wounded after the bomb exploded today.',
+      'She was raped at a party and never told anyone about it for years.',
+      'Her abortion appointment is tomorrow and she is really scared about it.',
+      'The killing shocked the town and everyone stayed home that night.',
+      "I can't afford rent or groceries this month and my credit card is maxed out.",
+      'Scammers took her whole paycheck and the bank did nothing to help.',
+      'He was convicted of fraud and sentenced to five years last week.',
+      "'We were left with nothing,' says mother of two after the flood.",
     ]) {
       expect(localOff(text)).toBe(true);
       expect(L2(text)).toEqual([]);
@@ -122,7 +140,7 @@ describe('local swaps (no key, no model)', () => {
 });
 
 // The real worker with a fake chrome, as a page and the popup talk to it.
-async function startWorker(name, data) {
+async function startWorker(name, data, native = async () => ({ ok: false })) {
   const saved = Object.fromEntries(['chrome', 'fetch', 'setTimeout'].map((k) => [k, globalThis[k]]));
   const realTimeout = globalThis.setTimeout;
   globalThis.setTimeout = (fn, ms, ...rest) => (ms >= 10000 ? 0 : realTimeout(fn, ms, ...rest));
@@ -141,7 +159,7 @@ async function startWorker(name, data) {
       async remove(keys) { for (const k of keys) delete data[k]; },
     }, onChanged: on() },
     runtime: { id: 'fw-test', getURL: (path) => `chrome-extension://fw-test/${path}`, getManifest: () => ({ version: '0.2.3' }),
-      onMessage: on(listeners), onInstalled: on(), onStartup: on(), sendNativeMessage: async () => ({ ok: false }) },
+      onMessage: on(listeners), onInstalled: on(), onStartup: on(), sendNativeMessage: (_host, msg) => native(msg) },
     action: { setBadgeText: async ({ text }) => { badge.text = text; }, setBadgeBackgroundColor: async () => {},
       setBadgeTextColor: async () => {}, setTitle: async ({ title }) => { badge.title = title; } },
     tabs: { query: async () => [], sendMessage: async () => {} },
@@ -220,6 +238,22 @@ describe('engine tiers in the worker', () => {
       expect(config.tier).toBe('local');
       expect(swaps.map((s) => s.f)).toEqual(['et']);
       expect(w.gemini).toHaveLength(1);
+    } finally { w.restore(); }
+  });
+
+  test("a Gemini error dot goes when the setup's key does, on the next sync", async () => {
+    let geminiKey = 'synthetic-host';
+    const w = await startWorker('host-key', { settings: { enabled: true, newSitesEnabled: true }, hostKey: 'synthetic-host',
+      modelStatus: { at: 1, error: 'HTTP 503', kind: 'busy', httpStatus: 503 } },
+    async (msg) => (msg.type === 'state' ? { ok: true, ...WORDS, geminiKey } : { ok: true, applied: 0 }));
+    try {
+      expect(w.badge.text).not.toBe('');
+      expect(w.badge.title).toContain('Gemini is busy');
+      geminiKey = '';
+      await w.popup({ type: 'syncWords' });
+      expect(w.badge.text).toBe('');
+      expect(w.badge.title).toBe('French Weave');
+      expect((await w.ask(TEXT)).config.tier).toBe('local');
     } finally { w.restore(); }
   });
 

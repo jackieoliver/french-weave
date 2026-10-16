@@ -71,8 +71,9 @@ and paste the block it prints. It carries your real progress; re-export about on
   connection), the toolbar icon shows a small muted dot and the popup says why, with the HTTP code, until a call works again.
 - Extension without a key: nothing, and it makes no network calls. It swaps only words whose French is the same in
   any sentence (and, but, with, without, because, always, also, maybe, often, together, between and about 25 more),
-  skips the uses where that isn't true ("because of", "all but one", "the very end", names and quoted titles), and
-  leaves pages and passages on health, crime, safety, legal or money topics alone. On 309 passages from real pages
+  skips the uses where that isn't true ("because of", "all but one", "the very end", names and quoted text), and
+  leaves pages and passages that name a health, crime, safety, legal or money topic alone (a word list, so it can miss
+  one that names none of its words). On 309 passages from real pages
   that came to about one swap every three sentences at level 1 and one every two at level 2 (Gemini aims for one every
   sentence or two at level 1, one or two per sentence at level 2), and a blind check found 2 wrong swaps in 446, both
   inside quoted titles, which it now skips. The popup shows

@@ -6,8 +6,8 @@ import { wordsForLevel, capSwaps, exactFr, isZeroFrench, matchCase } from './lev
 import { locate } from './text.js';
 
 // forms: the English it replaces (lowercase). skipBefore / skipAfter: the word right before or after it (only spaces
-// between) that changes its sense.
-const L = (fr, forms, skip = {}) => ({ fr, forms, skipBefore: skip.before || [], skipAfter: skip.after || [] });
+// between) that changes its sense; skipNear: a word up to four words back in the same sentence ("replaced X with Y").
+const L = (fr, forms, skip = {}) => ({ fr, forms, skipBefore: skip.before || [], skipAfter: skip.after || [], skipNear: skip.near || [] });
 export const LOCAL_WORDS = [
   L('et', ['and']),
   L('mais', ['but'], { before: ['all', 'nothing', 'anything', 'none', 'everyone', 'everybody', 'everything', 'anyone',
@@ -15,9 +15,13 @@ export const LOCAL_WORDS = [
   L('ou', ['or'], { after: ['so'] }), // "ten or so"
   L('parce que', ['because'], { after: ['of'] }), // "because of" is à cause de
   L('avec', ['with'], { before: ['deal', 'deals', 'dealt', 'dealing', 'cope', 'copes', 'coping', 'filled', 'covered',
-    'packed', 'provided', 'fed', 'pace', 'happy', 'pleased', 'satisfied', 'content', 'synonymous', 'case', 'start', 'starts',
-    'started', 'starting', 'begin', 'begins', 'began', 'beginning'], after: ['respect', 'regard', 'regards', 'no'] }),
-    // French says de, par or sans there ("filled with", "starts with", "with no")
+    'packed', 'provided', 'equipped', 'fed', 'pace', 'happy', 'pleased', 'satisfied', 'content', 'synonymous', 'case', 'start',
+    'starts', 'started', 'starting', 'begin', 'begins', 'began', 'beginning', 'love', 'compared', 'replace', 'replaced',
+    'replaces', 'replacing', 'do', 'does', 'did', 'doing', 'done', 'obsessed', 'associated', 'concerned', 'charged',
+    'comply'], after: ['respect', 'regard', 'regards', 'no'], near: ['replace', 'replaced', 'replaces', 'replacing', 'swap',
+    'swapped', 'exchange', 'exchanged', 'fill', 'filled', 'cover', 'covered', 'provide', 'provided', 'compare', 'compared',
+    'charge', 'charged'] }),
+    // French says de, par, à or sans there ("filled with", "starts with", "in love with", "what to do with", "with no")
   L('sans', ['without']),
   L('très', ['very'], { before: ['the', 'this', 'that', 'these', 'those', 'a', 'my', 'your', 'his', 'her', 'its', 'our',
     'their'], after: ['much', 'many', 'least', 'most', 'own', 'same', 'first', 'last'] }), // "the very end", "very much"
@@ -27,7 +31,7 @@ export const LOCAL_WORDS = [
   L('oui', ['yes']),
   L('jamais', ['never'], { after: ['mind'] }),
   L('déjà', ['already']),
-  L('souvent', ['often']),
+  L('souvent', ['often'], { before: ['how'] }), // "how often" is combien de fois
   L('parfois', ['sometimes']),
   L('vraiment', ['really']),
   L('presque', ['almost']),
@@ -37,9 +41,9 @@ export const LOCAL_WORDS = [
   L('demain', ['tomorrow']),
   L('hier', ['yesterday']),
   L('ce soir', ['tonight']),
-  L('pourquoi', ['why']),
+  L('pourquoi', ['why'], { before: ['reason'] }), // "the reason why" is la raison pour laquelle
   L('bientôt', ['soon'], { before: ['as', 'how', 'so', 'too', 'very'], after: ['as', 'after', 'enough'] }), // "too soon" is trop tôt
-  L('qui', ['who']),
+  L('qui', ['who'], { after: ['i', 'you', 'he', 'she', 'we', 'they', 'it'] }), // "the person who I met": que
   L('rien', ['nothing']),
   L('quelque chose', ['something']),
   L("quelqu'un", ['someone', 'somebody']),
@@ -55,10 +59,10 @@ export const LOCAL_WORDS = [
 // and insurance too. A passage it catches just stays English, and so does every passage on a page whose title it
 // catches ("It's crazy how dangerous driving is"), since one passage alone may not name its topic.
 const LOCAL_ZERO_FRENCH = [
-  /\b(health|medical|medicine|disease|illness|mortality|deaths?|died|dying|suicid\w*|patients?|clinic\w*|nurses?|drugs?|alcohol|anxiety|depress\w*|injur\w*|pain|covid|virus|pandemic)\b/i,
-  /\b(crimes?|criminal|murders?|homicide|violen\w*|theft|robbery|assault|police|cops?|fbi|arrest\w*|prison|jail|guns?|killed|kill|weapons?|terror\w*|abuse\w*)\b/i,
-  /\b(court|judge|legal|illegal|law|laws|sue|suing|crash\w*|accidents?|dangerous|unsafe|drove|reckless)\b/i,
-  /\b(money|insurance|insur\w*|invest\w*|retire\w*|pension|savings|debt|equity|loans?|dollars?|bank\w*|financ\w*|price[sd]?|paid|pay|pays|cost|costs|tax\w*)\b/i,
+  /\b(health|medical|medicine|disease|illness|mortality|deaths?|dead|dies|died|dying|suicid\w*|patients?|clinic\w*|nurses?|drugs?|alcohol|anxiety|depress\w*|injur\w*|wound\w*|pain|covid|virus|pandemic|icu|heart attack|strokes?|abortion\w*|miscarriage\w*)\b/i,
+  /\b(crimes?|criminal|murders?|homicide|violen\w*|theft|robbery|assault\w*|rap(?:e|ed|es|ing|ist)|sexual\w*|police|cops?|fbi|arrest\w*|prison|jail|guns?|shot|shooting|stab\w*|kill\w*|weapons?|terror\w*|abuse\w*|wars?|bomb\w*|attack\w*|explo(?:sion|sive|ded|de)s?|fraud\w*|scam\w*|convict\w*|sentenced)\b/i,
+  /\b(court|judge|trial|legal|illegal|law|laws|sue|suing|crash\w*|accidents?|dangerous|unsafe|drove|reckless|floods?|flooding|fires?|wildfires?)\b/i,
+  /\b(money|insurance|insur\w*|invest\w*|retire\w*|pension|savings|debt|equity|loans?|dollars?|cash|bank\w*|financ\w*|price[sd]?|paid|pay|pays|paycheck\w*|wages?|income|rent|afford\w*|bills|fees|budget\w*|credit card\w*|credit score\w*|cost|costs|tax\w*)\b/i,
   /[$€£¥]\s?\d/,
 ];
 export const localOff = (text) => isZeroFrench(text) || LOCAL_ZERO_FRENCH.some((re) => re.test(text));
@@ -67,6 +71,7 @@ const WORD_CHAR = /[\p{L}\p{N}_]/u;
 const SMALL = new Set(['the', 'a', 'an', 'of']);
 const wordBefore = (text, i) => /([\p{L}\p{N}_'’-]+) +$/u.exec(text.slice(Math.max(0, i - 40), i))?.[1] || '';
 const wordAfter = (text, i) => /^ +([\p{L}\p{N}_'’-]+)/u.exec(text.slice(i, i + 40))?.[1] || '';
+const wordsNear = (text, i) => (text.slice(Math.max(0, i - 80), i).split(/[.!?…;:]/).pop().toLowerCase().match(/[\p{L}'’-]+/gu) || []).slice(-4);
 const capitalized = (w) => /^\p{Lu}/u.test(w) && w !== 'I';
 // Start of a sentence (or after a colon), past any opening quote or bracket.
 const sentenceStart = (text, i) => /(?:^|[.!?…:]) *["“‘'(\[]*$/u.test(text.slice(Math.max(0, i - 6), i));
@@ -89,13 +94,13 @@ function occurrences(text, form) {
 }
 
 // Inside quotation marks: a title ("going out with a whimper") can't be told from quoted speech, so neither is touched.
-// A ’ between two letters is an apostrophe, not a closing quote.
+// A ' or ’ between two letters is an apostrophe, not a quote; one before a word opens a quote, one after a word closes it.
 function quoted(text, i) {
   const before = text.slice(0, i);
   if ((before.match(/"/g) || []).length % 2) return true;
   if (before.lastIndexOf('“') > before.lastIndexOf('”')) return true;
-  const open = before.lastIndexOf('‘');
-  return open !== -1 && !/’(?![\p{L}])|(?<![\p{L}])’/u.test(before.slice(open + 1));
+  const open = Math.max(before.lastIndexOf('‘'), ...[...before.matchAll(/(?<![\p{L}\p{N}])'(?=\p{L})/gu)].map((m) => m.index));
+  return open !== -1 && !/['’](?![\p{L}])|(?<![\p{L}])’/u.test(before.slice(open + 1));
 }
 
 // Names and titles keep their English: "Simon and Garfunkel", "Gone with the Wind", "Always Sunny".
@@ -160,6 +165,7 @@ export function localSwaps(level, text, sharedWords, language = 'French') {
         const o = text.slice(m.start, m.end);
         if (w.skipBefore.includes(wordBefore(text, m.start).toLowerCase())) continue;
         if (w.skipAfter.includes(wordAfter(text, m.end).toLowerCase())) continue;
+        if (w.skipNear.length && wordsNear(text, m.start).some((n) => w.skipNear.includes(n))) continue;
         if (nameOrTitle(text, m, o) || quoted(text, m.start)) continue;
         // "more and more", "over and over": de plus en plus, encore et encore
         if (['et', 'ou'].includes(w.fr) && wordBefore(text, m.start).toLowerCase() === wordAfter(text, m.end).toLowerCase() &&

@@ -205,8 +205,10 @@ async function record(msg, sender) {
 async function syncWords() {
   hostChecked = Date.now();
   await flush();
+  const { hostKey: before } = await store.get('hostKey');
   const res = await refresh({ storage: chromeStorage, send });
   if (res.changed) await locked(() => cache.clear());
+  if (!!before !== !!(await store.get('hostKey')).hostKey) await showBadge(); // a Gemini error dot goes with the key
   await broadcast();
   return { ok: !res.error, error: res.error, count: res.state?.words?.length || 0, stage: res.state?.stage || 0 };
 }
