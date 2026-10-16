@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'bun:test';
 import { modelErrorText, replaceLegacyStatus, clockTime } from '../src/modelerror.js';
-import { STATE_KEY } from '../src/hostsource.js';
+import { STATE_KEY, localDay } from '../src/hostsource.js';
+import { DAILY_MODEL_CALLS } from '../src/quota.js';
 
 // 2026-10-15: 0.2.1 stored { at, error: "Model rate limit; retrying shortly" } (no kind) at 17:18 for what was the
 // per-day quota. After the update to 0.2.2 at 17:22 the badge kept showing that wrong text, and nothing cleared it
@@ -24,6 +25,9 @@ describe('model status stored before 0.2.2', () => {
     expect(daily).toMatchObject({ kind: 'daily', retryAt: midnight, httpStatus: 429 });
     expect(modelErrorText(daily, now)).toMatch(/^Daily Gemini limit reached \(429\); resumes (tomorrow )?about /); // tomorrow in Pacific time
     expect(modelErrorText(daily, now)).toEndWith(`about ${clockTime(midnight)}`);
+    // Today's local cap used up: its own notice, ahead of the daily one.
+    expect(replaceLegacyStatus(LEGACY, { [LITE]: midnight }, [LITE], now, 'Daily limit of 500 model calls reached'))
+      .toEqual({ at: now, error: 'Daily limit of 500 model calls reached', kind: 'local' });
     // Statuses with a kind, and successes, are left alone.
     expect(replaceLegacyStatus({ at: 1, error: 'x', kind: 'rate' }, {}, [LITE], now)).toBeNull();
     expect(replaceLegacyStatus({ at: 1, error: '' }, {}, [LITE], now)).toBeNull();
@@ -83,7 +87,13 @@ describe('model status stored before 0.2.2', () => {
     const { data, badge } = await startWorker('cleared');
     expect(data.modelStatus.error).toBe('');
     expect(data.modelStatus.kind).toBeUndefined();
-    expect(badge.text).toBe('');
+    expect(badge.title).toBe(''); // the stale text never reaches the badge (nothing is drawn with no error and no update check yet)
+  });
+
+  test('worker start keeps the local cap notice while today\'s calls are used up', async () => {
+    const { data } = await startWorker('local', { modelCalls: { day: localDay(), count: DAILY_MODEL_CALLS } });
+    expect(data.modelStatus).toEqual({ at: expect.any(Number), kind: 'local',
+      error: `Daily limit of ${DAILY_MODEL_CALLS} model calls reached; French resumes tomorrow` });
   });
 
   test('worker start shows the daily notice when the per-day quota is still spent', async () => {

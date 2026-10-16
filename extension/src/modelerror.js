@@ -38,10 +38,13 @@ export function modelErrorText(modelStatus, now = Date.now()) {
 }
 
 // A failure stored before 0.2.2 has no kind, and its text can be wrong (0.2.1 said "Model rate limit; retrying
-// shortly" for the per-day quota). Its replacement: the daily notice while every model the next request would try
-// still has its per-day quota spent (dailyQuota: { model: until ms }), otherwise no error. null: nothing to replace.
-export function replaceLegacyStatus(modelStatus, dailyQuota, models, now = Date.now()) {
+// shortly" for the per-day quota). Its replacement: the local cap's notice (localCap, its text) while today's calls are
+// used up; else the daily notice while every model the next request would try still has its per-day quota spent
+// (dailyQuota: { model: until ms }, which builds after 2026-10-15 13:30 still labelled 0.2.1 stored); else no error.
+// null: nothing to replace.
+export function replaceLegacyStatus(modelStatus, dailyQuota, models, now = Date.now(), localCap = '') {
   if (!modelStatus?.error || modelStatus.kind) return null;
+  if (localCap) return { at: now, error: localCap, kind: 'local' };
   const until = models.map((m) => Number(dailyQuota?.[m]) || 0);
   if (!until.length || !until.every((t) => t > now)) return { at: now, error: '' };
   const retryAt = Math.min(...until);

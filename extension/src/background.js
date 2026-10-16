@@ -37,6 +37,9 @@ const serial = () => {
 const modelCall = serial(); // one model call at a time
 const locked = serial(); // storage read-modify-writes one at a time, or concurrent ones drop data
 
+const LOCAL_CAP_ERROR = `Daily limit of ${DAILY_MODEL_CALLS} model calls reached; French resumes tomorrow`;
+const localCapped = async () => await callsToday(chromeStorage) >= DAILY_MODEL_CALLS;
+
 const ready = (async () => {
   // Content scripts run on every enabled site, so stored keys are kept out of their reach.
   if (store.setAccessLevel) await store.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
@@ -49,7 +52,7 @@ const ready = (async () => {
   await locked(async () => {
     const { modelStatus, dailyQuota } = await store.get(['modelStatus', 'dailyQuota']);
     const models = [clean.model, FALLBACK_MODEL[clean.model]].filter(Boolean);
-    const replaced = replaceLegacyStatus(modelStatus, dailyQuota, models);
+    const replaced = replaceLegacyStatus(modelStatus, dailyQuota, models, Date.now(), (await localCapped()) ? LOCAL_CAP_ERROR : '');
     if (replaced) await store.set({ modelStatus: replaced });
   });
 })();
@@ -94,9 +97,7 @@ async function swaps(msg, sender) {
   try {
     const fresh = await modelCall(async () => {
       if ((await context()).revision !== ctx.revision) return null;
-      if (await callsToday(chromeStorage) >= DAILY_MODEL_CALLS) {
-        throw Object.assign(new Error(`Daily limit of ${DAILY_MODEL_CALLS} model calls reached; French resumes tomorrow`), { kind: 'local' });
-      }
+      if (await localCapped()) throw Object.assign(new Error(LOCAL_CAP_ERROR), { kind: 'local' });
       const { wordState, apiKey, hostKey } = await store.get(['wordState', 'apiKey', 'hostKey']);
       usedKey = apiKey || hostKey || '';
       const fetchImpl = async (...args) => { await countCall(chromeStorage); return fetch(...args); };
