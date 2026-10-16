@@ -44,12 +44,13 @@ const locked = serial(); // storage read-modify-writes one at a time, or concurr
 // is left out of the chain while the backup still has calls.
 const keyCapped = async (which) => await callsToday(chromeStorage, undefined, which) >= DAILY_MODEL_CALLS;
 const localCapError = (perKey) => `Daily limit of ${DAILY_MODEL_CALLS} model calls${perKey ? ' per key' : ''} reached; French resumes tomorrow`;
-// The Gemini keys in use: main (pasted, else from setup) and a backup that differs from it (the same key pasted
-// twice is one key with one cap).
+// The Gemini keys in use: main and backup, each pasted, else from setup; the backup only when it differs from the main
+// key (the same key pasted twice is one key with one cap).
 async function geminiKeys() {
-  const { apiKey, hostKey, backupKey } = await store.get(['apiKey', 'hostKey', 'backupKey']);
+  const { apiKey, hostKey, backupKey, hostBackupKey } = await store.get(['apiKey', 'hostKey', 'backupKey', 'hostBackupKey']);
   const main = apiKey || hostKey || '';
-  return { main, backup: backupKey && backupKey !== main ? backupKey : '' };
+  const backup = backupKey || hostBackupKey || '';
+  return { main, backup: backup && backup !== main ? backup : '' };
 }
 // Capped when every key in use has made its calls today (no key at all is the popup's "add a key", not a cap).
 const localCapped = async () => {
@@ -57,7 +58,9 @@ const localCapped = async () => {
   return (!!main || !!backup) && (!main || await keyCapped('main')) && (!backup || await keyCapped('backup'));
 };
 // Every key the worker holds, for scrubbing error text: none may reach a page, the popup or storage.
-const KEY_NAMES = ['apiKey', 'hostKey', 'backupKey', 'openRouterKey'];
+const KEY_NAMES = ['apiKey', 'hostKey', 'backupKey', 'hostBackupKey', 'openRouterKey', 'hostOpenRouterKey'];
+// Keys the native host hands over from setup; a change to any of them starts it with a clean slate.
+const HOST_KEYS = ['hostKey', 'hostBackupKey', 'hostOpenRouterKey'];
 
 const ready = (async () => {
   // Content scripts run on every enabled site, so stored keys are kept out of their reach.
@@ -80,12 +83,12 @@ const ready = (async () => {
 // What pages get. The revision changes whenever anything that affects swaps does, so stale replies are dropped.
 async function context() {
   await ready;
-  const data = await store.get(['settings', 'wordState', 'apiKey', 'hostKey', 'backupKey', 'epoch']);
+  const data = await store.get(['settings', 'wordState', 'apiKey', 'hostKey', 'backupKey', 'hostBackupKey', 'epoch']);
   const state = data.wordState?.words?.length ? data.wordState : null;
   const saved = cleanSettings(data.settings);
   const settings = { ...saved, newSitesEnabled: newSitesDefault(saved, state?.sites) };
   const level = resolveLevel(saved, state?.stage).effective;
-  const hasKey = !!(data.apiKey || data.hostKey || data.backupKey);
+  const hasKey = !!(data.apiKey || data.hostKey || data.backupKey || data.hostBackupKey);
   const paused = !!state?.paused;
   const origins = await grantedOrigins();
   const { openRouterDailyUsd, ...affecting } = settings; // the spend cap changes no swap, so cached ones stay
@@ -148,7 +151,8 @@ async function swaps(msg, sender) {
       if ((await context()).revision !== ctx.revision) return null;
       const { main, backup: backupKey } = await geminiKeys();
       if (await localCapped()) throw Object.assign(new Error(localCapError(!!backupKey)), { kind: 'local' });
-      const { wordState, openRouterKey } = await store.get(['wordState', 'openRouterKey']);
+      const { wordState, openRouterKey: pastedOpenRouterKey, hostOpenRouterKey } = await store.get(['wordState', 'openRouterKey', 'hostOpenRouterKey']);
+      const openRouterKey = pastedOpenRouterKey || hostOpenRouterKey || '';
       usedKey = main;
       const mainOut = !main || await keyCapped('main');
       const backupOut = !backupKey || await keyCapped('backup');
@@ -260,11 +264,16 @@ async function record(msg, sender) {
 async function syncWords() {
   hostChecked = Date.now();
   await flush();
-  const { hostKey: before = '' } = await store.get('hostKey');
+  const before = await store.get(HOST_KEYS);
   const res = await refresh({ storage: chromeStorage, send });
   if (res.changed) await locked(() => cache.clear());
-  const { hostKey: after = '' } = await store.get('hostKey');
-  if (before !== after) await keyChanged(); // setup stored, replaced or removed its key
+  const after = await store.get(HOST_KEYS);
+  const changed = (k) => (before[k] || '') !== (after[k] || '');
+  if (HOST_KEYS.some(changed)) await keyChanged(); // setup stored, replaced or removed a key
+  if (changed('hostOpenRouterKey')) {
+    const today = await openRouterToday(chromeStorage);
+    if (today.stopped) await store.set({ openRouterDay: { ...today, stopped: '' } });
+  }
   await broadcast();
   return { ok: !res.error, error: res.error, count: res.state?.words?.length || 0, stage: res.state?.stage || 0 };
 }
@@ -331,10 +340,12 @@ async function save(msg) {
 
 async function status() {
   const config = await context();
-  const data = await store.get(['wordState', 'apiKey', 'hostKey', 'backupKey', 'openRouterKey', 'modelStatus', 'lastServed']);
+  const data = await store.get(['wordState', 'apiKey', 'hostKey', 'backupKey', 'hostBackupKey', 'openRouterKey', 'hostOpenRouterKey',
+    'modelStatus', 'lastServed']);
   const openRouter = await openRouterToday(chromeStorage);
   return { config, words: data.wordState?.words?.length || 0, fetchedAt: data.wordState?.fetchedAt || 0,
-    pastedKey: !!data.apiKey, hostKey: !!data.hostKey, backupKey: !!data.backupKey, openRouterKey: !!data.openRouterKey,
+    pastedKey: !!data.apiKey, hostKey: !!data.hostKey, backupKey: !!data.backupKey, hostBackupKey: !!data.hostBackupKey,
+    openRouterKey: !!data.openRouterKey, hostOpenRouterKey: !!data.hostOpenRouterKey,
     modelStatus: data.modelStatus || null, lastServed: data.lastServed || null, served: await servedToday(chromeStorage),
     openRouter: { ...openRouter, blocked: openRouterBlocked(openRouter, config.settings.openRouterDailyUsd) },
     dropped: await droppedToday(chromeStorage),

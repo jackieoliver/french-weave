@@ -55,7 +55,7 @@ export function replaceLegacyStatus(modelStatus, dailyQuota, models, now = Date.
 
 // The popup's OpenRouter line: today's spend against the cap, or why it stopped (st: the worker's status reply).
 export function openRouterText(st, cap) {
-  if (!st.openRouterKey) return 'Optional last step, paid: used only when every Gemini step fails.';
+  if (!st.openRouterKey && !st.hostOpenRouterKey) return 'Optional last step, paid: used only when every Gemini step fails.';
   const spent = `OpenRouter today: $${(st.openRouter?.usd || 0).toFixed(4)} of $${Number(cap).toFixed(2)}`;
   if (st.openRouter?.blocked === 'credits') return `${spent}. Credits used up (402): stopped until tomorrow.`;
   if (st.openRouter?.blocked === 'cap') return `${spent}. Daily cap reached: stopped until tomorrow.`;
