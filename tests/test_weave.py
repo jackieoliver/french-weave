@@ -484,6 +484,7 @@ class Host(Home):
 
 
 FAKE_KEY = 'AIzaTEST_placeholder_not_a_real_key_0000'
+FAKE_DOT_KEY = 'AQ.TEST_placeholder-not_a_real_key_00000000000000000'  # the newer key format
 
 
 class Setup(Home):
@@ -514,6 +515,14 @@ class Setup(Home):
         self.assertTrue(reply['ok'])
         self.assertEqual(reply['geminiKey'], FAKE_KEY)
 
+    def test_setup_takes_the_newer_dotted_key_format(self):
+        key = self.home / 'key.txt'
+        key.write_text(FAKE_DOT_KEY + '\n')
+        with mock.patch.object(Path, 'home', return_value=self.home), \
+                mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': ''}), mock.patch('sys.stdout', new=io.StringIO()):
+            fw.main(['setup', '--gemini-key-file', str(key)])
+        self.assertEqual((self.home / 'fw' / 'gemini_key').read_text().strip(), FAKE_DOT_KEY)
+
     def test_key_file_problems_never_echo_the_key_or_path(self):
         def fails(arg):
             with mock.patch.object(Path, 'home', return_value=self.home), mock.patch('sys.stdout', new=io.StringIO()) as out, \
@@ -523,6 +532,8 @@ class Setup(Home):
         self.assertIn('looks like a key', fails(FAKE_KEY))  # the key itself, given as the path
         self.assertNotIn(FAKE_KEY, fails(FAKE_KEY))
         self.assertIn('looks like a key', fails('x' * 40))
+        self.assertIn('looks like a key', fails(FAKE_DOT_KEY))
+        self.assertNotIn(FAKE_DOT_KEY, fails(FAKE_DOT_KEY))
         missing = str(self.home / 'secret-dir' / 'no-such-file')
         self.assertNotIn('secret-dir', fails(missing))
         bad = self.home / 'notes.txt'
