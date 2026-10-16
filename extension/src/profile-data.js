@@ -57,14 +57,16 @@ export const GENERIC = {
       "found out",
       "depend on",
       "depends on",
-      "depending on"
+      "depending on",
+      "in mind"
     ],
     "contexts": [
       "[*] of",
       "[before|after|since] i|you|he|she|we|they|it|there|someone|everyone|people|*ing",
       "[it's|that's|there's] finally|already|just|never|ever|really|actually|not|still|also|now? been|got|gotten|had|done|gone|become|come|taken|seen|made|happened|given",
       "[like] ,|\"|“|#",
-      "[like] really|totally|literally|so|very|just|actually|basically|super"
+      "[like] really|totally|literally|so|very|just|actually|basically|super",
+      "[in|on] .|,|!|?|;|:|with|and|at"
     ]
   },
   "exposure": {

@@ -67,6 +67,10 @@ describe('findCandidates', () => {
     expect(found('Never mind the noise; I never go there.')).toEqual(['never->jamais']);
     expect(found('I look for answers and wait for news.')).toEqual(['and->et', 'for->pour']);
     expect(found('Find out more, then find the cat.')).toEqual(['find->trouver']);
+    // Final harness run: "mind" out of "in mind", and "in" with no object (Mark Twain "walked in with two friends").
+    const more = [W('dans', 'in', 'dahn'), W('esprit', 'mind', 'es-pree'), W('avec', 'with', 'ah-vek')];
+    expect(found('Keep the new deadline in mind, please.', more)).toEqual([]);
+    expect(found('Then he walked in with two old friends in the evening.', more)).toEqual(['with->avec', 'in->dans']);
   });
   test('bundled lists without a word state', () => {
     expect(findCandidates('The cat and the dog.', null, 'French', 1).map((c) => c.f)).toEqual(['et']);
