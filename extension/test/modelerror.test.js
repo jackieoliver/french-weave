@@ -118,7 +118,7 @@ describe('model error notice', () => {
         },
         async set(values) { for (const [k, v] of Object.entries(values)) data[k] = structuredClone(v); },
         async remove(keys) { for (const k of keys) delete data[k]; },
-      } },
+      }, onChanged: on() }, // the popup's word list redraws on storage changes
       runtime: {
         id: 'fw-test', getURL: (path) => `chrome-extension://fw-test/${path}`, getManifest: () => ({ version: '0.2.1' }),
         onMessage: on(listeners), onInstalled: on(), onStartup: on(),
