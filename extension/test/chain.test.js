@@ -98,6 +98,23 @@ describe('model chain', () => {
     expect(error.message).toContain('OpenRouter openai/gpt-6-luna: HTTP 402');
     expect(error.kind).toBe('rate'); // the popup names the Gemini failure; the OpenRouter line says why it stopped
   });
+  test('a refused backup key is named as the backup key; the main key stays trusted', async () => {
+    const badKey = { ok: false, status: 400, text: async () => JSON.stringify({ error: { status: 'INVALID_ARGUMENT', message: 'API key not valid.' } }) };
+    const { fetchImpl } = recorder((who) => (who.endsWith('synthetic-backup') ? badKey : quota429(MINUTE)));
+    const error = await run(fetchImpl, { keys: { main: KEYS.main, backup: KEYS.backup } }).catch((e) => e);
+    expect(error).toMatchObject({ kind: 'key', status: 400, keyName: 'backup' });
+  });
+  test('Gemini spent for the day: an OpenRouter failure keeps the daily notice, and its short cooldown sets the retry', async () => {
+    const daily = new Map(attemptsFor(CHAIN, KEYS).filter((a) => a.step.provider === 'gemini').map((a) => [a.slot, Date.now() + 3600000]));
+    const seen = [];
+    const onOpenRouter = async (x) => { seen.push(x); };
+    const refused = await run(recorder(() => status(401)).fetchImpl, { daily, onOpenRouter }).catch((e) => e);
+    expect(refused).toMatchObject({ kind: 'daily', daily: true });
+    expect(seen).toEqual([{ costUsd: 0, status: 401 }]);
+    const busy = await run(recorder(() => quota429(MINUTE)).fetchImpl, { daily, onOpenRouter }).catch((e) => e);
+    expect(busy.kind).toBe('daily');
+    expect(busy.retryAfterMs).toBeLessThanOrEqual(60000); // OpenRouter's 429 cooldown, not Google's hour
+  });
   test('a batch without candidates makes no request', async () => {
     const { calls, fetchImpl } = recorder(() => status(500));
     const r = await run(fetchImpl, { batch: [{ id: 'a', text: 'The cat sleeps all day long here.' }] });
@@ -123,6 +140,32 @@ describe('model chain', () => {
   });
 });
 
+// A fake Chrome around the real worker (background.js), storage in data; returns the message dispatcher.
+async function startWorker(data, tag) {
+  const on = (arr = []) => ({ addListener: (fn) => arr.push(fn) });
+  const listeners = [];
+  globalThis.chrome = {
+    storage: { local: {
+      async setAccessLevel() {},
+      async get(keys) {
+        const pick = keys == null ? Object.keys(data) : typeof keys === 'string' ? [keys] : keys;
+        return structuredClone(Object.fromEntries(pick.filter((k) => k in data).map((k) => [k, data[k]])));
+      },
+      async set(values) { for (const [k, v] of Object.entries(values)) data[k] = structuredClone(v); },
+      async remove(keys) { for (const k of keys) delete data[k]; },
+    } },
+    runtime: { id: 'fw-test', getURL: (path) => `chrome-extension://fw-test/${path}`, getManifest: () => ({ version: '0.2.1' }),
+      onMessage: on(listeners), onInstalled: on(), onStartup: on(), sendNativeMessage: async () => ({ ok: false }) },
+    action: { setBadgeText: async () => {} },
+    tabs: { query: async () => [], sendMessage: async () => {} },
+    alarms: { create: async () => {}, onAlarm: on() },
+    permissions: { getAll: async () => ({ origins: ['<all_urls>'] }), onAdded: on(), onRemoved: on() },
+    scripting: { getRegisteredContentScripts: async () => [], updateContentScripts: async () => {}, unregisterContentScripts: async () => {}, registerContentScripts: async () => {} },
+  };
+  await import(`../src/background.js?${tag}`);
+  return (msg, sender) => new Promise((done) => { if (!listeners.some((fn) => fn(msg, sender, done))) done(undefined); });
+}
+
 describe('OpenRouter spend', () => {
   test('counted per day; the cap and a 402 stop it until tomorrow; the popup says which', async () => {
     const storage = memoryStorage();
@@ -140,6 +183,8 @@ describe('OpenRouter spend', () => {
       .toBe('OpenRouter today: $0.2600 of $0.25. Daily cap reached: stopped until tomorrow.');
     expect(openRouterText({ openRouterKey: true, openRouter: { ...broke, blocked: 'credits' } }, 0.25)).toContain('Credits used up (402)');
     expect(openRouterText({ openRouterKey: false }, 0.25)).toContain('Optional');
+    await countOpenRouter(storage, { costUsd: 0, status: 401 }, '2026-10-18');
+    expect(openRouterBlocked(await openRouterToday(storage, '2026-10-18'), 5)).toBe('key');
   });
 
   // The real worker: OpenRouter after Gemini, spend kept, the cap and a 402 stop it, the title guard sends nothing.
@@ -152,26 +197,6 @@ describe('OpenRouter spend', () => {
     };
     const calls = [];
     let router = (init) => routerOk(init, 0.2);
-    const on = (arr = []) => ({ addListener: (fn) => arr.push(fn) });
-    const listeners = [];
-    globalThis.chrome = {
-      storage: { local: {
-        async setAccessLevel() {},
-        async get(keys) {
-          const pick = keys == null ? Object.keys(data) : typeof keys === 'string' ? [keys] : keys;
-          return structuredClone(Object.fromEntries(pick.filter((k) => k in data).map((k) => [k, data[k]])));
-        },
-        async set(values) { for (const [k, v] of Object.entries(values)) data[k] = structuredClone(v); },
-        async remove(keys) { for (const k of keys) delete data[k]; },
-      } },
-      runtime: { id: 'fw-test', getURL: (path) => `chrome-extension://fw-test/${path}`, getManifest: () => ({ version: '0.2.1' }),
-        onMessage: on(listeners), onInstalled: on(), onStartup: on(), sendNativeMessage: async () => ({ ok: false }) },
-      action: { setBadgeText: async () => {} },
-      tabs: { query: async () => [], sendMessage: async () => {} },
-      alarms: { create: async () => {}, onAlarm: on() },
-      permissions: { getAll: async () => ({ origins: ['<all_urls>'] }), onAdded: on(), onRemoved: on() },
-      scripting: { getRegisteredContentScripts: async () => [], updateContentScripts: async () => {}, unregisterContentScripts: async () => {}, registerContentScripts: async () => {} },
-    };
     globalThis.fetch = async (url, init) => {
       if (String(url).startsWith('chrome-extension://')) return { ok: true, json: async () => ({ version: '0.2.1' }) };
       if (url === OPENROUTER_URL) { calls.push('openrouter'); expect(init.headers.Authorization).toBe('Bearer synthetic-openrouter-key'); return router(init); }
@@ -179,8 +204,7 @@ describe('OpenRouter spend', () => {
       return quota429(DAY);
     };
     try {
-      await import('../src/background.js?chain');
-      const dispatch = (msg, sender) => new Promise((done) => { if (!listeners.some((fn) => fn(msg, sender, done))) done(undefined); });
+      const dispatch = await startWorker(data, 'chain');
       const popup = { id: 'fw-test', url: 'chrome-extension://fw-test/src/popup.html' };
       const page = (title) => ({ id: 'fw-test', tab: { id: 1, title }, url: 'https://example.com/article' });
       const ask = async (text, title = 'Cats') => {
@@ -219,6 +243,40 @@ describe('OpenRouter spend', () => {
       const guarded = await ask('The cat and the dog sleep all day long.', 'The best index funds to buy this year');
       expect(Object.values(guarded.results)).toEqual([[]]);
       expect(calls.length).toBe(5);
+    } finally {
+      Object.assign(globalThis, saved);
+    }
+  }, 30000);
+
+  test('worker: each Gemini key has its own 500-call cap; a spent main key leaves the backup in the chain', async () => {
+    const saved = Object.fromEntries(['chrome', 'fetch'].map((k) => [k, globalThis[k]]));
+    const day = new Date().toLocaleDateString('en-CA');
+    const data = {
+      settings: { enabled: true, newSitesEnabled: true },
+      apiKey: 'synthetic-main', backupKey: 'synthetic-backup', modelCalls: { day, count: 500 },
+      [STATE_KEY]: { version: 't.1', stage: 1, paused: false, sites: 'all', fetchedAt: Date.now(), words: WORDS },
+    };
+    const used = [];
+    globalThis.fetch = async (url, init) => {
+      if (String(url).startsWith('chrome-extension://')) return { ok: true, json: async () => ({ version: '0.2.1' }) };
+      used.push(init.headers['x-goog-api-key']);
+      return geminiOk(JSON.parse(init.body));
+    };
+    try {
+      const dispatch = await startWorker(data, 'percap');
+      const page = { id: 'fw-test', tab: { id: 1, title: 'Cats' }, url: 'https://example.com/article' };
+      const ask = async (text) => {
+        const { revision } = await dispatch({ type: 'config' }, page);
+        return dispatch({ type: 'swaps', revision, items: [{ key: `${revision}:${hashKey(text)}`, text }] }, page);
+      };
+      const r = await ask('The cat and the dog sleep all day long.');
+      expect(Object.values(r.results)[0].map((s) => s.f)).toEqual(['et']);
+      expect(used).toEqual(['synthetic-backup']);
+      expect(data.modelCallsBackup).toEqual({ day, count: 1 });
+      data.modelCallsBackup = { day, count: 500 };
+      const capped = await ask('The bird and the fish swim all day long.');
+      expect(capped.error).toBe('Daily limit of 500 model calls per key reached; French resumes tomorrow');
+      expect(used.length).toBe(1);
     } finally {
       Object.assign(globalThis, saved);
     }

@@ -5,28 +5,48 @@
 // findCandidates also leaves out the wrong-sense places gemini-3.1-flash-lite kept on an internal test set (2026-10-15):
 // causal "Since ...", "Never" out of "Never mind", "for" out of "look for", "find" out of "find out", the verb "like",
 // and "app" inside the product name "Home app".
-import { glossMatch, SYNONYMS, validateSwaps, breaksEnglishAt, wordsForLevel, MAX_BUILT_LEVEL } from './levels.js';
+import { glossMatch, glossForms, matchKeys, SYNONYMS, validateSwaps, breaksEnglishAt, wordsForLevel, MAX_BUILT_LEVEL } from './levels.js';
 import { profileFor } from './profile.js';
 import { wantFor } from './prompt.js';
 
+const synonymCache = new Map();
 function synonymsFor(language) {
-  const extra = profileFor(language || 'French').extension.synonyms || {};
+  const lang = language || 'French';
+  if (synonymCache.has(lang)) return synonymCache.get(lang);
+  const extra = profileFor(lang).extension.synonyms || {};
   const out = { ...SYNONYMS };
   for (const [k, v] of Object.entries(extra)) out[k.toLowerCase()] = [...new Set([...(out[k.toLowerCase()] || []), ...v])];
+  synonymCache.set(lang, out);
   return out;
+}
+
+// form -> list positions of the words whose gloss has that form, so each span checks only words it could match
+// (a full list is about 1,000 words; checking all of them for every span took about 230 ms a passage).
+const indexes = new WeakMap();
+function glossIndex(entries, syn) {
+  const cached = indexes.get(entries);
+  if (cached?.syn === syn) return cached.index;
+  const index = new Map();
+  entries.forEach((w, at) => {
+    for (const form of glossForms(w.en, syn).forms) index.set(form, [...(index.get(form) || []), at]);
+  });
+  indexes.set(entries, { syn, index });
+  return index;
 }
 
 const tokenize = (text) => [...text.matchAll(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)].map((m) => ({ w: m[0], at: m.index, end: m.index + m[0].length }));
 const lower = (t) => (t ? t.w.toLowerCase().replace(/’/g, "'") : '');
-const ARTICLE_FR = /^(le|la|les|l'|un|une|el|los|las|der|die|das|ein|eine|il|lo|gli|o|os|as|um|uma)[\s']/i;
 
 // "since" is the time word (depuis, desde, seit) only before a time: a year, a date or number, a month or weekday,
-// "then", "last ...", "yesterday", "the ... of", "the 1990s". "Since it rained, ..." is causal and stays English.
+// "then", "last ...", "yesterday", "the start of", "the early days", "the 1990s". "Since it rained, ..." and "Since the
+// idea of ..." are causal and stay English.
 const MONTHS = 'january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec';
 const DAYS = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday|yesterday|today|then|last|early|childhood|birth';
-const TIME_AFTER = new RegExp(`^\\s*(\\d|(${MONTHS}|${DAYS})\\b|the\\s+(\\d|((\\S+\\s+){0,3}of\\b)|(${MONTHS}|${DAYS}|start|beginning|end|days|time|dawn|launch|release)\\b))`, 'i');
+const TIME_NOUNS = 'start|beginning|end|turn|middle|days|age|time|dawn|launch|release|founding|era|summer|winter|spring|fall|autumn|week|month|year|decade|century|war|pandemic';
+const TIME_AFTER = new RegExp(`^\\s*(\\d|(${MONTHS}|${DAYS})\\b|the\\s+(\\d|(\\S+\\s+)?(${TIME_NOUNS}|${MONTHS}|${DAYS})\\b))`, 'i');
 // "like" means "as / such as" (comme, como) unless it is the verb: after a subject or "would", "don't", "really",
-// or before "to" ("I'd like to").
+// before "to" ("I'd like to"), or ending a clause. A plural noun before it can go either way ("tools like grep",
+// "kids like games"): those stay candidates, and the model's same-sense check decides.
 const LIKE_VERB_BEFORE = new Set(['i', 'you', 'we', 'they', 'he', 'she', 'it', 'people', 'who', "i'd", "you'd", "we'd",
   "they'd", "he'd", "she'd", 'would', 'do', 'does', 'did', "don't", "doesn't", "didn't", 'not', 'really', 'also', 'still',
   'just', 'actually', 'might', 'may', 'will', 'to', "won't", "wouldn't"]);
@@ -57,6 +77,7 @@ export function findCandidates(text, words, language = 'French', level = 1) {
   const list = words || null;
   const entries = list || wordsForLevel(lvl);
   const syn = synonymsFor(lang);
+  const index = glossIndex(entries, syn);
   const toks = tokenize(text);
   const quoted = [...text.matchAll(HANDS_OFF)].map((m) => [m.index, m.index + m[0].length]);
   const inQuote = (a, b) => quoted.some(([s, e]) => a < e && s < b);
@@ -74,17 +95,20 @@ export function findCandidates(text, words, language = 'French', level = 1) {
       const first = lower(toks[i]);
       if (len === 1 && nameWord(text, toks[i - 1]) && !FUNCTION_WORDS.has(first)) continue; // "Home app", "Apple fans"
       if (len === 1 && first === 'since' && !TIME_AFTER.test(text.slice(to))) continue;
-      if (len === 1 && first === 'like' && (LIKE_VERB_BEFORE.has(lower(toks[i - 1])) || lower(toks[i + 1]) === 'to')) continue;
-      const lead = /^(the|a|an)\s/i.exec(span)?.[1].toLowerCase();
+      if (len === 1 && first === 'like' && (LIKE_VERB_BEFORE.has(lower(toks[i - 1])) || lower(toks[i + 1]) === 'to'
+        || /^\s*([.!?;:)]|$)/.test(text.slice(to)))) continue; // "the things I like." ends a clause: the verb
+      const lead = /^(the|a|an|to)\s/i.exec(span)?.[1].toLowerCase();
       const lo = Math.max(0, i - 2);
       const hi = Math.min(toks.length, i + len + 2);
       const ctx = text.slice(toks[lo].at, toks[hi - 1].end);
-      for (const w of entries) {
+      const near = [...new Set([...matchKeys(span)].flatMap((k) => index.get(k) || []))].sort((a, b) => a - b);
+      for (const w of near.map((at) => entries[at])) {
         const m = glossMatch(span, w.en, syn);
         if (m !== 'exact' && m !== 'plural') continue;
-        // glossMatch ignores a leading English article, so "the new" would become "nouveau" and lose its article.
-        // A span may start with one only when the gloss or the listed word carries it too.
-        if (lead && !String(w.en).toLowerCase().split(/\s*[/;,]\s*/).some((g) => g.startsWith(`${lead} `)) && !ARTICLE_FR.test(w.fr)) continue;
+        // glossMatch ignores a leading article or "to", so "the new" would become "nouveau", "a problem" "problème"
+        // and "to work" (the verb) "travail". A span may start with one only when a gloss starts with the same word
+        // ("the problem" -> le problème, "to find" -> trouver); otherwise the shorter span without it is offered.
+        if (lead && !String(w.en).toLowerCase().split(/\s*[/;,]\s*/).some((g) => g.startsWith(`${lead} `))) continue;
         // Offered only as the swap the validator keeps (plural form, bare noun, gloss and hint from the list).
         const [swap] = validateSwaps(lvl, [{ o: span, f: w.fr, g: w.en, h: w.hint || '', ctx }], list, lang, { text });
         if (!swap || breaksEnglishAt(text, from, to, swap.f)) continue;

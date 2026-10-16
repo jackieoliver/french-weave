@@ -22,6 +22,11 @@ describe('findCandidates', () => {
     expect(found('The new phone is here.')).toEqual(['new->nouveau']);
     expect(found('We saw the problem today.')).toEqual(['the problem->le problème']);
     expect(found('That was my answer to it.')).toEqual(['answer->réponse']);
+    // Review 2026-10-16: "a problem" became "problème" and "to work" (the verb) the noun.
+    expect(found('We have a problem now.')).toEqual(['problem->problème']);
+    const work = [W('le travail', 'work', 'luh tra-vy'), W('trouver', 'to find', 'troo-vay')];
+    expect(found('A good way to work is here.', work)).toEqual(['work->travail']); // the span never takes the "to"
+    expect(found('I want to find it.', work)).toEqual(['to find->trouver']);
   });
   test('plurals: offered only when the list has the plural', () => {
     expect(found('Our problems keep growing fast.')).toEqual(['problems->problèmes']);
@@ -45,11 +50,14 @@ describe('findCandidates', () => {
     expect(found('We have lived here since 2019 and since then it changed.')).toEqual(['since->depuis', 'and->et', 'since->depuis']);
     expect(found('Nothing changed since last week or since the start of the year.')).toEqual(['since->depuis', 'since->depuis']);
     expect(found('It works since you asked.')).toEqual([]);
+    expect(found('Since the idea of a free lunch is a myth, we pay.')).toEqual([]);
+    expect(found('It grew since the start of the year.')).toEqual(['since->depuis']);
   });
   test('"like" only as "as / such as", never the verb', () => {
     expect(found('I like cats like Tom. Tools like grep help. I would like to go. They really like it.'))
       .toEqual(['like->comme', 'like->comme']);
     expect(found("We don't like rain.")).toEqual([]);
+    expect(found('These are the things I like. Kids like games.')).toEqual(['like->comme']); // a plural noun: the model decides
   });
   test('never-split phrases: "Never mind", "look for", "find out"', () => {
     expect(found('Never mind the noise; I never go there.')).toEqual(['never->jamais']);

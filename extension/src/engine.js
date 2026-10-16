@@ -132,19 +132,27 @@ export async function requestSwaps({ apiKey, keys: given, model, chain: givenCha
         for (const b of all) if (b.index === a.index && pause) cooldown.set(b.slot, now() + pause);
       }
       errors.push(`${labelFor(a)}: ${timeout ? 'timeout' : e?.message || e}`);
-      failures.push({ provider: a.step.provider, status: e?.status, googleStatus: e?.googleStatus, keyRejected: e?.keyRejected,
+      failures.push({ provider: a.step.provider, keyName: a.keyName, status: e?.status, googleStatus: e?.googleStatus, keyRejected: e?.keyRejected,
         daily: e?.daily, timeout, network: !!e?.network });
     }
   }
   const gemini = all.filter((a) => a.step.provider === 'gemini').map((a) => a.slot);
-  if (gemini.length && gemini.every((s) => daily.get(s) > now()) && all.every((a) => a.step.provider === 'gemini' || blocked(a.slot))) {
-    throw Object.assign(waitError(gemini, cooldown, daily, now()), { googleStatus: failures.filter((f) => f.provider === 'gemini').at(-1)?.googleStatus });
+  const geminiFailures = failures.filter((f) => f.provider === 'gemini');
+  // Every Gemini step is on its daily block (now or from before), so the popup's line is the daily one even when
+  // OpenRouter failed too (its own line says why). A short OpenRouter cooldown (429, timeout) brings the retry forward,
+  // so passages don't wait for Google's reset when the paid step may answer in a minute.
+  if (gemini.length && gemini.every((s) => daily.get(s) > now())) {
+    const error = Object.assign(waitError(gemini, cooldown, daily, now()), { googleStatus: geminiFailures.at(-1)?.googleStatus });
+    const soon = all.filter((a) => a.keyName === 'openrouter').map((a) => cooldown.get(a.slot) || 0).filter((t) => t > now());
+    if (soon.length) error.retryAfterMs = Math.max(1000, Math.min(error.retryAfterMs, Math.min(...soon) - now()));
+    throw error;
   }
   const error = new Error(errors.join('; '));
-  // Every request failed. A refused Gemini key wins (it needs the reader); otherwise the last Gemini failure.
-  const geminiFailures = failures.filter((f) => f.provider === 'gemini');
+  // Every request failed. A refused Gemini key wins (it needs the reader; the main key's before the backup's);
+  // otherwise the last Gemini failure. keyName says which key it was.
   const failure = geminiFailures.find((f) => errorKind(f) === 'key') || geminiFailures.at(-1) || failures.at(-1) || {};
-  Object.assign(error, { kind: errorKind({ ...failure, daily: false }), status: failure.status, googleStatus: failure.googleStatus });
+  Object.assign(error, { kind: errorKind({ ...failure, daily: false }), status: failure.status, googleStatus: failure.googleStatus,
+    keyName: failure.keyName });
   const until = all.map((a) => cooldown.get(a.slot) || 0).filter((t) => t > now());
   if (until.length === all.length) error.retryAfterMs = Math.max(1000, Math.min(...until) - now());
   throw error;

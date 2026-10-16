@@ -39,10 +39,11 @@ const serial = () => {
 const modelCall = serial(); // one model call at a time
 const locked = serial(); // storage read-modify-writes one at a time, or concurrent ones drop data
 
-// The local cap is per Gemini key: a backup key brings its own quota.
-const localCap = async () => DAILY_MODEL_CALLS * ((await store.get('backupKey')).backupKey ? 2 : 1);
-const localCapError = (cap) => `Daily limit of ${cap} model calls reached; French resumes tomorrow`;
-const localCapped = async () => await callsToday(chromeStorage) >= await localCap();
+// The local cap is per Gemini key, each with its own count: a backup key brings its own quota, and a spent main key
+// is left out of the chain while the backup still has calls.
+const keyCapped = async (which) => await callsToday(chromeStorage, undefined, which) >= DAILY_MODEL_CALLS;
+const localCapError = (perKey) => `Daily limit of ${DAILY_MODEL_CALLS} model calls${perKey ? ' per key' : ''} reached; French resumes tomorrow`;
+const localCapped = async () => await keyCapped('main') && (!(await store.get('backupKey')).backupKey || await keyCapped('backup'));
 // Every key the worker holds, for scrubbing error text: none may reach a page, the popup or storage.
 const KEY_NAMES = ['apiKey', 'hostKey', 'backupKey', 'openRouterKey'];
 
@@ -58,7 +59,8 @@ const ready = (async () => {
   await locked(async () => {
     const { modelStatus, dailyQuota, wordState } = await store.get(['modelStatus', 'dailyQuota', 'wordState']);
     const models = configFor(wordState?.language || 'French', clean.modelChoice).chain.filter((s) => s.provider === 'gemini').map((s) => s.model);
-    const replaced = replaceLegacyStatus(modelStatus, dailyQuota, models, Date.now(), (await localCapped()) ? localCapError(await localCap()) : '');
+    const backup = !!(await store.get('backupKey')).backupKey;
+    const replaced = replaceLegacyStatus(modelStatus, dailyQuota, models, Date.now(), (await localCapped()) ? localCapError(backup) : '');
     if (replaced) await store.set({ modelStatus: replaced });
   });
 })();
@@ -119,16 +121,24 @@ async function swaps(msg, sender) {
   try {
     const fresh = await modelCall(async () => {
       if ((await context()).revision !== ctx.revision) return null;
-      if (await localCapped()) throw Object.assign(new Error(localCapError(await localCap())), { kind: 'local' });
+      if (await localCapped()) throw Object.assign(new Error(localCapError(!!(await store.get('backupKey')).backupKey)), { kind: 'local' });
       const { wordState, apiKey, hostKey, backupKey, openRouterKey } = await store.get(['wordState', 'apiKey', 'hostKey', 'backupKey', 'openRouterKey']);
       usedKey = apiKey || hostKey || '';
-      // Only Gemini calls count toward the local cap; OpenRouter has its own spend cap.
-      const fetchImpl = async (url, ...rest) => { if (String(url).startsWith(API_BASE)) await countCall(chromeStorage); return fetch(url, ...rest); };
+      const mainOut = await keyCapped('main');
+      const backupOut = !backupKey || await keyCapped('backup');
+      // Only Gemini calls count toward the local cap, each toward its key's; OpenRouter has its own spend cap.
+      const fetchImpl = async (url, init, ...rest) => {
+        if (String(url).startsWith(API_BASE)) {
+          const which = backupKey && init?.headers?.['x-goog-api-key'] === backupKey && backupKey !== usedKey ? 'backup' : 'main';
+          await countCall(chromeStorage, undefined, which);
+        }
+        return fetch(url, init, ...rest);
+      };
       const daily = await spentToday(chromeStorage); // a spent daily quota outlives the worker, so it is kept in storage
       const openRouterOn = !!openRouterKey && !openRouterBlocked(await openRouterToday(chromeStorage), ctx.settings.openRouterDailyUsd);
       const { design, chain } = configFor(wordState?.words?.length ? wordState.language || 'French' : 'French', ctx.settings.modelChoice);
       try {
-        return await requestSwaps({ keys: { main: apiKey || hostKey, backup: backupKey, openrouter: openRouterOn ? openRouterKey : '' },
+        return await requestSwaps({ keys: { main: mainOut ? '' : usedKey, backup: backupOut ? '' : backupKey, openrouter: openRouterOn ? openRouterKey : '' },
           chain, design, level: ctx.level, words: wordState?.words, language: wordState?.language, fetchImpl,
           onOpenRouter: (r) => locked(() => countOpenRouter(chromeStorage, r)),
           shownToday: await shownToday(chromeStorage), cooldown, daily, page: pageLabel(sender), batch: misses.map((i) => ({ id: i.key, text: i.text })) });
@@ -169,7 +179,7 @@ async function failed(e, usedKey) {
     const kind = wait ? (prev?.error && prev.kind !== 'local' && prev.kind) || 'rate' : e?.kind || 'other';
     const same = prev?.error && prev.kind === kind ? prev : {}; // a daily limit read from storage has no body of its own
     const retryAt = e?.resumeAt || (e?.retryAfterMs ? now + e.retryAfterMs : 0);
-    await store.set({ modelStatus: { at: now, error, kind, retryAt,
+    await store.set({ modelStatus: { at: now, error, kind, retryAt, ...(kind === 'key' && e?.keyName ? { keyName: e.keyName } : {}),
       httpStatus: (wait ? same.httpStatus : e?.status) || 0,
       googleStatus: (wait ? same.googleStatus : e?.googleStatus) || (kind === 'daily' && same.googleStatus) || '' } });
   });
@@ -268,6 +278,9 @@ async function save(msg) {
       const { dailyQuota } = await store.get('dailyQuota');
       patch.dailyQuota = Object.fromEntries(Object.entries(patch.dailyQuota || dailyQuota || {}).filter(([slot]) => !slot.startsWith(prefix)));
       for (const slot of [...cooldown.keys()]) if (slot.startsWith(prefix)) cooldown.delete(slot);
+      // A new backup key answers its own "rejected the backup key".
+      const { modelStatus } = await store.get('modelStatus');
+      if (name === 'backupKey' && modelStatus?.kind === 'key' && modelStatus.keyName === 'backup') patch.modelStatus = { at: Date.now(), error: '' };
       if (name === 'openRouterKey') {
         const today = await openRouterToday(chromeStorage);
         if (today.stopped) await store.set({ openRouterDay: { ...today, stopped: '' } });

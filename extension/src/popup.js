@@ -118,7 +118,9 @@ $('model').addEventListener('change', (e) => run(() => save({ settings: { modelC
 $('apiKey').addEventListener('change', (e) => run(() => save({ apiKey: e.target.value })));
 $('backupKey').addEventListener('change', (e) => run(() => save({ backupKey: e.target.value })));
 $('openRouterKey').addEventListener('change', (e) => run(() => save({ openRouterKey: e.target.value })));
-$('openRouterDailyUsd').addEventListener('change', (e) => run(() => save({ settings: { openRouterDailyUsd: Number(e.target.value) } })));
+// An emptied field keeps the saved cap (0 is a real choice: OpenRouter off).
+$('openRouterDailyUsd').addEventListener('change', (e) => run(() => (e.target.value.trim() === '' ? refresh()
+  : save({ settings: { openRouterDailyUsd: Number(e.target.value) } }))));
 $('siteEnabled').addEventListener('change', (e) => run(async () => {
   const enabled = e.target.checked;
   if (enabled && !hasSiteAccess(tab.url, status.config.origins)) {

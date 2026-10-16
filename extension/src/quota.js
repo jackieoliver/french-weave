@@ -33,17 +33,20 @@ export async function saveSpent(storage, daily, now = Date.now()) {
   await storage.set({ [DAILY_KEY]: Object.fromEntries([...daily].filter(([, until]) => until > now)) });
 }
 
-export async function callsToday(storage, day = localDay()) {
-  const { [KEY]: used } = await storage.get([KEY]);
+// which: 'main' or 'backup'; each Gemini key has its own count and cap.
+const callsKey = (which) => (which === 'backup' ? 'modelCallsBackup' : KEY);
+export async function callsToday(storage, day = localDay(), which = 'main') {
+  const { [callsKey(which)]: used } = await storage.get([callsKey(which)]);
   return used?.day === day ? used.count : 0;
 }
 
-export async function countCall(storage, day = localDay()) {
-  await storage.set({ [KEY]: { day, count: (await callsToday(storage, day)) + 1 } });
+export async function countCall(storage, day = localDay(), which = 'main') {
+  await storage.set({ [callsKey(which)]: { day, count: (await callsToday(storage, day, which)) + 1 } });
 }
 
 // OpenRouter spend today in USD, as OpenRouter reports it per request ({ day, usd, stopped }). stopped: 'credits'
-// after a 402 (the account's credits are used up), so no more OpenRouter calls until tomorrow.
+// after a 402 (the account's credits are used up), 'key' after a 401 or 403 (key refused): no more OpenRouter calls
+// until tomorrow or a new key.
 const OPENROUTER_KEY = 'openRouterDay';
 export async function openRouterToday(storage, day = localDay()) {
   const { [OPENROUTER_KEY]: saved } = await storage.get([OPENROUTER_KEY]);
@@ -54,13 +57,14 @@ export async function countOpenRouter(storage, { costUsd = 0, status = 200 } = {
   const today = await openRouterToday(storage, day);
   today.usd = Math.round((today.usd + (Number(costUsd) > 0 ? Number(costUsd) : 0)) * 1e6) / 1e6;
   if (status === 402) today.stopped = 'credits';
+  if (status === 401 || status === 403) today.stopped = 'key';
   await storage.set({ [OPENROUTER_KEY]: today });
   return today;
 }
 
 // Why OpenRouter is off for the rest of today, or '' while it may be called.
 export function openRouterBlocked(today, capUsd) {
-  if (today?.stopped === 'credits') return 'credits';
+  if (today?.stopped) return today.stopped;
   return today?.usd >= capUsd ? 'cap' : '';
 }
 

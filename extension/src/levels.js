@@ -292,19 +292,7 @@ const SUFFIXES = [['ies', 'y'], ['es', ''], ['s', ''], ['ed', ''], ['ed', 'e'], 
 // or -ies: "problems" for "the problem"), 'inflected' (a verb gloss with an ending: "starts", "started", "starting"
 // for "to start"), or '' for no match.
 export function glossMatch(original, en, synonyms = SYNONYMS) {
-  const forms = new Set();
-  const verbs = new Set();
-  for (const alt of String(en).split(/\s*[/;,]\s*/)) {
-    const g = cleanEn(alt);
-    if (!g) continue;
-    const verb = /^to\s/.test(g);
-    for (const f of [g, g.replace(EN_LEAD_RE, '')]) {
-      for (const form of [f, ...(synonyms[f] || [])]) {
-        forms.add(form);
-        if (verb) verbs.add(form);
-      }
-    }
-  }
+  const { forms, verbs } = glossForms(en, synonyms);
   const t = cleanEn(original);
   if (!t) return '';
   let found = '';
@@ -318,6 +306,38 @@ export function glossMatch(original, en, synonyms = SYNONYMS) {
     }
   }
   return found;
+}
+
+// The English forms a gloss matches exactly (glosses, without a leading article or "to", and their synonyms); verbs:
+// those from a "to ..." gloss, which take endings instead of a plural.
+export function glossForms(en, synonyms = SYNONYMS) {
+  const forms = new Set();
+  const verbs = new Set();
+  for (const alt of String(en).split(/\s*[/;,]\s*/)) {
+    const g = cleanEn(alt);
+    if (!g) continue;
+    const verb = /^to\s/.test(g);
+    for (const f of [g, g.replace(EN_LEAD_RE, '')]) {
+      for (const form of [f, ...(synonyms[f] || [])]) {
+        forms.add(form);
+        if (verb) verbs.add(form);
+      }
+    }
+  }
+  return { forms, verbs };
+}
+
+// The forms glossMatch tries for some English: itself and without a leading article, each also with an ending
+// taken off. A gloss can match only if one of these is among its glossForms.
+export function matchKeys(original) {
+  const t = cleanEn(original);
+  const keys = new Set();
+  for (const c of [t, t.replace(EN_LEAD_RE, '')]) {
+    if (!c) continue;
+    keys.add(c);
+    for (const [suffix, stem] of SUFFIXES) if (c.endsWith(suffix)) keys.add(c.slice(0, -suffix.length) + stem);
+  }
+  return keys;
 }
 
 export function glossMatches(original, en, synonyms = SYNONYMS) {
@@ -452,6 +472,16 @@ export function breaksEnglishAt(text, from, to, f, rules = ENGLISH) {
   return splitAt(tokenize(text), s, s + tokenize(String(text).slice(from, to)).length, f, rules);
 }
 
+// The index of a word state's list, built once per list and language: candidates.js validates each candidate on its
+// own, and a 1,000-word list took about 1 ms to index each time. Word states come fresh from storage per batch.
+const sharedIndexes = new WeakMap();
+function sharedIndex(words, lang, build) {
+  const byLang = sharedIndexes.get(words) || new Map();
+  sharedIndexes.set(words, byLang);
+  if (!byLang.has(lang)) byLang.set(lang, build());
+  return byLang.get(lang);
+}
+
 // Fail closed: keep only swaps whose French is on the list (the plugin's word state, else the level's bundled list)
 // and whose English matches that word's gloss.
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
@@ -466,7 +496,7 @@ export function validateSwaps(level, swaps, sharedWords, language = 'French', { 
   const extra = prof ? prof.extension.synonyms : null;
   const fold = prof ? foldFor(prof) : normalizeFr;
   const synonyms = extra && Object.keys(extra).length ? mergeSynonyms(SYNONYMS, extra) : SYNONYMS;
-  const idx = indexFor(level, sharedWords, articles, fold);
+  const idx = sharedWords ? sharedIndex(sharedWords, lang, () => indexFor(level, sharedWords, articles, fold)) : indexFor(level, sharedWords, articles, fold);
   const out = [];
   const drop = (reason) => { if (stats) stats[reason] = (stats[reason] || 0) + 1; };
   for (const s of swaps) {
