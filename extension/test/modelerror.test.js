@@ -84,7 +84,7 @@ describe('model error notice', () => {
     expect(JSON.stringify({ ...err, message: err.message })).not.toContain(KEY);
   });
 
-  // The real worker and the real popup with a fake chrome: badge "!" over "NEW", cleared by the next success; the
+  // The real worker and the real popup with a fake chrome: error dot over "NEW", cleared by the next success; the
   // popup's error line shows on a site that is off, apart from the site status; no system notifications.
   test('worker and popup: badge precedence, error on an off site, cleared on success', async () => {
     const names = ['chrome', 'fetch', 'setTimeout', 'document', 'window'];
@@ -101,7 +101,7 @@ describe('model error notice', () => {
         words: [{ fr: 'et', en: 'and', hint: 'ay', status: 'active' }] },
     };
     const listeners = [];
-    const badge = { text: '', color: '', title: '' };
+    const badge = { text: '', color: '', textColor: '', title: '' };
     let diskVersion = '0.2.2';
     let gemini = () => badKey();
     let geminiCalls = 0;
@@ -129,7 +129,7 @@ describe('model error notice', () => {
       action: {
         setBadgeText: async ({ text }) => { badge.text = text; },
         setBadgeBackgroundColor: async ({ color }) => { badge.color = color; },
-        setBadgeTextColor: async () => {},
+        setBadgeTextColor: async ({ color }) => { badge.textColor = color; },
         setTitle: async ({ title }) => { badge.title = title; },
       },
       tabs: { query: async () => [{ id: 2, url: 'https://off.example/post' }], sendMessage: async () => {} },
@@ -153,6 +153,7 @@ describe('model error notice', () => {
     };
     const html = await Bun.file(new URL('../src/popup.html', import.meta.url)).text();
     let popups = 0;
+    let BADGE_ERROR, ERROR_DOT_COLOR, PLACEHOLDER_GRAY;
     const openPopup = async () => {
       const win = new Window({ url: 'chrome-extension://fw-test/src/popup.html' });
       win.document.write(html.replace(/<script[^>]*><\/script>/, ''));
@@ -163,19 +164,19 @@ describe('model error notice', () => {
       return { operation: el('operation').textContent, modelError: el('modelError').textContent, site: el('siteName').textContent };
     };
     try {
-      await import('../src/background.js?modelerror');
+      ({ BADGE_ERROR, ERROR_DOT_COLOR, PLACEHOLDER_GRAY } = await import('../src/background.js?modelerror'));
       await dispatch({ type: 'status' }, popupSender);
       expect(badge.text).toBe('NEW');
 
       // Every model refused the key: the error wins over NEW, and nothing stored or shown carries the key.
       const res = await ask('The garden was quiet and the book was good.');
       expect(res.error).toBeTruthy();
-      expect(badge).toMatchObject({ text: '!', color: '#c5221f' });
+      expect(badge).toMatchObject({ text: BADGE_ERROR.text, color: PLACEHOLDER_GRAY, textColor: ERROR_DOT_COLOR });
       expect(badge.title).toBe('French Weave: Gemini rejected the key (400). Paste a new one below.');
       expect(data.modelStatus).toMatchObject({ kind: 'key', httpStatus: 400, googleStatus: 'INVALID_ARGUMENT' });
       expect(JSON.stringify([data.modelStatus, res, badge])).not.toContain(KEY);
       await dispatch({ type: 'status' }, popupSender); // the popup's status check keeps the error badge
-      expect(badge.text).toBe('!');
+      expect(badge.text).toBe(BADGE_ERROR.text);
 
       // The popup on a site that is off: the site line says so, and the model error has its own line.
       const off = await openPopup();
@@ -200,7 +201,7 @@ describe('model error notice', () => {
       const leaky = await ask('One more quiet passage and a book to read.');
       expect(data.modelStatus.error).toBe('gemini-3.5-flash-lite: proxy refused [key]');
       expect(JSON.stringify([data.modelStatus, leaky, badge])).not.toContain(KEY);
-      expect(badge.text).toBe('!');
+      expect(badge.text).toBe(BADGE_ERROR.text);
 
       // A wait with no request of its own keeps the code of the request that started it.
       gemini = () => perMinute();

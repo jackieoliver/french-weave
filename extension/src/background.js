@@ -8,7 +8,8 @@ import { resolveLevel, exactFr, isZeroFrench, wordCount } from './levels.js';
 import { hashKey } from './hash.js';
 import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from './hostsource.js';
 import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent } from './quota.js';
-import { modelErrorText } from './modelerror.js';
+import { modelErrorText, replaceLegacyStatus } from './modelerror.js';
+import { FALLBACK_MODEL } from './gemini.js';
 
 const store = chrome.storage.local;
 const cache = createCache(chromeStorage);
@@ -36,12 +37,24 @@ const serial = () => {
 const modelCall = serial(); // one model call at a time
 const locked = serial(); // storage read-modify-writes one at a time, or concurrent ones drop data
 
+const LOCAL_CAP_ERROR = `Daily limit of ${DAILY_MODEL_CALLS} model calls reached; French resumes tomorrow`;
+const localCapped = async () => await callsToday(chromeStorage) >= DAILY_MODEL_CALLS;
+
 const ready = (async () => {
   // Content scripts run on every enabled site, so stored keys are kept out of their reach.
   if (store.setAccessLevel) await store.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
   const { settings } = await store.get('settings');
   if (settings?.apiKey) await store.set({ apiKey: settings.apiKey }); // 0.1 kept a pasted key in settings
-  await store.set({ settings: cleanSettings(settings) });
+  const clean = cleanSettings(settings);
+  await store.set({ settings: clean });
+  // A status stored before 0.2.2 has no kind, and its text can be wrong (0.2.1 called the per-day quota a rate
+  // limit); nothing would clear it until a request worked. Replace it on every worker start, updates included.
+  await locked(async () => {
+    const { modelStatus, dailyQuota } = await store.get(['modelStatus', 'dailyQuota']);
+    const models = [clean.model, FALLBACK_MODEL[clean.model]].filter(Boolean);
+    const replaced = replaceLegacyStatus(modelStatus, dailyQuota, models, Date.now(), (await localCapped()) ? LOCAL_CAP_ERROR : '');
+    if (replaced) await store.set({ modelStatus: replaced });
+  });
 })();
 
 // What pages get. The revision changes whenever anything that affects swaps does, so stale replies are dropped.
@@ -84,9 +97,7 @@ async function swaps(msg, sender) {
   try {
     const fresh = await modelCall(async () => {
       if ((await context()).revision !== ctx.revision) return null;
-      if (await callsToday(chromeStorage) >= DAILY_MODEL_CALLS) {
-        throw Object.assign(new Error(`Daily limit of ${DAILY_MODEL_CALLS} model calls reached; French resumes tomorrow`), { kind: 'local' });
-      }
+      if (await localCapped()) throw Object.assign(new Error(LOCAL_CAP_ERROR), { kind: 'local' });
       const { wordState, apiKey, hostKey } = await store.get(['wordState', 'apiKey', 'hostKey']);
       usedKey = apiKey || hostKey || '';
       const fetchImpl = async (...args) => { await countCall(chromeStorage); return fetch(...args); };
@@ -133,10 +144,15 @@ async function failed(e, usedKey) {
   return error;
 }
 
-// Toolbar badge: a red "!" while the last model request failed, cleared by the next success; otherwise "NEW" while
-// an update waits for a reload. No system notifications: free keys run out often, and a pop-up each time would nag.
-export const BADGE_ERROR = { text: '!', color: '#c5221f' };
-export const BADGE_NEW = { text: 'NEW', color: '#1a73e8' };
+// Toolbar badge: a small muted dot while the last model request failed, cleared by the next success; otherwise "NEW"
+// while an update waits for a reload. No system notifications: free keys run out often, and a pop-up each time would
+// nag. Chrome draws every badge as an opaque rounded square (a transparent background gets Chrome's default orange;
+// any other alpha is drawn opaque), so the error badge is a square in the gray of Chrome's placeholder icon, which
+// merges into the icon and leaves only the dot showing. ERROR_DOT_COLOR is the one to change.
+export const ERROR_DOT_COLOR = '#c7837d'; // muted rose; tried: amber #c4a35a, light slate #b9bec6
+export const PLACEHOLDER_GRAY = '#6b6b6b'; // Chrome's gray "F" tile, measured in light and dark themes
+export const BADGE_ERROR = { text: '●', color: PLACEHOLDER_GRAY, textColor: ERROR_DOT_COLOR };
+export const BADGE_NEW = { text: 'NEW', color: '#1a73e8', textColor: '#ffffff' };
 let updateWaiting = null; // set by checkUpdate; null until it has run in this worker
 async function showBadge(checkFirst = true) {
   try {
@@ -147,7 +163,7 @@ async function showBadge(checkFirst = true) {
     await chrome.action.setBadgeText({ text: badge?.text || '' });
     if (badge) {
       await chrome.action.setBadgeBackgroundColor?.({ color: badge.color });
-      await chrome.action.setBadgeTextColor?.({ color: '#ffffff' });
+      await chrome.action.setBadgeTextColor?.({ color: badge.textColor });
     }
     await chrome.action.setTitle?.({ title: problem ? `French Weave: ${problem}` : 'French Weave' });
   } catch { /* the badge is a hint; never let it break a reply */ }
