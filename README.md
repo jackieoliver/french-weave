@@ -67,7 +67,7 @@ and paste the block it prints. It carries your real progress; re-export about on
   Flash-Lite requests a day when tested in October 2026); the extension stops itself at 500 Gemini calls a day, and
   when Google says the key's daily limit is reached it waits until just after midnight Pacific time, when Google
   resets it, showing "Daily Gemini limit reached (429); resumes about ..." (in your own time) in its popup. Whenever Gemini calls fail (limit, rejected key, Gemini busy, no
-  connection), the toolbar icon shows a red "!" and the popup says why, with the HTTP code, until a call works again.
+  connection), the toolbar icon shows a small muted dot and the popup says why, with the HTTP code, until a call works again.
   No key, no extension; everything else works without one.
 
 ## What leaves your machine
