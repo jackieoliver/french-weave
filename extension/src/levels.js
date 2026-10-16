@@ -1,7 +1,9 @@
 // Level schedule, word lists, and guards. Pure: no DOM, no chrome APIs.
+import { profileFor, articlePatterns } from './profile.js';
+import { GENERIC } from './profile-data.js';
 
-// L3/L4 prompts are not built yet; anything above this uses L2 rules.
-export const MAX_BUILT_LEVEL = 2;
+// Levels 3-4 need the plugin's word state; with the bundled lists the prompt stays at Level 2 rules.
+export const MAX_BUILT_LEVEL = 4;
 
 // stage: from the Claude Code plugin's word state (0 when there is none); chosen: after the popup override;
 // effective: what the prompt uses.
@@ -195,37 +197,53 @@ export function normalizeFr(s) {
     .trim();
 }
 
-const ARTICLE_RE = /^(?:(?:les|le|la|une|un|des)\s+|l')/i;
-const DEFINITE_RE = /^(?:(?:les|le|la)\s+|l')/i;
+// The fold for a language's folded index: its profile's script.fold spellings (German: "schön" and "schoen" -> "schoen",
+// while "schon" stays apart) in place of accent stripping, else normalizeFr.
+export function foldFor(profile) {
+  const pairs = Object.entries(profile?.script?.fold || {});
+  if (!pairs.length) return normalizeFr;
+  return (s) => pairs.reduce((text, [letter, plain]) => text.split(letter).join(plain), exactFr(s));
+}
+
+// Article patterns from the language profile (French: le, la, les, un, une, des, l'); the bundled lists are French.
+const FRENCH_PROFILE = profileFor('French');
+const FRENCH = articlePatterns(FRENCH_PROFILE);
+const articlesFor = (language) => (!language || language === 'French' ? FRENCH : articlePatterns(profileFor(language)));
 export const exactFr = (s) => String(s).normalize('NFC').toLowerCase().replace(/[’‘`]/g, "'").replace(/\s+/g, ' ').trim();
 
 const indexCache = new Map();
-function indexFor(level, sharedWords) {
+function indexFor(level, sharedWords, articles = FRENCH, fold = normalizeFr) {
   const lvl = level <= 1 ? 1 : 2;
   if (!sharedWords && indexCache.has(lvl)) return indexCache.get(lvl);
   const idx = new Map();
   for (const w of sharedWords || wordsForLevel(lvl)) {
     const full = exactFr(w.fr);
     idx.set(full, { canon: w.fr, en: w.en, hint: w.hint, word: w.fr, status: w.status });
-    const stripped = full.replace(ARTICLE_RE, '');
+    const stripped = articles.any ? full.replace(articles.any, '') : full;
     if (stripped !== full && !idx.has(stripped)) {
       // Accept the bare noun ("problème" for "problem") and keep the accents from the list.
-      const canon = w.fr.replace(ARTICLE_RE, '');
-      idx.set(stripped, { canon, en: w.en.replace(/^the /, ''), hint: w.hint.replace(/^(luh|lah|lay|lee|uhn|ün) /, ''), word: w.fr, status: w.status });
+      const canon = w.fr.replace(articles.any, '');
+      const hint = articles.elided?.test(full) ? (articles.elidedHint ? w.hint.replace(articles.elidedHint, '') : w.hint)
+        : articles.hint ? w.hint.replace(articles.hint, '') : w.hint;
+      idx.set(stripped, { canon, en: w.en.replace(/^the /, ''), hint, word: w.fr, status: w.status });
     }
   }
   const folded = new Map();
   for (const [key, value] of idx) {
-    const fold = normalizeFr(key);
-    folded.set(fold, folded.has(fold) ? null : value);
+    const k = fold(key);
+    folded.set(k, folded.has(k) ? null : value);
   }
   const result = { exact: idx, folded };
   if (!sharedWords) indexCache.set(lvl, result);
   return result;
 }
 
+// "I" is written with a capital anywhere in a sentence, so it says nothing about the swap's case: "I think" stays
+// je pense que here, and applySwaps (text.js) capitalizes it where the swap starts a sentence.
+const PRONOUN_I = /^I(?!\p{L})/u;
+
 export function matchCase(fr, original) {
-  if (/^\p{Lu}/u.test(original) && !/^\p{Lu}{2}/u.test(original)) {
+  if (/^\p{Lu}/u.test(original) && !/^\p{Lu}{2}/u.test(original) && !PRONOUN_I.test(original)) {
     return fr.charAt(0).toUpperCase() + fr.slice(1);
   }
   return fr;
@@ -238,8 +256,9 @@ const cleanEn = (s) => String(s).toLowerCase().replace(/[’‘`]/g, "'").replac
   .replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
 
 // Everyday English variants of a gloss, including the synonyms the prompt itself asks the model to use
-// (prompt.js: "big"/"large"/"huge" -> grand, "other"/"another"/"else" -> autre, "I think" -> je pense que, ...).
-const SYNONYMS = {
+// (the profile's synonym examples: "big"/"large"/"huge" -> grand, "other"/"another"/"else" -> autre, "I think" -> je
+// pense que, ...). English only, so shared by every language; a profile can add more (extension.synonyms).
+export const SYNONYMS = {
   big: ['large', 'huge'],
   only: ['single'],
   other: ['another', 'else'],
@@ -261,50 +280,216 @@ const SYNONYMS = {
   hello: ['hi'],
 };
 
-export function glossMatches(original, en) {
+function mergeSynonyms(base, extra) {
+  const out = { ...base };
+  for (const [k, v] of Object.entries(extra)) out[k.toLowerCase()] = [...(out[k.toLowerCase()] || []), ...v];
+  return out;
+}
+
+const SUFFIXES = [['ies', 'y'], ['es', ''], ['s', ''], ['ed', ''], ['ed', 'e'], ['ing', ''], ['ing', 'e']];
+
+// How the English matches a gloss: 'exact' (a gloss or a synonym), 'plural' (a gloss that is not a verb, plus -s, -es
+// or -ies: "problems" for "the problem"), 'inflected' (a verb gloss with an ending: "starts", "started", "starting"
+// for "to start"), or '' for no match.
+export function glossMatch(original, en, synonyms = SYNONYMS) {
   const forms = new Set();
+  const verbs = new Set();
   for (const alt of String(en).split(/\s*[/;,]\s*/)) {
     const g = cleanEn(alt);
     if (!g) continue;
+    const verb = /^to\s/.test(g);
     for (const f of [g, g.replace(EN_LEAD_RE, '')]) {
-      forms.add(f);
-      for (const syn of SYNONYMS[f] || []) forms.add(syn);
+      for (const form of [f, ...(synonyms[f] || [])]) {
+        forms.add(form);
+        if (verb) verbs.add(form);
+      }
     }
   }
   const t = cleanEn(original);
-  if (!t) return false;
+  if (!t) return '';
+  let found = '';
   for (const c of new Set([t, t.replace(EN_LEAD_RE, '')])) {
-    if (forms.has(c)) return true;
-    for (const [suffix, stem] of [['ies', 'y'], ['es', ''], ['s', ''], ['ed', ''], ['ed', 'e'], ['ing', ''], ['ing', 'e']]) {
-      if (c.endsWith(suffix) && forms.has(c.slice(0, -suffix.length) + stem)) return true;
+    if (forms.has(c)) return 'exact';
+    for (const [suffix, stem] of SUFFIXES) {
+      const base = c.slice(0, -suffix.length) + stem;
+      if (!c.endsWith(suffix) || !forms.has(base)) continue;
+      if (suffix.endsWith('s') && !verbs.has(base)) found ||= 'plural';
+      else found = 'inflected';
     }
   }
-  return false;
+  return found;
+}
+
+export function glossMatches(original, en, synonyms = SYNONYMS) {
+  return !!glossMatch(original, en, synonyms);
+}
+
+// A plural English noun ("problems") must not show the singular list word (problème). The swap stays only when the
+// list has the plural too: an entry glossed with exactly that English whose word starts like the singular one
+// (les problèmes for le problème, problemi for problema).
+function pluralEntry(idx, hit, o, synonyms, articles, fold) {
+  const bare = (w) => fold(articles.any ? exactFr(w).replace(articles.any, '') : exactFr(w));
+  const stem = bare(hit.canon).slice(0, -1);
+  if (stem.length < 3) return null;
+  for (const entry of idx.exact.values()) {
+    if (entry !== hit && bare(entry.canon).startsWith(stem) && glossMatch(o, entry.en, synonyms) === 'exact') return entry;
+  }
+  return null;
+}
+
+// ALL-CAPS English is emphasis or an acronym ("ALL" meaning all of you, US, IT): a lower-case swap would drop the
+// emphasis and often the sense, so it stays English. OK is written in capitals anyway.
+export const allCaps = (o) => /\p{Lu}.*\p{Lu}/su.test(o) && !/\p{Ll}/u.test(o) && !/^O\.?K\.?$/.test(o);
+
+// Model output sometimes spells accents as HTML entities (tr&#232;s, le probl&egrave;me). Decode them before the
+// list lookup; named accents are built from the letter and a combining mark, so any Latin-script language works.
+const MARKS = { acute: '\u0301', grave: '\u0300', circ: '\u0302', uml: '\u0308', tilde: '\u0303', cedil: '\u0327', ring: '\u030A', caron: '\u030C' };
+const NAMED = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ', rsquo: '’', lsquo: '‘', ldquo: '“', rdquo: '”',
+  szlig: 'ß', oelig: 'œ', OElig: 'Œ', aelig: 'æ', AElig: 'Æ', oslash: 'ø', Oslash: 'Ø', laquo: '«', raquo: '»',
+  iexcl: '¡', iquest: '¿', ordf: 'ª', ordm: 'º', hellip: '…', ndash: '–', mdash: '—' };
+export function decodeEntities(s) {
+  return String(s).replace(/&(?:#(\d{1,7})|#x([\da-f]{1,6})|([a-z]+));/gi, (m, dec, hex, name) => {
+    if (dec || hex) {
+      const cp = parseInt(dec || hex, dec ? 10 : 16);
+      return cp > 0 && cp <= 0x10ffff && (cp < 0xd800 || cp > 0xdfff) ? String.fromCodePoint(cp) : m;
+    }
+    if (Object.hasOwn(NAMED, name)) return NAMED[name];
+    const accent = /^([a-z])(acute|grave|circ|uml|tilde|cedil|ring|caron)$/i.exec(name);
+    return accent ? accent[1] + MARKS[accent[2]] : m;
+  }).normalize('NFC');
+}
+
+// Still broken after decoding, so the swap is dropped and counted: an unknown entity, a control character or
+// replacement mark (raw bytes, tr\x80), an escape written out, or UTF-8 read as Latin-1 (trÃ¨s).
+const MALFORMED = /&#?[a-z\d]+;|[\u0000-\u001f\u007f-\u009f\ufffd]|\\(?:x[\da-f]{2}|u[\da-f]{4})|[ÃÂ][\u0080-\u00bf]/i;
+export const malformed = (s) => MALFORMED.test(s);
+
+// English never-split rules (data/profiles/_generic.json "english", documented in data/profiles/README.md): English is
+// the source in every language, so one small list keeps swaps out of fixed phrases whose meaning differs ("right now",
+// "might as well"), off a dangling "of" ("beaucoup of", "porque of"), off "before"/"after" + clause, "it's" meaning
+// "it has", and filler "like".
+const tokenize = (s) => [...String(s).replace(/[’‘`]/g, "'").toLowerCase()
+  .matchAll(/[\p{L}\p{N}]+(?:'[\p{L}\p{N}]+)*|[^\s\p{L}\p{N}]/gu)].map((m) => m[0]);
+
+function tokenTest(src) {
+  const optional = src.length > 1 && src.endsWith('?');
+  const alts = (optional ? src.slice(0, -1) : src).split('|');
+  const test = (tok) => tok !== undefined && alts.some((a) => (a === '#' ? /^\p{N}/u.test(tok)
+    : a.length > 1 && a.startsWith('*') ? /^\p{L}/u.test(tok) && tok.length > a.length + 1 && tok.endsWith(a.slice(1))
+      : a === tok));
+  return { optional, test };
+}
+
+export function compileEnglish(english = {}) {
+  const phrases = (english.phrases || []).map(tokenize);
+  const contexts = (english.contexts || []).map((pattern) => {
+    const parts = pattern.trim().split(/\s+/);
+    const at = parts.findIndex((p) => /^\[.+\]$/.test(p));
+    const target = parts[at].slice(1, -1);
+    return {
+      target: target === '*' ? null : target.split('|').map((t) => tokenize(t).join(' ')),
+      before: parts.slice(0, at).reverse().map(tokenTest),
+      after: parts.slice(at + 1).map(tokenTest),
+    };
+  });
+  return { phrases, contexts };
+}
+const ENGLISH = compileEnglish(GENERIC.english);
+
+function seq(tests, toks, pos, dir) {
+  if (!tests.length) return true;
+  const [t, ...rest] = tests;
+  if (t.test(toks[pos]) && seq(rest, toks, pos + dir, dir)) return true;
+  return t.optional && seq(rest, toks, pos, dir);
+}
+
+const find = (toks, part, from = 0, to = toks.length) => {
+  const out = [];
+  for (let i = from; part.length && i + part.length <= to; i++) if (part.every((t, k) => toks[i + k] === t)) out.push(i);
+  return out;
+};
+
+// Why a swap of English o (into f) at tokens [s, e) breaks the English around it, or ''.
+function splitAt(toks, s, e, f, rules) {
+  const o = toks.slice(s, e).join(' ');
+  for (const phrase of rules.phrases) {
+    for (const p of find(toks, phrase)) {
+      const end = p + phrase.length;
+      if (s < end && p < e && !(s <= p && e >= end)) return `phrase "${phrase.join(' ')}"`;
+    }
+  }
+  for (const c of rules.contexts) {
+    if ((!c.target || c.target.includes(o)) && seq(c.before, toks, s - 1, -1) && seq(c.after, toks, e, 1)) return 'context';
+  }
+  // "there is a growing gap" -> "il y a a growing gap": the replacement ends with the next English word.
+  const ft = tokenize(f);
+  if (ft.length && (ft.at(-1) === toks[e] || ft[0] === toks[s - 1])) return 'repeat';
+  return '';
+}
+
+// The swap's place in the passage (text; ctx narrows it, as text.js locate does), checked against the rules. With no
+// text, ctx stands in. A swap that can't be found is left to the page, which won't place it.
+export function breaksEnglish(o, f, ctx = '', text = '', rules = ENGLISH) {
+  const toks = tokenize(text || ctx);
+  const ot = tokenize(o);
+  let starts = find(toks, ot);
+  const ct = text && ctx ? tokenize(ctx) : [];
+  const around = ct.length >= ot.length ? find(toks, ct) : [];
+  if (around.length === 1) {
+    const inside = find(toks, ot, around[0], around[0] + ct.length);
+    if (inside.length) starts = inside;
+  }
+  for (const s of starts) {
+    const why = splitAt(toks, s, s + ot.length, f, rules);
+    if (why) return why;
+  }
+  return '';
 }
 
 // Fail closed: keep only swaps whose French is on the list (the plugin's word state, else the level's bundled list)
 // and whose English matches that word's gloss.
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
-export function validateSwaps(level, swaps, sharedWords) {
+// language: the word state's language (its profile gives the articles and extra synonyms); bundled lists are French.
+// stats: an optional object that counts dropped swaps by reason (malformed, allCaps, notListed, gloss, plural, idiom).
+// text: the passage, for the English never-split rules (ctx stands in without it).
+export function validateSwaps(level, swaps, sharedWords, language = 'French', { stats = null, text = '' } = {}) {
   if (!Array.isArray(swaps)) return [];
-  const idx = indexFor(level, sharedWords);
+  const lang = sharedWords ? language || 'French' : 'French';
+  const articles = articlesFor(lang);
+  const prof = lang === 'French' ? null : profileFor(lang);
+  const extra = prof ? prof.extension.synonyms : null;
+  const fold = prof ? foldFor(prof) : normalizeFr;
+  const synonyms = extra && Object.keys(extra).length ? mergeSynonyms(SYNONYMS, extra) : SYNONYMS;
+  const idx = indexFor(level, sharedWords, articles, fold);
   const out = [];
+  const drop = (reason) => { if (stats) stats[reason] = (stats[reason] || 0) + 1; };
   for (const s of swaps) {
-    if (!s || typeof s.o !== 'string' || typeof s.f !== 'string') continue;
-    const o = s.o.trim();
-    if (!o || !s.f.trim()) continue;
-    let hit = idx.exact.get(exactFr(s.f)) || idx.folded.get(normalizeFr(s.f));
-    if (!hit || !glossMatches(o, hit.en)) continue;
+    if (!s || typeof s.o !== 'string' || typeof s.f !== 'string') { drop('malformed'); continue; }
+    const o = decodeEntities(s.o).trim();
+    const f = decodeEntities(s.f).trim();
+    if (!o || !f) { drop('malformed'); continue; }
+    if (malformed(o) || malformed(f)) { drop('malformed'); continue; }
+    if (allCaps(o)) { drop('allCaps'); continue; }
+    let hit = idx.exact.get(exactFr(f)) || idx.folded.get(fold(f));
+    if (!hit) { drop('notListed'); continue; }
+    const match = glossMatch(o, hit.en, synonyms);
+    if (!match) { drop('gloss'); continue; }
+    if (match === 'plural' && (prof || FRENCH_PROFILE).plural_nouns) {
+      hit = pluralEntry(idx, hit, o, synonyms, articles, fold);
+      if (!hit) { drop('plural'); continue; }
+    }
     // "my problem" -> "my le problème", "the answer" -> "the la réponse": when the English article (or a
     // possessive) stays outside the swap, use the bare noun.
-    const bare = exactFr(hit.canon).replace(DEFINITE_RE, '');
+    const bare = articles.definite ? exactFr(hit.canon).replace(articles.definite, '') : exactFr(hit.canon);
     if (bare !== exactFr(hit.canon) && !/^the\s/i.test(o) && idx.exact.has(bare)) hit = idx.exact.get(bare);
+    const ctx = typeof s.ctx === 'string' ? decodeEntities(s.ctx).trim() : '';
+    if (breaksEnglish(o, hit.canon, ctx, text)) { drop('idiom'); continue; }
     out.push({
       o,
       f: matchCase(hit.canon, o),
       g: hit.en,
       h: hit.hint,
-      ctx: typeof s.ctx === 'string' ? s.ctx.trim() : '',
+      ctx,
       ...(sharedWords ? { word: hit.word, ...(hit.status ? { status: hit.status } : {}) } : {}),
     });
   }
@@ -315,9 +500,11 @@ export function sentenceCount(text) {
   return Math.max(1, String(text).split(/[.!?…]+(?:\s|$)|\n+/).filter((s) => wordCount(s) >= 3).length);
 }
 
-// Density ceiling per passage, one use per French word, learning words (active/shaky) kept before known ones.
+// Density ceiling per passage (swaps per sentence by level), one use per French word, learning words
+// (active/shaky) kept before known ones.
+export const CAP_PER_SENTENCE = { 1: 1, 2: 2, 3: 3, 4: 4 };
 export function capSwaps(level, swaps, text, sharedWords) {
-  const max = (level <= 1 ? 1 : 2) * sentenceCount(text);
+  const max = CAP_PER_SENTENCE[Math.min(Math.max(Math.round(Number(level) || 1), 1), MAX_BUILT_LEVEL)] * sentenceCount(text);
   const status = new Map((sharedWords || []).map((w) => [w.fr, w.status]));
   const rank = (s) => (status.get(s.word) && status.get(s.word) !== 'known' ? 0 : 1);
   const used = new Set();

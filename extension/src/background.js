@@ -7,7 +7,7 @@ import { cleanSettings, newSitesDefault, siteEnabled, hasSiteAccess } from './se
 import { resolveLevel, exactFr, isZeroFrench, wordCount } from './levels.js';
 import { hashKey } from './hash.js';
 import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from './hostsource.js';
-import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent } from './quota.js';
+import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent, countDropped, droppedToday } from './quota.js';
 import { modelErrorText, replaceLegacyStatus } from './modelerror.js';
 import { FALLBACK_MODEL } from './gemini.js';
 
@@ -80,6 +80,13 @@ async function broadcast(type = 'config') {
   await Promise.allSettled(tabs.map((t) => chrome.tabs.sendMessage(t.id, { type, config })));
 }
 
+// "Field Notes (example.org)": the tab's title and site, for the model's page-level topic check.
+function pageLabel(sender) {
+  let host = '';
+  try { host = new URL(sender.url).hostname; } catch { /* no site */ }
+  return [String(sender.tab?.title || '').slice(0, 200), host && `(${host})`].filter(Boolean).join(' ');
+}
+
 async function swaps(msg, sender) {
   const ctx = await context();
   if (msg.revision !== ctx.revision || !activeOn(ctx, sender.url)) return { results: {}, stale: true };
@@ -104,7 +111,7 @@ async function swaps(msg, sender) {
       const daily = await spentToday(chromeStorage); // a spent daily quota outlives the worker, so it is kept in storage
       try {
         return await requestSwaps({ apiKey: apiKey || hostKey, model: ctx.settings.model, level: ctx.level, words: wordState?.words, language: wordState?.language, fetchImpl,
-          shownToday: await shownToday(chromeStorage), cooldown, daily, batch: misses.map((i) => ({ id: i.key, text: i.text })) });
+          shownToday: await shownToday(chromeStorage), cooldown, daily, page: pageLabel(sender), batch: misses.map((i) => ({ id: i.key, text: i.text })) });
       } finally {
         await saveSpent(chromeStorage, daily);
       }
@@ -112,6 +119,7 @@ async function swaps(msg, sender) {
     return await locked(async () => {
       if (!fresh || (await context()).revision !== ctx.revision) return { results: {}, stale: true };
       await cache.setMany(fresh.results);
+      await countDropped(chromeStorage, fresh.dropped);
       await store.set({ modelStatus: { at: Date.now(), error: '', model: fresh.model } });
       return { results: { ...results, ...fresh.results } };
     }).finally(() => void showBadge());
@@ -238,6 +246,7 @@ async function status() {
   const data = await store.get(['wordState', 'apiKey', 'hostKey', 'modelStatus']);
   return { config, words: data.wordState?.words?.length || 0, fetchedAt: data.wordState?.fetchedAt || 0,
     pastedKey: !!data.apiKey, hostKey: !!data.hostKey, modelStatus: data.modelStatus || null,
+    dropped: await droppedToday(chromeStorage),
     update: await checkUpdate() };
 }
 

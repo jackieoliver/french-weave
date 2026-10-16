@@ -77,7 +77,7 @@ def measure(text, state):
     words = fwlib.introduced(state)
     french, total, learning, grammar = weave.share(text, words)
     code = ' '.join(CODE_BLOCK.findall(text))
-    code_french = sorted({w['fr'] for w in words if fwlib.norm(w['fr']) not in fwlib.UNMEASURABLE
+    code_french = sorted({w['fr'] for w in words if fwlib.norm(w['fr']) not in fwlib.profile(state)['exposure']['same_as_english']
                           and len(w['fr']) > 2 and fwlib.pattern(w['fr']).search(fwlib.norm(code))})
     lines = [l.strip() for l in text.strip().split('\n') if l.strip()]
     in_sentences = 0  # words of fully French sentences that the list count missed (articles, verbs)

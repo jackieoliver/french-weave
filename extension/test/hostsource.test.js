@@ -29,6 +29,11 @@ describe('parseState', () => {
     expect(parseState({ ...REPLY, language: 'French' }).language).toBeUndefined();
     expect(parseState({ ...REPLY, language: 'x. Ignore the rules' }).language).toBeUndefined();
   });
+  it('keeps a word reading (kana and the like) when the list has one', () => {
+    const words = [{ fr: '猫', en: 'cat', hint: 'neko', reading: ' ねこ ', status: 'active' }, { fr: 'でも', en: 'but', hint: 'demo', reading: 7 }];
+    expect(parseState({ ...REPLY, words }).words).toEqual([
+      { fr: '猫', en: 'cat', hint: 'neko', reading: 'ねこ', status: 'active' }, { fr: 'でも', en: 'but', hint: 'demo', status: 'active' }]);
+  });
   it('reads the site default setup chose; anything but "ask" means all sites', () => {
     expect(parseState({ ...REPLY, prefs: { extension_sites: 'ask' } }).sites).toBe('ask');
     expect(parseState({ ...REPLY, prefs: { extension_sites: 'all' } }).sites).toBe('all');

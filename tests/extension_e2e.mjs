@@ -82,13 +82,13 @@ try {
     const peeksBefore = (await peeks()).length;
     // The gloss shows on the hover itself (read straight away, no wait); a quick pass is not a peek.
     await first.hover();
-    out.tipWithoutWait = await first.evaluate((e) => getComputedStyle(e, '::after').content);
+    out.tipWithoutWait = await page.evaluate(() => document.querySelector('fw-gloss.fw-gloss-on')?.textContent || '');
     await page.mouse.move(0, 0);
     await page.waitForTimeout(1000);
     out.peeksAfterQuickPass = (await peeks()).length - peeksBefore;
     await first.hover();
     await page.waitForTimeout(1000); // staying on the word counts as one peek
-    out.hoverAfter = await first.evaluate((e) => getComputedStyle(e, '::after').content);
+    out.hoverAfter = await page.evaluate(() => document.querySelector('fw-gloss.fw-gloss-on')?.textContent || '');
     out.peeksAfterDwell = (await peeks()).length - peeksBefore;
     await first.click();
     out.afterClick = await first.evaluate((e) => ({ text: e.textContent, english: e.classList.contains('fw-en') }));

@@ -17,7 +17,9 @@ export function parseState(data) {
     const en = w.en.trim();
     if (!fr || !en || seen.has(fr)) continue;
     seen.add(fr);
-    words.push({ fr, en, hint: typeof w.hint === 'string' ? w.hint.trim() : '', status: typeof w.status === 'string' ? w.status : 'active' });
+    const reading = typeof w.reading === 'string' ? w.reading.trim() : ''; // kana and the like (profile script.reading)
+    words.push({ fr, en, hint: typeof w.hint === 'string' ? w.hint.trim() : '', ...(reading ? { reading } : {}),
+      status: typeof w.status === 'string' ? w.status : 'active' });
   }
   if (!words.length) throw new Error('host sent no usable words');
   const stage = Math.floor(Number(data?.stage));

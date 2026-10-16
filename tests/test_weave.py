@@ -639,12 +639,15 @@ class Languages(Home):
         self.assertFalse(hits('dan', 'dance'))
 
     def test_brief_and_exports_name_the_language(self):
+        # French fills every profile slot (data/profiles/french.json); Spanish fills them from data/profiles/spanish.json.
+        prof = fwlib.profile('French')
         french = weave.brief(dict(self.state(), language=None, words=fwlib.new_state('2026-10-01')['words']), {})
-        for old, _ in weave.CUTS[::2]:  # stage 1-2 cuts; the stage 3+ example is checked below
+        for old in (prof['examples']['swap_sentence'], prof['sense_notes']['brief'], '(sans = without, "sahn")'):
             self.assertIn(old, french)
-        self.assertIn(weave.CUTS[1][0], weave.brief(dict(self.state(3), language=None), {}))
+        self.assertIn(prof['examples']['full_sentences'][0], weave.brief(dict(self.state(3), language=None), {}))
         rules = export.rules() + export.rules(short=True)
-        for old, _ in export.CUTS:
+        for old in (prof['examples']['swap_sentence'], prof['sense_notes']['export'], prof['sense_notes']['export_short'],
+                    'and = et, but = mais', 'et, mais, donc', '(sans = without, "sahn")'):
             self.assertIn(old, rules)
         for stage, known in ((1, 0), (3, 5), (4, 180)):
             state = self.state(stage, known)
@@ -652,7 +655,7 @@ class Languages(Home):
             for text in texts:
                 self.assertNotRegex(text, r'French(?! [Ww]eave)|maintenant|pour never|\bsans\b')
             self.assertTrue(all('Spanish' in text for text in texts[:2] + [texts[3]]))
-            self.assertIn('(y = and, "ee")', texts[0] + texts[1])
+            self.assertIn('(sin = without, "seen")', texts[0] + texts[1])  # the Spanish profile's gloss example
             self.assertLessEqual(max(map(len, texts[2:])), export.CHATGPT_LIMIT)
         self.assertIn('most common Spanish words', weave.brief(self.state(4, 180), {}))
 

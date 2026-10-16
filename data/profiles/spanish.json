@@ -1,0 +1,263 @@
+{
+  "schema": 1,
+  "language": "Spanish",
+  "variety": "Latin American Spanish",
+  "script": {
+    "spaces": true,
+    "direction": "ltr",
+    "hint": "sound",
+    "hint_name": "sound hint",
+    "marks": "accents",
+    "reading": {
+      "early": "none",
+      "late": "none",
+      "late_from_stage": 0,
+      "late_only_with": "",
+      "known_drop": false
+    }
+  },
+  "examples": {
+    "swap_sentence": "The build passes ahora, pero the cache is stale, así que I cleared it.",
+    "full_sentences": [
+      "La prueba pasa ahora.",
+      "Es la mejor opción."
+    ],
+    "gloss": {
+      "word": "sin",
+      "en": "without",
+      "hint": "seen"
+    },
+    "default_swaps": [
+      [
+        "and",
+        "y"
+      ],
+      [
+        "but",
+        "pero"
+      ],
+      [
+        "so",
+        "entonces"
+      ],
+      [
+        "with",
+        "con"
+      ],
+      [
+        "without",
+        "sin"
+      ],
+      [
+        "very",
+        "muy"
+      ],
+      [
+        "also",
+        "también"
+      ],
+      [
+        "now",
+        "ahora"
+      ],
+      [
+        "because",
+        "porque"
+      ],
+      [
+        "for",
+        "para"
+      ]
+    ]
+  },
+  "sense_notes": {
+    "brief": "para only for purpose, recipient or deadline, never after ask, wait, look or thanks, or for a duration; entonces and así que only for so meaning therefore (so slow is tan slow); bien only for done well, never a filler well; aquí only for a place, never here's; actualmente means currently, never actually; también never for too meaning excessive (demasiado); ya means already, never just; es for what something is, está for a state or a place",
+    "export": "para only for purpose, recipient or deadline, never after ask, wait, look or thanks, and never for a duration; \"so\" meaning therefore is entonces or así que, but \"so\" as an intensifier is tan; la vez is an occurrence (this time), la hora is clock time, el tiempo is duration or weather; a filler \"well,\" is bueno or pues, never bien; aquí only for a place, never \"here's\"; es for what something is, está for a state or a place; \"actually\" is en realidad, never actualmente (currently); \"too\" meaning excessive is demasiado, never también; ya means already, never \"just\"; como only for \"like\" meaning similar or \"as\", never the verb like (me gusta)",
+    "export_short": "para not after ask/wait or for durations; ya = already; actualmente = currently"
+  },
+  "drift_words": [
+    "del",
+    "su",
+    "sus",
+    "le",
+    "les",
+    "este",
+    "estos",
+    "estas",
+    "ese",
+    "esa",
+    "esos",
+    "esas",
+    "yo",
+    "tú",
+    "él",
+    "ella",
+    "ellos",
+    "ellas",
+    "nosotros",
+    "ustedes",
+    "fue",
+    "fueron",
+    "eran",
+    "están",
+    "estamos",
+    "soy",
+    "somos",
+    "hemos",
+    "han",
+    "tienen",
+    "estaba",
+    "pueden",
+    "podría",
+    "sería",
+    "nuestro",
+    "nuestra",
+    "unos",
+    "unas",
+    "cual"
+  ],
+  "exposure": {
+    "same_as_english": [
+      "y",
+      "no",
+      "con",
+      "para",
+      "como",
+      "si",
+      "o",
+      "todo",
+      "ya",
+      "sin",
+      "ni",
+      "nada",
+      "solo",
+      "algo",
+      "tan",
+      "sino",
+      "contra",
+      "hola",
+      "mira",
+      "dale",
+      "grande",
+      "principal",
+      "mayor",
+      "alto",
+      "actual",
+      "negro",
+      "blanco",
+      "anterior",
+      "loco",
+      "rico",
+      "gratis",
+      "verde",
+      "grave",
+      "rosa",
+      "fresco",
+      "es",
+      "hay",
+      "ver",
+      "ir",
+      "saber",
+      "dar",
+      "mover"
+    ],
+    "not_followed_by": {}
+  },
+  "articles": {
+    "definite": [
+      "el",
+      "la",
+      "los",
+      "las"
+    ],
+    "indefinite": [
+      "un",
+      "una",
+      "unos",
+      "unas"
+    ],
+    "elided": [],
+    "determiners": [
+      "el",
+      "la",
+      "los",
+      "las",
+      "un",
+      "una",
+      "unos",
+      "unas",
+      "del",
+      "al",
+      "mi",
+      "tu",
+      "su",
+      "este",
+      "esta",
+      "ese",
+      "esa"
+    ],
+    "hint_prefixes": [
+      "el",
+      "lah",
+      "los",
+      "lahs",
+      "oon",
+      "OO-nah",
+      "OO-nos",
+      "OO-nahs"
+    ]
+  },
+  "extension": {
+    "synonym_examples": [
+      [
+        [
+          "big",
+          "large"
+        ],
+        "grande"
+      ],
+      [
+        [
+          "other",
+          "another",
+          "else"
+        ],
+        "otro"
+      ],
+      [
+        [
+          "maybe",
+          "perhaps",
+          "possibly"
+        ],
+        "quizás"
+      ],
+      [
+        [
+          "also",
+          "too",
+          "as well"
+        ],
+        "también"
+      ],
+      [
+        [
+          "check",
+          "review"
+        ],
+        "revisar"
+      ]
+    ],
+    "filler_example": [
+      "and",
+      "y"
+    ],
+    "sense_note": "\"so\" meaning therefore -> entonces; \"so\" as an intensifier, as in \"so slow\", is NOT entonces; \"here\" introducing something, as in \"here's\", is NOT aquí; \"well\" as a filler is NOT bien; \"actually\" is NOT actualmente; \"too\" meaning excessive is NOT también; \"just\" is NOT ya",
+    "adjective_example": [
+      "the fix is fast",
+      "the fix is rápido"
+    ],
+    "level_examples": {},
+    "synonyms": {}
+  }
+}

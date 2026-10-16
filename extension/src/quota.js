@@ -13,6 +13,22 @@ export async function spentToday(storage, now = Date.now()) {
   return new Map(Object.entries(saved || {}).filter(([, until]) => Number(until) > now).map(([m, until]) => [m, Number(until)]));
 }
 
+// Today's count of swaps the validator dropped, by reason ({ day, malformed, notListed, ... }), for the popup's
+// status and debugging: a broken accent from the model is dropped, but no longer silently.
+const STATS_KEY = 'swapStats';
+export async function countDropped(storage, dropped, day = localDay()) {
+  if (!dropped || !Object.keys(dropped).length) return;
+  const { [STATS_KEY]: saved } = await storage.get([STATS_KEY]);
+  const stats = saved?.day === day ? { ...saved } : { day };
+  for (const [reason, n] of Object.entries(dropped)) stats[reason] = (stats[reason] || 0) + n;
+  await storage.set({ [STATS_KEY]: stats });
+}
+
+export async function droppedToday(storage, day = localDay()) {
+  const { [STATS_KEY]: saved } = await storage.get([STATS_KEY]);
+  return saved?.day === day ? saved : { day };
+}
+
 export async function saveSpent(storage, daily, now = Date.now()) {
   await storage.set({ [DAILY_KEY]: Object.fromEntries([...daily].filter(([, until]) => until > now)) });
 }

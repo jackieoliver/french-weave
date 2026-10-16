@@ -1,0 +1,198 @@
+{
+  "schema": 1,
+  "language": "Japanese",
+  "variety": "",
+  "script": {
+    "spaces": false,
+    "direction": "ltr",
+    "hint": "romanization",
+    "hint_name": "romaji",
+    "marks": "kanji and kana",
+    "fold": {},
+    "reading": {
+      "early": "romaji",
+      "late": "kana",
+      "late_from_stage": 3,
+      "late_only_with": "kanji",
+      "known_drop": true
+    }
+  },
+  "examples": {
+    "swap_sentence": "The build passes 今, でも the cache is stale, だから I cleared it.",
+    "full_sentences": [
+      "これは本当に簡単。",
+      "問題はキャッシュだった。"
+    ],
+    "gloss": {
+      "word": "今",
+      "en": "now",
+      "hint": "ima"
+    },
+    "default_swaps": [
+      [
+        "but",
+        "でも"
+      ],
+      [
+        "so",
+        "だから"
+      ],
+      [
+        "very",
+        "とても"
+      ],
+      [
+        "maybe",
+        "多分"
+      ],
+      [
+        "always",
+        "いつも"
+      ],
+      [
+        "now",
+        "今"
+      ],
+      [
+        "already",
+        "もう"
+      ],
+      [
+        "still",
+        "まだ"
+      ],
+      [
+        "really",
+        "本当に"
+      ],
+      [
+        "a little",
+        "少し"
+      ]
+    ]
+  },
+  "sense_notes": {
+    "brief": "でも, だから and そして only for but, therefore and a sentence-opening and then; never だから for the intensifier so; and between nouns or adjectives stays English; ここ only for a place, never here's; まあ for a filler well, 元気 only for healthy; これ and それ only as pronouns, never before a noun; question words only in direct questions; はい and いいえ only as answers; no English endings on Japanese words, such as a plural s, ed or ly, and no particles or です and ます",
+    "export": "\"and\" has no single word: と is a particle, so \"and\" between nouns or adjectives stays English, and そして or それから only replace a sentence-opening \"and then\"; でも is the everyday \"but\", never \"except\"; だから only for \"so\" meaning therefore, while the intensifier \"so\" is とても or すごく, and そう is \"like that\", never \"so\"; 今 only for \"at this moment\"; まだ is still or not yet, never \"nevertheless\"; ここ only for a place, never \"here's\"; a filler \"well\" is まあ, and 元気 is \"well\" only as healthy; これ and それ only as pronouns, never before a noun and never \"that\" as a conjunction; question words only in direct questions; はい and いいえ only as answers; no English endings on Japanese words (two 猫, never 猫s), and no particles or です and ます inside English sentences",
+    "export_short": "だから only for therefore; and stays English; ここ only for a place"
+  },
+  "plural_nouns": false,
+  "drift_words": [
+    "は",
+    "が",
+    "を",
+    "に",
+    "で",
+    "と",
+    "も",
+    "の",
+    "へ",
+    "や",
+    "か",
+    "ね",
+    "よ",
+    "から",
+    "まで",
+    "より",
+    "って",
+    "けれども",
+    "です",
+    "でした",
+    "ではない",
+    "じゃない",
+    "だ",
+    "だった",
+    "ます",
+    "ました",
+    "ません",
+    "ましょう",
+    "ている",
+    "てる",
+    "なかった",
+    "たい",
+    "ください",
+    "される",
+    "させる",
+    "こと",
+    "という",
+    "ので",
+    "のに",
+    "ため",
+    "ように",
+    "ような",
+    "この",
+    "その",
+    "あの",
+    "どの"
+  ],
+  "exposure": {
+    "same_as_english": [],
+    "not_followed_by": {}
+  },
+  "articles": {
+    "definite": [],
+    "indefinite": [],
+    "elided": [],
+    "determiners": [],
+    "hint_prefixes": [],
+    "fixed": []
+  },
+  "extension": {
+    "synonym_examples": [
+      [
+        [
+          "big",
+          "large",
+          "huge"
+        ],
+        "大きい"
+      ],
+      [
+        [
+          "maybe",
+          "perhaps"
+        ],
+        "多分"
+      ],
+      [
+        [
+          "difficult",
+          "hard"
+        ],
+        "難しい"
+      ],
+      [
+        [
+          "okay",
+          "OK",
+          "fine"
+        ],
+        "大丈夫"
+      ],
+      [
+        [
+          "problem",
+          "issue",
+          "trouble"
+        ],
+        "問題"
+      ]
+    ],
+    "filler_example": [
+      "but",
+      "でも"
+    ],
+    "sense_note": "\"so\" meaning therefore -> だから; \"so\" as an intensifier, as in \"so slow\", is NOT だから; \"and\" between nouns or adjectives stays English; \"here\" introducing something, as in \"here's\", is NOT ここ; \"well\" as a filler is NOT 元気; \"this\" or \"that\" before a noun is NOT これ or それ; never add English endings such as s, ed or ly to a Japanese word",
+    "adjective_example": [
+      "a new idea",
+      "a 新しい idea"
+    ],
+    "level_examples": {},
+    "synonyms": {
+      "problem": [
+        "issue",
+        "trouble"
+      ]
+    }
+  }
+}

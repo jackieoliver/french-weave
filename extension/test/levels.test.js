@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'bun:test';
 import { readFileSync } from 'fs';
 import {
-  resolveLevel, L1_WORDS, L2_WORDS, validateSwaps, glossMatches, wordCount, isZeroFrench, normalizeFr, matchCase,
+  resolveLevel, L1_WORDS, L2_WORDS, validateSwaps, glossMatches, glossMatch, wordCount, isZeroFrench, normalizeFr, matchCase,
 } from '../src/levels.js';
 
 describe('level', () => {
@@ -43,6 +43,47 @@ describe('validateSwaps', () => {
     expect(f('idea', "l'idée")).toBe('idée');
     expect(f('the problem', 'le problème')).toBe('le problème');
     expect(f('The answer', 'la réponse')).toBe('La réponse');
+  });
+  test("a bare noun drops its article's sound from the hint, hyphenated elided hints included", () => {
+    const h = (o, fr, words, lang) => validateSwaps(2, [{ o, f: fr, ctx: '' }], words, lang)[0]?.h;
+    expect(h('idea', "l'idée")).toBe('ee-day'); // was "lee-day", the article's sound
+    expect(h('year', "l'année")).toBe('ah-nay');
+    expect(h('school', "l'école")).toBe('ay-kol');
+    expect(h('story', "l'histoire")).toBe('ees-twar');
+    expect(h('problem', 'le problème')).toBe('prob-lem');
+    expect(h('the idea', "l'idée")).toBe('lee-day'); // with its article, the article's sound stays
+    const it = [{ fr: "l'ora", en: 'the hour', hint: 'LOH-rah', status: 'active' }, { fr: 'la casa', en: 'the house', hint: 'lah KAH-sah', status: 'active' }];
+    expect(h('hour', "l'ora", it, 'Italian')).toBe('OH-rah');
+    expect(h('house', 'la casa', it, 'Italian')).toBe('KAH-sah');
+    // A language whose profile has no elided sound leaves the hint alone.
+    const es = [{ fr: 'el agua', en: 'the water', hint: 'el AH-gwah', status: 'active' }];
+    expect(h('water', 'el agua', es, 'Spanish')).toBe('AH-gwah');
+  });
+  test('a plural English noun never shows the singular word; a listed plural form is used instead', () => {
+    const f = (o, fr, words, lang) => validateSwaps(2, [{ o, f: fr, ctx: '' }], words, lang)[0]?.f;
+    expect(f('problems', 'le problème')).toBeUndefined(); // was problème
+    expect(f('things', 'la chose')).toBeUndefined();
+    expect(f('dogs', 'le chien')).toBeUndefined();
+    expect(f('cities', 'la ville')).toBeUndefined();
+    expect(f('problem', 'le problème')).toBe('problème');
+    // Verbs keep their endings: "starts" for "to start" is not a plural.
+    const verbs = [{ fr: 'commencer', en: 'to start', hint: 'ko-mahn-say', status: 'active' }];
+    expect(f('starts', 'commencer', verbs)).toBe('commencer');
+    // The list has the plural: the model's singular pick becomes it, bare or with its article.
+    const words = [
+      { fr: 'le problème', en: 'the problem', hint: 'luh prob-lem', status: 'active' },
+      { fr: 'les problèmes', en: 'the problems', hint: 'lay prob-lem', status: 'shaky' },
+      { fr: 'les parents', en: 'the parents', hint: 'lay pah-rahn', status: 'active' },
+    ];
+    expect(validateSwaps(2, [{ o: 'problems', f: 'le problème', ctx: '' }], words)[0]).toMatchObject({ f: 'problèmes', g: 'problems', word: 'les problèmes' });
+    expect(f('the problems', 'le problème', words)).toBe('les problèmes');
+    expect(f('parents', 'les parents', words)).toBe('parents'); // listed plural, exact gloss
+    // Languages whose nouns have no plural (Japanese, profile plural_nouns false) keep the swap.
+    const ja = [{ fr: '問題', en: 'problem', hint: 'mondai', status: 'active' }];
+    expect(f('problems', '問題', ja, 'Japanese')).toBe('問題');
+    const es = [{ fr: 'el problema', en: 'the problem', hint: 'el pro-BLEH-mah', status: 'active' }, { fr: 'los problemas', en: 'the problems', hint: 'los pro-BLEH-mahs', status: 'active' }];
+    expect(f('problems', 'el problema', es, 'Spanish')).toBe('problemas');
+    expect(f('problems', 'el problema', es.slice(0, 1), 'Spanish')).toBeUndefined();
   });
   test('keeps list words, canonicalizes accents, fills gloss and hint from the list', () => {
     const out = validateSwaps(1, [{ o: 'very', f: 'tres', g: 'x', h: 'y', ctx: 'is very good' }]);
@@ -86,9 +127,21 @@ describe('validateSwaps', () => {
   });
   test('matches capitalization of the original', () => {
     expect(validateSwaps(1, [{ o: 'And', f: 'et' }])[0].f).toBe('Et');
-    expect(validateSwaps(1, [{ o: 'AND', f: 'et' }])[0].f).toBe('et');
+    // ALL-CAPS English (emphasis, acronyms) stays English instead of turning lower case; OK is always in capitals.
+    expect(validateSwaps(1, [{ o: 'AND', f: 'et' }])).toEqual([]);
+    expect(validateSwaps(2, [{ o: 'ALL', f: 'tout' }])).toEqual([]);
+    expect(validateSwaps(2, [{ o: 'I THINK', f: 'je pense que' }])).toEqual([]);
+    expect(validateSwaps(1, [{ o: 'VERY', f: 'très' }, { o: 'Very', f: 'très' }]).map((x) => x.f)).toEqual(['Très']);
+    const ok = [{ fr: "d'accord", en: 'okay / agreed', hint: 'da-kor', status: 'active' }];
+    expect(validateSwaps(2, [{ o: 'OK', f: "d'accord" }], ok)[0].f).toBe("d'accord");
     expect(validateSwaps(1, [{ o: 'Because', f: 'parce que' }])[0].f).toBe('Parce que');
     expect(matchCase("l'idée", 'The idea')).toBe("L'idée");
+    // The pronoun I is always capitalized, so it never capitalizes the swap (text.js does at a sentence start).
+    expect(validateSwaps(2, [{ o: 'I think', f: 'je pense que' }])[0].f).toBe('je pense que');
+    expect(matchCase('je sais', 'I know')).toBe('je sais');
+    expect(matchCase('je sais', "I'm sure")).toBe('je sais');
+    expect(matchCase('ici', 'Here')).toBe('Ici');
+    expect(matchCase('idée', 'Idea')).toBe('Idée');
   });
   test('keeps accented homographs distinct and rejects blank replacements', () => {
     expect(validateSwaps(2, [{ o: 'or', f: 'ou' }])[0].f).toBe('ou');
@@ -134,6 +187,12 @@ describe('glossMatches', () => {
     expect(glossMatches('started', 'to start')).toBe(true);
     expect(glossMatches('making', 'to make')).toBe(true);
     expect(glossMatches('cities', 'the city')).toBe(true);
+    expect(glossMatch('cities', 'the city')).toBe('plural');
+    expect(glossMatch('Problems', 'the problem')).toBe('plural');
+    expect(glossMatch('starts', 'to start')).toBe('inflected');
+    expect(glossMatch('started', 'to start')).toBe('inflected');
+    expect(glossMatch('problem', 'the problem')).toBe('exact');
+    expect(glossMatch('tree', 'the problem')).toBe('');
     expect(glossMatches('so,', 'so')).toBe(true);
     expect(glossMatches('it’s', "it's")).toBe(true);
   });
@@ -156,7 +215,8 @@ describe('gloss check across every word list', () => {
     .split('\n').slice(1).map((line) => line.match(/("[^"]*"|[^,]*)(?:,|$)/g).map((c) => c.replace(/,$/, '').replace(/^"|"$/g, '')))
     .map(([fr, en]) => ({ fr, en, hint: '', status: 'active' }));
   const lists = { bundled: L2_WORDS, lexicon: csv('lexicon.csv'), spanish: csv('lexicons/spanish.csv'),
-    japanese: csv('lexicons/japanese.csv'), indonesian: csv('lexicons/indonesian.csv') };
+    japanese: csv('lexicons/japanese.csv'), indonesian: csv('lexicons/indonesian.csv'), german: csv('lexicons/german.csv'),
+    italian: csv('lexicons/italian.csv'), portuguese: csv('lexicons/portuguese.csv') };
   const alternatives = (en) => en.split(/\s*[/;,]\s*/).filter((a) => a.trim());
   // 0.2.1 regression (gloss check with synonyms): a too-strict check dropped right swaps. Each word's own gloss passes.
   test('every gloss alternative of every word is accepted for that word', () => {
