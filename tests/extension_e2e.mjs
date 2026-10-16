@@ -11,6 +11,9 @@
 // forms intact, seen/flip events flushed back to the word state, forged page events ignored, no swaps on webmail,
 // and the article reverting when its site is turned off. Expected for the tip: tipWithoutWait and hoverAfter show the gloss text,
 // peeksAfterQuickPass is 0 and peeksAfterDwell is 1 (on a profile that hasn't peeked at that word today).
+// Without a key (setup without --gemini-key-file, and none pasted), the same run checks the no-key mode: tier is
+// "local", the popup says "Built-in list, no key", swaps come only from the built-in list, modelCalls is 0, and a page
+// whose title names a sensitive topic gets no swaps (sensitiveTitleSwaps 0; with a key, Gemini judges each passage).
 import { chromium } from 'playwright';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -133,6 +136,14 @@ try {
   out.articleFormTouched = await reading.$$eval('form .fw-word', (els) => els.length);
   out.articleNavIntact = await reading.$eval('nav', (n) => n.textContent);
 
+  // A page whose title names a sensitive topic: without a key, none of its passages get swaps.
+  await ctx.route('https://safety.example/**', (route) => route.fulfill({ status: 200, contentType: 'text/html',
+    body: article.replace('<title>Notes</title>', '<title>Springfield Crime Rates</title>') }));
+  const sensitive = await ctx.newPage();
+  await sensitive.goto('https://safety.example/report');
+  await sensitive.waitForTimeout(6000);
+  out.sensitiveTitleSwaps = await sensitive.$$eval('.fw-word', (els) => els.length);
+
   // Webmail starts off even with every site on: no swaps, so no page text sent.
   await ctx.route('https://mail.google.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: article }));
   const calls = () => sw.evaluate(() => chrome.storage.local.get('modelCalls').then((o) => o.modelCalls?.count || 0));
@@ -147,6 +158,9 @@ try {
   await popup.goto(`chrome-extension://${out.extensionId}/src/popup.html`);
   await popup.waitForTimeout(1500);
   out.popup = await popup.$eval('body', (b) => b.innerText);
+  out.tier = await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'status' }).then((s) => s.config.tier));
+  out.popupTier = await popup.$eval('#tierInfo', (e) => e.textContent);
+  out.modelCalls = await calls(); // Gemini requests this profile made today
   // Your words: collapsed at first; opened, it lists the synced learning and shaky words.
   const wordList = () => popup.$eval('#wordList', (d) => ({ open: d.open, counts: d.querySelector('[data-counts]').textContent,
     rows: [...d.querySelectorAll('.word')].map((r) => `${r.dataset.status}: ${r.innerText.replace(/\s+/g, ' ')}`) }));

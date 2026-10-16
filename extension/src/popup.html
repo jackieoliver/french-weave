@@ -18,7 +18,8 @@
   #siteName { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #siteList { max-height: 95px; overflow: auto; }
   #siteList .row { margin: 4px 0; }
-  #notice:empty, #modelError:empty { display: none; }
+  #notice:empty, #modelError:empty, #tierNote:empty { display: none; }
+  #tierNote { margin: 0 0 6px; }
   summary { cursor: pointer; margin: 6px 0; }
   /* Your words: collapsed by default, scrolls inside when long so the popup stays short. */
   #wordList [data-counts] { display: block; padding-left: 16px; }
@@ -50,6 +51,8 @@
     <details><summary>Site exceptions</summary><div id="siteList" class="small"></div></details>
   </section>
   <section>
+    <div class="row"><span>Swaps</span><span id="tierInfo" class="small"></span></div>
+    <p class="small" id="tierNote"></p>
     <div class="row"><span>Level</span><span id="levelInfo" class="small"></span></div>
     <label class="row"><span>Force level</span>
       <select id="levelOverride">
@@ -75,7 +78,7 @@
   <section>
     <details id="wordList"><summary>Your words <span data-counts class="small"></span></summary><div data-rows></div></details>
   </section>
-  <p class="small">Sites where it's on send readable page text to Gemini with your key (with an OpenRouter key, also to OpenRouter and the model's provider when Gemini can't answer). With a free key, Google may use it to improve its products; a paid key avoids that. Links and inline code go with their sentence but are never changed; code blocks, forms and editable text are skipped.</p>
+  <p class="small" id="privacyNote"></p>
   <div id="notice" class="small error" role="alert"></div>
   <script type="module" src="popup.js"></script>
 </body>

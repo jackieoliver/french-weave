@@ -2,6 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import { Window } from 'happy-dom';
 import { flatten, locate, applySwaps, revert, toggle, tipFor, sentenceStart } from '../src/text.js';
 import { validateSwaps } from '../src/levels.js';
+import { TIER_TEXT } from '../src/tier.js';
 
 const win = new Window();
 const document = win.document;
@@ -228,7 +229,7 @@ describe('what leaves the page', () => {
     expect(applySwaps(el, [S({ o: 'and', f: 'et', ctx: 'push and then' })])).toBe(1);
     expect(el.querySelector('code').textContent).toBe('git commit and push');
     expect(el.querySelector('a').textContent).toBe('the docs and notes');
-    const note = await Bun.file(new URL('../src/popup.html', import.meta.url)).text();
+    const note = TIER_TEXT.gemini.privacy;
     expect(note).not.toMatch(/links, code[^.]*skipped/i);
     expect(note).toContain('Links and inline code go with their sentence but are never changed');
   });

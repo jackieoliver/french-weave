@@ -4,6 +4,7 @@ import { siteEnabled, siteOn, hasSiteAccess } from './settings.js';
 import { modelErrorText, openRouterText } from './modelerror.js';
 import { readCached } from './hostsource.js';
 import { wordSummary, renderWordList } from './wordlist.js';
+import { tierText } from './tier.js';
 
 const $ = (id) => document.getElementById(id);
 const ALL_SITES = ['http://*/*', 'https://*/*'];
@@ -61,14 +62,18 @@ async function refresh() {
   $('wordInfo').textContent = status.words
     ? `${status.words} from Claude Code · ${ago(status.fetchedAt)}${c.paused ? ' · paused' : ''}`
     : 'built-in list';
+  const tier = tierText(c.tier);
+  $('tierInfo').textContent = tier.label;
+  $('tierNote').textContent = tier.note;
+  $('privacyNote').textContent = tier.privacy;
   $('operation').textContent = !s.enabled ? 'Off'
-    : !c.hasKey ? 'Add a Gemini key to start'
+    : c.tier === 'none' ? 'Add a Gemini key to start'
     : c.paused ? 'Paused from Claude Code'
     : host && !siteEnabled(s, tab.url) ? 'Off on this site'
     : host && !hasSiteAccess(tab.url, c.origins) ? 'This site needs your OK'
     : 'On';
   // Gemini failures get their own line, shown on every site (also ones that are off), apart from the site status.
-  $('modelError').textContent = modelErrorText(status.modelStatus);
+  $('modelError').textContent = c.tier === 'gemini' ? modelErrorText(status.modelStatus) : '';
   const list = $('siteList');
   list.replaceChildren();
   for (const [name, enabled] of Object.entries(s.siteOverrides)) {

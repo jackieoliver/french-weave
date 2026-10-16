@@ -1,6 +1,6 @@
 // Service worker: word state and the Gemini key from the Claude Code plugin (native host), site access,
 // one model call at a time, results back to pages, seen/flip/peek events back to the plugin.
-// Keys stay here; pages only get a config without them.
+// Keys stay here; pages only get a config without them. Without a key, swaps come from local.js, with no model.
 import { createCache, chromeStorage } from './cache.js';
 import { requestSwaps } from './engine.js';
 import { cleanSettings, newSitesDefault, siteEnabled, hasSiteAccess } from './settings.js';
@@ -12,6 +12,7 @@ import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent, countD
 import { modelErrorText, replaceLegacyStatus } from './modelerror.js';
 import { API_BASE } from './gemini.js';
 import { configFor } from './model-config.js';
+import { localSwaps, localOff } from './local.js';
 
 const store = chrome.storage.local;
 const cache = createCache(chromeStorage);
@@ -89,7 +90,7 @@ async function context() {
   const origins = await grantedOrigins();
   const { openRouterDailyUsd, ...affecting } = settings; // the spend cap changes no swap, so cached ones stay
   const revision = hashKey(JSON.stringify([data.epoch || '', affecting, level, state?.version || '', paused, hasKey, origins]));
-  return { settings, level, revision, hasKey, paused, origins, stage: state?.stage || 0 };
+  return { settings, level, revision, hasKey, tier: tierFor(hasKey, state), paused, origins, stage: state?.stage || 0 };
 }
 
 // The model APIs' own host permissions (manifest) are not sites the reader granted: openrouter.ai is also a website,
@@ -97,7 +98,12 @@ async function context() {
 const API_ORIGINS = ['https://generativelanguage.googleapis.com/*', 'https://openrouter.ai/*'];
 const grantedOrigins = async () => ((await chrome.permissions.getAll()).origins || []).filter((o) => !API_ORIGINS.includes(o));
 
-const activeOn = (ctx, url) => ctx.hasKey && !ctx.paused && siteEnabled(ctx.settings, url) && hasSiteAccess(url, ctx.origins);
+// Which engine makes the swaps: 'gemini' with a key; else 'local' (a fixed list, no model), which has French words
+// only, so another language set up in the plugin gets 'none'. On-device Gemini Nano was tested for this and rejected
+// (an internal test run, 2026-10-16: 14-25% of its swaps were wrong, and it swapped words in sensitive passages).
+export const tierFor = (hasKey, state) => hasKey ? 'gemini' : state?.language ? 'none' : 'local';
+
+const activeOn = (ctx, url) => ctx.tier !== 'none' && !ctx.paused && siteEnabled(ctx.settings, url) && hasSiteAccess(url, ctx.origins);
 
 async function broadcast(type = 'config') {
   const config = await context();
@@ -121,6 +127,14 @@ async function swaps(msg, sender) {
   // Title guard: a page whose title is about money, health, legal matters, crime, driving or emergencies gets no swaps
   // at all, not even cached ones from the same text elsewhere, and nothing goes to a model.
   if (isZeroFrench(String(sender.tab?.title || ''))) return { results: Object.fromEntries(items.map((i) => [i.key, []])) };
+  if (ctx.tier === 'local') {
+    // Nothing leaves the machine and nothing is cached: the list lookup is cheaper than a storage read. A page whose
+    // title names a sensitive topic stays English throughout.
+    const offPage = localOff(String(msg.title || '').slice(0, 300));
+    const { wordState } = await store.get('wordState');
+    const words = wordState?.words?.length ? wordState.words : undefined;
+    return { results: Object.fromEntries(items.map((i) => [i.key, offPage ? [] : localSwaps(ctx.level, i.text, words)])) };
+  }
   const results = await cache.getMany(items.map((i) => i.key));
   const misses = items.filter((i) => !(i.key in results));
   if (!misses.length) return { results };
@@ -211,8 +225,8 @@ export const BADGE_NEW = { text: 'NEW', color: '#1a73e8', textColor: '#ffffff' }
 let updateWaiting = null; // set by checkUpdate; null until it has run in this worker
 async function showBadge(checkFirst = true) {
   try {
-    const { modelStatus } = await store.get('modelStatus');
-    const problem = modelErrorText(modelStatus);
+    const { modelStatus, apiKey, hostKey } = await store.get(['modelStatus', 'apiKey', 'hostKey']);
+    const problem = apiKey || hostKey ? modelErrorText(modelStatus) : ''; // no key: no Gemini calls to fail
     if (!problem && updateWaiting === null) { if (checkFirst) await checkUpdate(); return; }
     const badge = problem ? BADGE_ERROR : updateWaiting ? BADGE_NEW : null;
     await chrome.action.setBadgeText({ text: badge?.text || '' });
@@ -246,8 +260,11 @@ async function record(msg, sender) {
 async function syncWords() {
   hostChecked = Date.now();
   await flush();
+  const { hostKey: before = '' } = await store.get('hostKey');
   const res = await refresh({ storage: chromeStorage, send });
   if (res.changed) await locked(() => cache.clear());
+  const { hostKey: after = '' } = await store.get('hostKey');
+  if (before !== after) await keyChanged(); // setup stored, replaced or removed its key
   await broadcast();
   return { ok: !res.error, error: res.error, count: res.state?.words?.length || 0, stage: res.state?.stage || 0 };
 }
@@ -259,6 +276,17 @@ async function clearCache() {
   });
   await broadcast('retry');
   return { ok: true, removed };
+}
+
+// A new key answers "Gemini rejected the key" and has its own limits; the next request says whether it works.
+async function freshKeyPatch() {
+  const { modelStatus } = await store.get('modelStatus');
+  cooldown.clear();
+  return { dailyQuota: {}, ...(['key', 'daily', 'rate'].includes(modelStatus?.kind) ? { modelStatus: { at: Date.now(), error: '' } } : {}) };
+}
+async function keyChanged() {
+  await locked(async () => store.set(await freshKeyPatch()));
+  await showBadge();
 }
 
 // msg.settings: a partial patch; msg.siteOverride: { host, enabled: true | false | null (reset) }; msg.apiKey.
@@ -275,11 +303,7 @@ async function save(msg) {
     if (typeof msg.apiKey === 'string') {
       if (msg.apiKey.length > 500) throw new Error('Key is too long');
       patch.apiKey = msg.apiKey.trim();
-      // A new key answers "Gemini rejected the key" and has its own limits; the next request says whether it works.
-      const { modelStatus } = await store.get('modelStatus');
-      if (['key', 'daily', 'rate'].includes(modelStatus?.kind)) patch.modelStatus = { at: Date.now(), error: '' };
-      patch.dailyQuota = {};
-      cooldown.clear();
+      Object.assign(patch, await freshKeyPatch());
     }
     // The backup Gemini key and the OpenRouter key: same rules as the main key; a new one starts with a clean slate.
     for (const name of ['backupKey', 'openRouterKey']) {
