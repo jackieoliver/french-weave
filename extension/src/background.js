@@ -74,7 +74,8 @@ async function context() {
   const hasKey = !!(data.apiKey || data.hostKey || data.backupKey);
   const paused = !!state?.paused;
   const origins = await grantedOrigins();
-  const revision = hashKey(JSON.stringify([data.epoch || '', settings, level, state?.version || '', paused, hasKey, origins]));
+  const { openRouterDailyUsd, ...affecting } = settings; // the spend cap changes no swap, so cached ones stay
+  const revision = hashKey(JSON.stringify([data.epoch || '', affecting, level, state?.version || '', paused, hasKey, origins]));
   return { settings, level, revision, hasKey, paused, origins, stage: state?.stage || 0 };
 }
 
@@ -140,7 +141,8 @@ async function swaps(msg, sender) {
       await cache.setMany(fresh.results);
       await countDropped(chromeStorage, fresh.dropped);
       if (!fresh.skipped) { // a batch without candidates made no request: the last model's status stands
-        await store.set({ modelStatus: { at: Date.now(), error: '', model: fresh.model, provider: fresh.provider, keyName: fresh.keyName } });
+        const served = { at: Date.now(), model: fresh.model, provider: fresh.provider, keyName: fresh.keyName };
+        await store.set({ modelStatus: { ...served, error: '' }, lastServed: served }); // lastServed outlives a later failure
         await countServed(chromeStorage, fresh.model);
       }
       return { results: { ...results, ...fresh.results } };
@@ -280,11 +282,11 @@ async function save(msg) {
 
 async function status() {
   const config = await context();
-  const data = await store.get(['wordState', 'apiKey', 'hostKey', 'backupKey', 'openRouterKey', 'modelStatus']);
+  const data = await store.get(['wordState', 'apiKey', 'hostKey', 'backupKey', 'openRouterKey', 'modelStatus', 'lastServed']);
   const openRouter = await openRouterToday(chromeStorage);
   return { config, words: data.wordState?.words?.length || 0, fetchedAt: data.wordState?.fetchedAt || 0,
     pastedKey: !!data.apiKey, hostKey: !!data.hostKey, backupKey: !!data.backupKey, openRouterKey: !!data.openRouterKey,
-    modelStatus: data.modelStatus || null, served: await servedToday(chromeStorage),
+    modelStatus: data.modelStatus || null, lastServed: data.lastServed || null, served: await servedToday(chromeStorage),
     openRouter: { ...openRouter, blocked: openRouterBlocked(openRouter, config.settings.openRouterDailyUsd) },
     dropped: await droppedToday(chromeStorage),
     update: await checkUpdate() };

@@ -193,6 +193,7 @@ describe('OpenRouter spend', () => {
       expect(Object.values(first.results)[0].map((s) => s.f)).toEqual(['et']);
       let st = await dispatch({ type: 'status' }, popup);
       expect(st.modelStatus).toMatchObject({ model: 'openai/gpt-6-luna', provider: 'openrouter' });
+      expect(st.lastServed).toMatchObject({ model: 'openai/gpt-6-luna', keyName: 'openrouter' });
       expect(st.openRouter).toMatchObject({ usd: 0.2, blocked: '' });
       expect(st.served.counts).toEqual({ 'openai/gpt-6-luna': 1 });
       expect(JSON.stringify(st)).not.toContain('synthetic-openrouter-key');
@@ -204,6 +205,7 @@ describe('OpenRouter spend', () => {
       const capped = await ask('The cow and the goat eat all day long.');
       expect(calls.length).toBe(4);
       expect(capped.error).toMatch(/^Daily Gemini limit reached/);
+      expect((await dispatch({ type: 'status' }, popup)).lastServed.model).toBe('openai/gpt-6-luna'); // kept through the failure
       // A higher cap lets it run again until a 402 says the credits are gone.
       await dispatch({ type: 'save', settings: { openRouterDailyUsd: 5 } }, popup);
       router = () => status(402);

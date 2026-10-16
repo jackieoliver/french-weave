@@ -46,9 +46,9 @@ async function refresh() {
   $('levelInfo').textContent = `L${chosen}${stage && chosen !== stage ? ` (Claude Code stage ${stage})` : ''}${chosen > MAX_BUILT_LEVEL ? ` · L${MAX_BUILT_LEVEL} rules for now` : ''}`;
   $('levelOverride').value = String(s.levelOverride || 0);
   $('model').value = s.modelChoice;
-  const last = status.modelStatus?.model;
+  const last = status.lastServed;
   const served = Object.entries(status.served?.counts || {}).map(([m, n]) => `${modelLabel(m)} ${n}`).join(' · ');
-  $('modelInfo').textContent = [last ? `${modelLabel(last)}${status.modelStatus.keyName === 'backup' ? ' (backup key)' : ''}` : 'none yet',
+  $('modelInfo').textContent = [last?.model ? `${modelLabel(last.model)}${last.keyName === 'backup' ? ' (backup key)' : ''}` : 'none yet',
     served && `today: ${served}`].filter(Boolean).join('; ');
   $('apiKey').value = '';
   $('backupKey').value = '';
