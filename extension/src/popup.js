@@ -53,9 +53,10 @@ async function refresh() {
     served && `today: ${served}`].filter(Boolean).join('; ');
   $('apiKey').value = '';
   $('backupKey').value = '';
-  $('backupKey').placeholder = status.backupKey ? 'saved (paste to replace)' : 'optional';
+  $('backupKey').placeholder = status.backupKey ? 'saved (paste to replace)' : status.hostBackupKey ? 'from setup (paste to override)' : 'optional';
   $('openRouterKey').value = '';
-  $('openRouterKey').placeholder = status.openRouterKey ? 'saved (paste to replace)' : 'optional, paid';
+  $('openRouterKey').placeholder = status.openRouterKey ? 'saved (paste to replace)'
+    : status.hostOpenRouterKey ? 'from setup (paste to override)' : 'optional, paid';
   $('openRouterDailyUsd').value = String(s.openRouterDailyUsd);
   $('openRouterInfo').textContent = openRouterText(status, s.openRouterDailyUsd);
   $('apiKey').placeholder = status.pastedKey ? 'saved (paste to replace)' : status.hostKey ? 'from setup (paste to override)' : 'AIza…';

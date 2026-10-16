@@ -50,15 +50,17 @@ describe('parseState', () => {
 });
 
 describe('refresh', () => {
-  it('stores the state and the setup key; a new version reports changed', async () => {
+  it('stores the state and the setup keys; a new version reports changed', async () => {
     const storage = memoryStorage();
-    const r = await refresh({ storage, send: host(REPLY), now: () => 5 });
+    const r = await refresh({ storage, send: host({ ...REPLY, geminiBackupKey: 'BACKUP', openRouterKey: 'ROUTER' }), now: () => 5 });
     expect(r.error).toBeNull();
     expect(r.changed).toBe(true);
     expect((await readCached(storage)).fetchedAt).toBe(5);
-    expect((await storage.get(['hostKey'])).hostKey).toBe('KEY');
+    expect(await storage.get(['hostKey', 'hostBackupKey', 'hostOpenRouterKey']))
+      .toEqual({ hostKey: 'KEY', hostBackupKey: 'BACKUP', hostOpenRouterKey: 'ROUTER' });
     const again = await refresh({ storage, send: host(REPLY) });
     expect(again.changed).toBe(false);
+    expect((await storage.get(['hostBackupKey'])).hostBackupKey).toBe(''); // setup no longer holds one
   });
   it('keeps the last good list when the host is missing or answers badly', async () => {
     const storage = memoryStorage();

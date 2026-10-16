@@ -294,4 +294,50 @@ describe('OpenRouter spend', () => {
       Object.assign(globalThis, saved);
     }
   }, 30000);
+
+  test('worker: backup and OpenRouter keys from setup join the chain; a pasted key wins over setup\'s', async () => {
+    const saved = Object.fromEntries(['chrome', 'fetch'].map((k) => [k, globalThis[k]]));
+    const data = {
+      settings: { enabled: true, newSitesEnabled: true },
+      [STATE_KEY]: { version: 't.1', stage: 1, paused: false, sites: 'all', fetchedAt: Date.now(), words: WORDS },
+    };
+    const used = [];
+    globalThis.fetch = async (url, init) => {
+      if (String(url).startsWith('chrome-extension://')) return { ok: true, json: async () => ({ version: '0.2.1' }) };
+      if (url === OPENROUTER_URL) { used.push(init.headers.Authorization); return routerOk(init); }
+      const key = init.headers['x-goog-api-key'];
+      used.push(key);
+      return key === 'synthetic-pasted-backup' ? geminiOk(JSON.parse(init.body)) : quota429(DAY);
+    };
+    try {
+      const dispatch = await startWorker(data, 'setupkeys');
+      const popup = { id: 'fw-test', url: 'chrome-extension://fw-test/src/popup.html' };
+      const page = { id: 'fw-test', tab: { id: 1, title: 'Cats' }, url: 'https://example.com/article' };
+      const ask = async (text) => {
+        const { revision } = await dispatch({ type: 'config' }, page);
+        return dispatch({ type: 'swaps', revision, items: [{ key: `${revision}:${hashKey(text)}`, text }] }, page);
+      };
+      globalThis.chrome.runtime.sendNativeMessage = async () => ({ ok: true, version: 't.2', stage: 1, words: WORDS,
+        geminiKey: 'synthetic-main', geminiBackupKey: 'synthetic-setup-backup', openRouterKey: 'synthetic-setup-router' });
+      expect((await dispatch({ type: 'syncWords' }, popup)).ok).toBe(true);
+      const st = await dispatch({ type: 'status' }, popup);
+      expect(st).toMatchObject({ hostKey: true, hostBackupKey: true, hostOpenRouterKey: true, backupKey: false, openRouterKey: false });
+      expect(JSON.stringify(st)).not.toContain('synthetic');
+      // Both Gemini keys are spent for the day on every step; setup's OpenRouter key answers.
+      const first = await ask('The cat and the dog sleep all day long.');
+      expect(Object.values(first.results)[0].map((s) => s.f)).toEqual(['et']);
+      expect(used).toContain('synthetic-main');
+      expect(used).toContain('synthetic-setup-backup');
+      expect(used.at(-1)).toBe('Bearer synthetic-setup-router');
+      // A pasted backup replaces setup's for the backup slot.
+      await dispatch({ type: 'save', backupKey: 'synthetic-pasted-backup' }, popup);
+      used.length = 0;
+      const second = await ask('The bird and the fish swim all day long.');
+      expect(Object.values(second.results)[0]).toBeDefined();
+      expect(used).toContain('synthetic-pasted-backup');
+      expect(used).not.toContain('synthetic-setup-backup');
+    } finally {
+      Object.assign(globalThis, saved);
+    }
+  }, 30000);
 });

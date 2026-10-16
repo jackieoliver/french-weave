@@ -113,6 +113,8 @@ python3 "$FW" setup --known-top 40 --sites all --gemini-key-file /path/to/key-fi
 ```
 
 Without a key file, run setup without `--gemini-key-file`; the person pastes the key in the extension popup later.
+A backup Gemini key (another Google account, its own daily quota) and a paid OpenRouter key can come the same way:
+`--backup-key-file <path>`, `--openrouter-key-file <path>`.
 Use only a key file the person names: never search their disk for one.
 With `--codex`, setup adds a UserPromptSubmit hook to `~/.codex/hooks.json` (other hooks are kept; backups end in
 `.before-french-weave`) and sets `hooks = true` under `[features]` in `~/.codex/config.toml`. Codex runs a new hook

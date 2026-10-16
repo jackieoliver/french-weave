@@ -9,6 +9,9 @@
                                                      already introduced (40: some basics, 150: simple French);
                                                      --sites: extension on every site (all) or only ones you
                                                      turn on (ask)
+  fw.py setup --backup-key-file FILE --openrouter-key-file FILE
+                                                     also store a backup Gemini key and a paid OpenRouter key
+                                                     for the extension (a key pasted in its popup wins)
   fw.py setup --language NAME [--lexicon FILE]       learn another language from a word list (columns word,en,hint;
                                                      default data/lexicons/<name>.csv); the old language's state and
                                                      word list are kept and come back when you switch back
@@ -232,19 +235,27 @@ def setup_codex(dry_run):
 
 
 KEY_SHAPE = re.compile(r'^(?:[A-Za-z0-9]{1,8}\.)?[A-Za-z0-9_-]{30,64}$')  # AIza… keys, and newer ones like AQ.…
+OPENROUTER_SHAPE = re.compile(r'^sk-or-[A-Za-z0-9_-]{20,120}$')
+# Setup option -> (file in the state folder, what it is, its shape, what it starts with). The native host hands each
+# stored key to the extension's background worker; a key pasted in the popup still wins over the stored one.
+KEY_FILES = {
+    'gemini_key_file': ('gemini_key', 'Gemini key', KEY_SHAPE, 'AIza… or AQ.…'),
+    'backup_key_file': ('gemini_backup_key', 'backup Gemini key', KEY_SHAPE, 'AIza… or AQ.…'),
+    'openrouter_key_file': ('openrouter_key', 'OpenRouter key', OPENROUTER_SHAPE, 'sk-or-…'),
+}
 
 
-def read_key_file(arg):
+def read_key_file(arg, what='Gemini key', shape=KEY_SHAPE, starts='AIza… or AQ.…'):
     """The key from a file. Never echoes the argument, the path or the contents, since any of them may be the key."""
     path = Path(arg).expanduser()
-    if not path.is_file() and (arg.startswith('AIza') or KEY_SHAPE.match(arg)):
+    if not path.is_file() and (arg.startswith(('AIza', 'sk-or-')) or KEY_SHAPE.match(arg) or OPENROUTER_SHAPE.match(arg)):
         sys.exit('That looks like a key, not a file path; paste the key into the extension popup instead.')
     try:
         key = path.read_text().strip()
     except (OSError, UnicodeDecodeError):
-        sys.exit('Could not read the Gemini key file.')
-    if not KEY_SHAPE.match(key):
-        sys.exit('The Gemini key file should hold only the key (AIza… or AQ.…).')
+        sys.exit(f'Could not read the {what} file.')
+    if not shape.match(key):
+        sys.exit(f'The {what} file should hold only the key ({starts}).')
     return key
 
 
@@ -301,11 +312,13 @@ def setup(args):
     installed = root.resolve() == (home / 'app').resolve()  # run from the copy setup made: nothing to copy
     if not installed and not (root / 'extension' / 'manifest.json').exists():
         sys.exit(f'No extension/ folder next to {root / "scripts"}; run setup from a full copy of the repo.')
-    key = read_key_file(args.gemini_key_file) if args.gemini_key_file else None
+    keys = {opt: read_key_file(getattr(args, opt), *KEY_FILES[opt][1:]) for opt in KEY_FILES if getattr(args, opt)}
+    key = keys.get('gemini_key_file')
     if args.lexicon and not args.language:
         sys.exit('--lexicon needs --language NAME too, like --language Spanish --lexicon spanish.csv.')
     if args.dry_run:
-        print(json.dumps(dict(info, dry_run=True, gemini_key='would be stored' if key else 'not given',
+        print(json.dumps(dict(info, dry_run=True, **{name: 'would be stored' if opt in keys else 'not given'
+                                                     for opt, (name, *_) in KEY_FILES.items()},
                               known_top=args.known_top, sites=args.sites, language=args.language), indent=1))
         if args.codex:
             setup_codex(True)
@@ -329,9 +342,9 @@ def setup(args):
     for directory in host_dirs(args.user_data_dir):
         directory.mkdir(parents=True, exist_ok=True)
         (directory / f'{HOST_NAME}.json').write_text(json.dumps(manifest, indent=1) + '\n')
-    if key:
-        path = home / 'gemini_key'
-        path.write_text(key + '\n')
+    for opt, value in keys.items():
+        path = home / KEY_FILES[opt][0]
+        path.write_text(value + '\n')
         path.chmod(0o600)
     with fwlib.locked():
         language = set_language(args.language, args.lexicon, home)[0] if args.language else None
@@ -355,6 +368,9 @@ def setup(args):
     print(f'  extension:   {"every site; turn any off from the toolbar" if sites == "all" else "only sites you turn on"}')
     print(f'  native host: {", ".join(info["host_manifests"])}')
     print(f'  Gemini key:  {"stored for the extension" if key or (home / "gemini_key").exists() else "not stored; the extension swaps a few fixed words until you paste one in its popup"}')
+    for name, label in (('gemini_backup_key', 'backup key: '), ('openrouter_key', 'OpenRouter: ')):
+        if (home / name).exists():
+            print(f'  {label} stored for the extension')
     if updates:
         print(f'  updates:     {updates}')
     if narration:
@@ -413,6 +429,9 @@ def check(_args):
                         '(Codex asks you to trust it on first start)')
     has_key = (home / 'gemini_key').exists()
     print(f'{"ok  " if has_key else "note"} Gemini key {"stored by setup" if has_key else "not stored; the extension swaps a few fixed words until you paste one in its popup"}')
+    for name, what in (('gemini_backup_key', 'backup Gemini key'), ('openrouter_key', 'OpenRouter key')):
+        if (home / name).exists():
+            print(f'ok   {what} stored by setup')
     if not ok:
         sys.exit(1)
 
@@ -572,6 +591,8 @@ def main(argv=None):
     sub = parser.add_subparsers(dest='command', required=True)
     p = sub.add_parser('setup')
     p.add_argument('--gemini-key-file')
+    p.add_argument('--backup-key-file', help='a second Gemini key, tried when the main one is out for the day')
+    p.add_argument('--openrouter-key-file', help='paid last step, only when every Gemini step fails')
     p.add_argument('--user-data-dir', action='append', default=[])
     p.add_argument('--codex', action='store_true')
     p.add_argument('--known-top', type=int, default=0, metavar='N')

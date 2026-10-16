@@ -102,8 +102,8 @@ and paste the block it prints. It carries your real progress; re-export about on
   `extension/src/settings.js`). No list catches every sensitive site, so turn others off in the popup, or choose
   **Only sites I turn on**.
 - The extension reads your word list through a Chrome native messaging host that only this extension's ID may call.
-  A key file you gave setup is copied to `~/.french-weave/gemini_key` (mode 600) and handed only to the extension's
-  background worker, never to the pages it runs on.
+  Key files you gave setup are copied to `~/.french-weave/` (`gemini_key`, `gemini_backup_key`, `openrouter_key`,
+  mode 600) and handed only to the extension's background worker, never to the pages it runs on.
 
 ## Models and keys (extension)
 
@@ -122,7 +122,8 @@ per language in `extension/src/model-config.js` (today the same for every langua
   invent English that isn't on the page. `"design": "freeform"` in the config lets the model write the swaps itself.
 - Add the keys in the toolbar popup under **Backup and paid keys**: a second Gemini key from another Google account
   (its own daily quota), and an OpenRouter key from [openrouter.ai/keys](https://openrouter.ai/keys) with a few
-  dollars of credit. They're stored like the Gemini key, only in the extension's background worker.
+  dollars of credit. They're stored like the Gemini key, only in the extension's background worker. Setup can hand
+  them over instead: `--backup-key-file <path>` and `--openrouter-key-file <path>`; a key pasted in the popup wins.
 - OpenRouter stops for the day once its reported spend reaches the cap (default $0.25, set in the popup), or when
   OpenRouter answers 402 (credits used up). The popup shows which model served the last batch, today's count per
   model, and today's OpenRouter spend.
