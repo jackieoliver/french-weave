@@ -73,10 +73,15 @@ async function context() {
   const level = resolveLevel(saved, state?.stage).effective;
   const hasKey = !!(data.apiKey || data.hostKey || data.backupKey);
   const paused = !!state?.paused;
-  const { origins = [] } = await chrome.permissions.getAll();
+  const origins = await grantedOrigins();
   const revision = hashKey(JSON.stringify([data.epoch || '', settings, level, state?.version || '', paused, hasKey, origins]));
   return { settings, level, revision, hasKey, paused, origins, stage: state?.stage || 0 };
 }
+
+// The model APIs' own host permissions (manifest) are not sites the reader granted: openrouter.ai is also a website,
+// which needs its own grant like any other.
+const API_ORIGINS = ['https://generativelanguage.googleapis.com/*', 'https://openrouter.ai/*'];
+const grantedOrigins = async () => ((await chrome.permissions.getAll()).origins || []).filter((o) => !API_ORIGINS.includes(o));
 
 const activeOn = (ctx, url) => ctx.hasKey && !ctx.paused && siteEnabled(ctx.settings, url) && hasSiteAccess(url, ctx.origins);
 
@@ -331,9 +336,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 let registrations = Promise.resolve();
 function registerSites() {
   const p = registrations.then(async () => {
-    const { origins = [] } = await chrome.permissions.getAll();
+    const origins = await grantedOrigins();
     const matches = [...new Set(origins.flatMap((o) => o === '<all_urls>' ? ['http://*/*', 'https://*/*'] : [o]))]
-      .filter((o) => /^(https?|\*):\/\//.test(o) && !o.includes('googleapis.com'));
+      .filter((o) => /^(https?|\*):\/\//.test(o));
     const existing = await chrome.scripting.getRegisteredContentScripts({ ids: ['weave-sites'] });
     if (!matches.length) {
       if (existing.length) await chrome.scripting.unregisterContentScripts({ ids: ['weave-sites'] });

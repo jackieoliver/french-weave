@@ -65,7 +65,8 @@ and paste the block it prints. It carries your real progress; re-export about on
 - Chat: it runs inside the Claude Code, Codex, claude.ai or ChatGPT you already use. In Claude Code and Codex the
   hook adds about 2.5 KB of instructions to each message you send.
 - Extension: your own Gemini API key. A free AI Studio key works (Google's free tier allowed 500 Gemini 3.5
-  Flash-Lite requests a day when tested in October 2026); the extension stops itself at 500 Gemini calls a day, and
+  Flash-Lite requests a day when tested in October 2026); the extension stops itself at 500 Gemini calls a day per
+  key (see [Models and keys](#models-and-keys-extension) for the backup key and the paid OpenRouter step), and
   when Google says the key's daily limit is reached it waits until just after midnight Pacific time, when Google
   resets it, showing "Daily Gemini limit reached (429); resumes about ..." (in your own time) in its popup. Whenever Gemini calls fail (limit, rejected key, Gemini busy, no
   connection), the toolbar icon shows a small muted dot and the popup says why, with the HTTP code, until a call works again.
@@ -79,6 +80,8 @@ and paste the block it prints. It carries your real progress; re-export about on
 - Updates come from GitHub through Claude Code's own plugin updater. The hook and scripts make no network calls.
 - The extension sends readable text from the sites where it's on to Google's Gemini API with your key. Links and
   inline code go with their sentence but are never changed; code blocks, forms and editable text are skipped.
+- With an OpenRouter key (optional), the same text goes to OpenRouter and the model's provider (OpenAI for the
+  default, gpt-6-luna) for any batch both Gemini steps failed to answer. Without that key nothing goes there.
 - With a free Gemini key, Google may use that text to improve its products, and human reviewers may read it. If you
   don't want that, use a paid key (turn on billing for the key's Google Cloud project): Google doesn't use paid-key
   prompts that way. In the EEA, UK and Switzerland the paid terms cover free keys too.
@@ -89,6 +92,29 @@ and paste the block it prints. It carries your real progress; re-export about on
 - The extension reads your word list through a Chrome native messaging host that only this extension's ID may call.
   A key file you gave setup is copied to `~/.french-weave/gemini_key` (mode 600) and handed only to the extension's
   background worker, never to the pages it runs on.
+
+## Models and keys (extension)
+
+Each batch of page text goes through a chain of models until one answers. The chain and the prompt design are set
+per language in `extension/src/model-config.js` (today the same for every language):
+
+| Step | Model | Key | Cost | Waits |
+|---|---|---|---|---|
+| 1 | Gemini 3.1 Flash-Lite, medium thinking | your Gemini key, then the backup key | free tier | 30 s |
+| 2 | Gemini 3.5 Flash-Lite, low thinking | your Gemini key, then the backup key | free tier (a separate daily quota) | 8 s |
+| 3 | gpt-6-luna through OpenRouter, reasoning off | OpenRouter key, optional | paid, about $0.0006 a batch | 20 s |
+
+- A per-day 429 (the key's daily quota) moves on to the next key or step until Google resets it; a per-minute 429
+  waits a minute; a busy model (503) or one that doesn't answer in time moves straight to the next step.
+- The model only picks which of the places the extension found to swap (the "candidates" design), so it can't
+  invent English that isn't on the page. `"design": "freeform"` in the config lets the model write the swaps itself.
+- Add the keys in the toolbar popup under **Backup and paid keys**: a second Gemini key from another Google account
+  (its own daily quota), and an OpenRouter key from [openrouter.ai/keys](https://openrouter.ai/keys) with a few
+  dollars of credit. They're stored like the Gemini key, only in the extension's background worker.
+- OpenRouter stops for the day once its reported spend reaches the cap (default $0.25, set in the popup), or when
+  OpenRouter answers 402 (credits used up). The popup shows which model served the last batch, today's count per
+  model, and today's OpenRouter spend.
+- **Model** in the popup: **Auto** follows the chain; picking a Gemini model puts it first (3.8 Flash needs a paid key).
 
 ## Turn it off
 
