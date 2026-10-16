@@ -18,7 +18,7 @@ Free and open source (MIT). From English to French, with starter lists for Spani
 | Codex CLI | Yes | Same hook; you approve it once at the next `codex` start |
 | claude.ai | Yes, static | Paste a block into your preferences; refresh it about weekly |
 | ChatGPT | Yes, static | Paste a block into custom instructions (two boxes, 1,500 characters each) |
-| Chrome or Chromium, any website | Yes | Unpacked extension 0.2 (not in the Chrome Web Store); needs a Gemini API key |
+| Chrome or Chromium, any website | Yes | Unpacked extension 0.2 (not in the Chrome Web Store); all your words with a Gemini API key, a few fixed words without one |
 | Brave, Edge, Arc | Not tested | |
 | Firefox, Safari | Not yet | |
 | macOS, Linux | Yes | Python 3.9 or newer |
@@ -36,15 +36,16 @@ Set up French Weave from https://github.com/jackieoliver/french-weave
 In Codex, first run `/permissions` and pick **Ask for approval**: a new Codex install blocks the download and setup
 without asking.
 
-It asks four questions in one go (how much French you know, where French should show up, which websites, how
-you'll give it a Gemini key; skip any to take the default), installs everything, and then hands you up to four
-steps it can't do:
+It asks four questions in one go (how much French you know, where French should show up, which websites, whether
+and how you'll give it a Gemini key; skip any to take the default), installs everything, and then hands you up to
+four steps it can't do:
 
-1. Extension: get a Gemini API key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). A free key
-   lets Google use the page text it's sent to improve its products; see [What leaves your machine](#what-leaves-your-machine).
+1. Extension, optional: get a Gemini API key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). A
+   free key lets Google use the page text it's sent to improve its products; see [What leaves your machine](#what-leaves-your-machine).
+   Without a key the extension still works, with a few fixed words only; see [What it costs](#what-it-costs).
 2. Extension: open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, pick the folder it names.
 3. Extension: click the French Weave toolbar icon, then **Allow all websites** (until then it only runs on x.com), and
-   paste the key if you didn't give setup a key file. If you chose only sites you turn on, tick the box next to
+   paste the key if you have one and didn't give setup a key file. If you chose only sites you turn on, tick the box next to
    the site's name in the same popup on each site you want.
 4. Codex only: at the next `codex` start, choose **Trust all and continue** for the new hook.
 
@@ -63,12 +64,21 @@ and paste the block it prints. It carries your real progress; re-export about on
 - French Weave itself: nothing.
 - Chat: it runs inside the Claude Code, Codex, claude.ai or ChatGPT you already use. In Claude Code and Codex the
   hook adds about 2.5 KB of instructions to each message you send.
-- Extension: your own Gemini API key. A free AI Studio key works (Google's free tier allowed 500 Gemini 3.5
+- Extension with a key: your own Gemini API key. A free AI Studio key works (Google's free tier allowed 500 Gemini 3.5
   Flash-Lite requests a day when tested in October 2026); the extension stops itself at 500 Gemini calls a day, and
   when Google says the key's daily limit is reached it waits until just after midnight Pacific time, when Google
   resets it, showing "Daily Gemini limit reached (429); resumes about ..." (in your own time) in its popup. Whenever Gemini calls fail (limit, rejected key, Gemini busy, no
   connection), the toolbar icon shows a small muted dot and the popup says why, with the HTTP code, until a call works again.
-  No key, no extension; everything else works without one.
+- Extension without a key: nothing, and it makes no network calls. It swaps only words whose French is the same in
+  any sentence (and, but, with, without, because, always, also, maybe, often, together, between and about 25 more),
+  skips the uses where that isn't true ("because of", "all but one", "the very end", names and quoted titles), and
+  leaves pages and passages on health, crime, safety, legal or money topics alone. On 309 passages from real pages
+  that came to about one swap every three sentences at level 1 and one every two at level 2 (Gemini aims for one every
+  sentence or two at level 1, one or two per sentence at level 2), and a blind check found 2 wrong swaps in 446, both
+  inside quoted titles, which it now skips. The popup shows
+  "Built-in list, no key" while it works this way. With the plugin installed it uses the words in your list only, in
+  French only: for another language it needs a key. Chrome's on-device Gemini Nano was tested as a free middle
+  option and left out: 14-25% of its swaps were wrong.
 
 ## What leaves your machine
 
@@ -76,8 +86,9 @@ and paste the block it prints. It carries your real progress; re-export about on
 - The hook reads your local Claude Code and Codex transcripts to count which words you saw, and never sends them
   anywhere. Its instructions go to Anthropic or OpenAI as part of your message, like the rest of your prompt.
 - Updates come from GitHub through Claude Code's own plugin updater. The hook and scripts make no network calls.
-- The extension sends readable text from the sites where it's on to Google's Gemini API with your key. Links and
-  inline code go with their sentence but are never changed; code blocks, forms and editable text are skipped.
+- With a Gemini key, the extension sends readable text from the sites where it's on to Google's Gemini API with
+  your key. Links and inline code go with their sentence but are never changed; code blocks, forms and editable text
+  are skipped. Without a key, no page text leaves your computer: swaps come from a list inside the extension.
 - With a free Gemini key, Google may use that text to improve its products, and human reviewers may read it. If you
   don't want that, use a paid key (turn on billing for the key's Google Cloud project): Google doesn't use paid-key
   prompts that way. In the EEA, UK and Switzerland the paid terms cover free keys too.
@@ -161,7 +172,8 @@ Pasted claude.ai and ChatGPT blocks don't advance on their own.
 only full list so far.
 
 **Do I need a subscription?** You need whichever chat tool you already use. French Weave adds no account. The
-extension needs a Gemini API key; a free one works.
+extension works without a key, with a few fixed words; a Gemini API key (a free one works) weaves your whole word
+list.
 
 **Where do the words come from?** [`data/lexicon.csv`](data/lexicon.csv): about 1,000 French words and short
 phrases in frequency and usefulness order (connectors and adverbs first), each with a gloss and a sound hint.
@@ -225,7 +237,8 @@ then everyday nouns, adjectives and verbs.
   as seeing it.
 
 Not covered yet: the ready-made [`blocks/`](blocks/) are French only (use `fw.py export` for a block in your
-language), and the extension without the plugin uses its built-in French lists. In languages written without spaces
+language), the extension without the plugin uses its built-in French lists, and the extension without a Gemini key
+weaves French only. In languages written without spaces
 (Japanese, Chinese, Thai), a short word also counts inside a longer one (今 inside 今日).
 
 ## Layout

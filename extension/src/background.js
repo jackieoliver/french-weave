@@ -1,6 +1,6 @@
 // Service worker: word state and the Gemini key from the Claude Code plugin (native host), site access,
 // one model call at a time, results back to pages, seen/flip/peek events back to the plugin.
-// Keys stay here; pages only get a config without them.
+// Keys stay here; pages only get a config without them. Without a key, swaps come from local.js, with no model.
 import { createCache, chromeStorage } from './cache.js';
 import { requestSwaps } from './engine.js';
 import { cleanSettings, newSitesDefault, siteEnabled, hasSiteAccess } from './settings.js';
@@ -10,6 +10,7 @@ import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from 
 import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent } from './quota.js';
 import { modelErrorText, replaceLegacyStatus } from './modelerror.js';
 import { FALLBACK_MODEL } from './gemini.js';
+import { localSwaps, localOff } from './local.js';
 
 const store = chrome.storage.local;
 const cache = createCache(chromeStorage);
@@ -69,10 +70,15 @@ async function context() {
   const paused = !!state?.paused;
   const { origins = [] } = await chrome.permissions.getAll();
   const revision = hashKey(JSON.stringify([data.epoch || '', settings, level, state?.version || '', paused, hasKey, origins]));
-  return { settings, level, revision, hasKey, paused, origins, stage: state?.stage || 0 };
+  return { settings, level, revision, hasKey, tier: tierFor(hasKey, state), paused, origins, stage: state?.stage || 0 };
 }
 
-const activeOn = (ctx, url) => ctx.hasKey && !ctx.paused && siteEnabled(ctx.settings, url) && hasSiteAccess(url, ctx.origins);
+// Which engine makes the swaps: 'gemini' with a key; else 'local' (a fixed list, no model), which has French words
+// only, so another language set up in the plugin gets 'none'. On-device Gemini Nano was tested for this and rejected
+// (an internal test run, 2026-10-16: 14-25% of its swaps were wrong, and it swapped words in sensitive passages).
+export const tierFor = (hasKey, state) => hasKey ? 'gemini' : state?.language ? 'none' : 'local';
+
+const activeOn = (ctx, url) => ctx.tier !== 'none' && !ctx.paused && siteEnabled(ctx.settings, url) && hasSiteAccess(url, ctx.origins);
 
 async function broadcast(type = 'config') {
   const config = await context();
@@ -86,6 +92,14 @@ async function swaps(msg, sender) {
   if (!Array.isArray(msg.items) || msg.items.length > 8) throw new Error('Invalid text batch');
   const items = msg.items.filter((i) => i && typeof i.text === 'string' && i.text.length <= 2000 &&
     wordCount(i.text) >= 6 && !isZeroFrench(i.text) && i.key === `${ctx.revision}:${hashKey(i.text)}`);
+  if (ctx.tier === 'local') {
+    // Nothing leaves the machine and nothing is cached: the list lookup is cheaper than a storage read. A page whose
+    // title names a sensitive topic stays English throughout.
+    const offPage = localOff(String(msg.title || '').slice(0, 300));
+    const { wordState } = await store.get('wordState');
+    const words = wordState?.words?.length ? wordState.words : undefined;
+    return { results: Object.fromEntries(items.map((i) => [i.key, offPage ? [] : localSwaps(ctx.level, i.text, words)])) };
+  }
   const results = await cache.getMany(items.map((i) => i.key));
   const misses = items.filter((i) => !(i.key in results));
   if (!misses.length) return { results };
@@ -156,8 +170,8 @@ export const BADGE_NEW = { text: 'NEW', color: '#1a73e8', textColor: '#ffffff' }
 let updateWaiting = null; // set by checkUpdate; null until it has run in this worker
 async function showBadge(checkFirst = true) {
   try {
-    const { modelStatus } = await store.get('modelStatus');
-    const problem = modelErrorText(modelStatus);
+    const { modelStatus, apiKey, hostKey } = await store.get(['modelStatus', 'apiKey', 'hostKey']);
+    const problem = apiKey || hostKey ? modelErrorText(modelStatus) : ''; // no key: no Gemini calls to fail
     if (!problem && updateWaiting === null) { if (checkFirst) await checkUpdate(); return; }
     const badge = problem ? BADGE_ERROR : updateWaiting ? BADGE_NEW : null;
     await chrome.action.setBadgeText({ text: badge?.text || '' });

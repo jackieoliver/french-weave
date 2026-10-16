@@ -51,7 +51,7 @@ const send = (msg) => {
     return Promise.reject(e);
   }
 };
-const on = () => !orphaned && config?.hasKey && !config.paused && siteEnabled(config.settings, location.href) && hasSiteAccess(location.href, config.origins);
+const on = () => !orphaned && config?.tier && config.tier !== 'none' && !config.paused && siteEnabled(config.settings, location.href) && hasSiteAccess(location.href, config.origins);
 const targets = () => selector(location.href);
 // Only real user input on spans this extension made; pages can't forge flips, peeks or seen events.
 const swapFor = (e) => {
@@ -138,7 +138,7 @@ async function flush() {
   if (!items.length) return;
   for (const i of items) inflight.add(i.key);
   let result;
-  try { result = await send({ type: 'swaps', revision: config.revision, items }); }
+  try { result = await send({ type: 'swaps', revision: config.revision, items, title: document.title }); }
   catch { result = { error: 'Extension unavailable' }; }
   if (gen !== generation || !on()) return;
   for (const i of items) {

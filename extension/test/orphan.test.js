@@ -13,7 +13,7 @@ test('an orphaned content script stays quiet and leaves the page as it is', asyn
     unobserve(el) { this.els.delete(el); }
     disconnect() { this.els.clear(); }
   }
-  const config = { settings: { enabled: true, newSitesEnabled: true, siteOverrides: {} }, level: 1, revision: 'r1', hasKey: true, paused: false, origins: ['<all_urls>'], stage: 1 };
+  const config = { settings: { enabled: true, newSitesEnabled: true, siteOverrides: {} }, level: 1, revision: 'r1', hasKey: true, tier: 'gemini', paused: false, origins: ['<all_urls>'], stage: 1 };
   let sent = 0;
   const runtime = {
     id: 'fw-test',

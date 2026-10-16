@@ -354,7 +354,7 @@ def setup(args):
     sites = (state.get('prefs') or {}).get('extension_sites', 'all')
     print(f'  extension:   {"every site; turn any off from the toolbar" if sites == "all" else "only sites you turn on"}')
     print(f'  native host: {", ".join(info["host_manifests"])}')
-    print(f'  Gemini key:  {"stored for the extension" if key or (home / "gemini_key").exists() else "not stored; paste it in the extension popup"}')
+    print(f'  Gemini key:  {"stored for the extension" if key or (home / "gemini_key").exists() else "not stored; the extension swaps a few fixed words until you paste one in its popup"}')
     if updates:
         print(f'  updates:     {updates}')
     if narration:
@@ -368,7 +368,8 @@ def setup(args):
     else:
         print("     on each site you want, tick the box next to the site's name (Chrome asks for that site).")
     if not key and not (home / 'gemini_key').exists():
-        print('     Paste a Gemini API key (https://aistudio.google.com/apikey).')
+        print('     Optional: paste a Gemini API key (https://aistudio.google.com/apikey). Without one, the extension swaps')
+        print('     only a few fixed words and sends no page text anywhere.')
         print('     With a free key, Google may use the page text it is sent to improve its products; a paid key avoids that.')
     print('Chat weaving and the /french-weave:* commands start in new Claude Code sessions; in an open session, type '
           '/reload-plugins first.')
@@ -411,7 +412,7 @@ def check(_args):
         report(enabled, f'Codex hook in {fwlib.codex_home() / "hooks.json"} with [features] hooks = true '
                         '(Codex asks you to trust it on first start)')
     has_key = (home / 'gemini_key').exists()
-    print(f'{"ok  " if has_key else "note"} Gemini key {"stored by setup" if has_key else "not stored; paste it in the extension popup"}')
+    print(f'{"ok  " if has_key else "note"} Gemini key {"stored by setup" if has_key else "not stored; the extension swaps a few fixed words until you paste one in its popup"}')
     if not ok:
         sys.exit(1)
 

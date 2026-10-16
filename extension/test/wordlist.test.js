@@ -107,7 +107,7 @@ test('popup.js draws the word list from storage and redraws when the word state 
   Object.assign(globalThis, {
     window: doc.defaultView, document: doc,
     chrome: {
-      runtime: { id: 'fw-test', sendMessage: async () => ({ config: { settings, hasKey: true, paused: false, origins: [], stage: 0 }, words: 0, fetchedAt: 0 }) },
+      runtime: { id: 'fw-test', sendMessage: async () => ({ config: { settings, hasKey: true, tier: 'gemini', paused: false, origins: [], stage: 0 }, words: 0, fetchedAt: 0 }) },
       tabs: { query: async () => [{ id: 1, url: 'https://example.com/' }], create: async () => {} },
       permissions: { contains: async () => true },
       storage: {

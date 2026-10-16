@@ -23,9 +23,10 @@ Human steps (send as written):
 >    **Load unpacked**, and pick the folder I give you, then click the French Weave toolbar icon and **Allow all
 >    websites** (or, on each site you want, tick the box next to the site's name). Chrome doesn't let scripts do this
 >    part.
-> 2. If you pick the Chrome extension: a Gemini API key (free at https://aistudio.google.com/apikey), as a file
->    path now or pasted into the extension's popup at the end. With a free key, Google may use the page text it's
->    sent to improve its products; a paid key (billing on) avoids that.
+> 2. If you pick the Chrome extension, optional: a Gemini API key (free at https://aistudio.google.com/apikey), as a
+>    file path now or pasted into the extension's popup at the end or later. With a free key, Google may use the page
+>    text it's sent to improve its products; a paid key (billing on) avoids that. Without a key the extension swaps
+>    only a few fixed words (and, but, with, because...) and sends no page text anywhere.
 > 3. If you pick Codex CLI: the next time you start `codex`, it asks you to review a new hook; choose
 >    **Trust all and continue**.
 
@@ -46,6 +47,7 @@ Questions:
 4. If you picked the Chrome extension, your Gemini API key:
    - Paste it into the extension's popup at the end (default)
    - A file that contains it: type its path (in Claude Code, as your own answer under "Type something"). Never paste the key itself here.
+   - No key for now: the extension swaps only a few fixed words until one is pasted into its popup
 
 Steps 1 and 2 below don't depend on the answers: if you can keep working while the person answers, do them now;
 otherwise do them right after. Never ask for the key in chat, and never print it. If an answer looks like a key
@@ -62,6 +64,7 @@ How the answers map to setup (step 3) and the hand-over (step 5):
 | 2. Preferences block | run `export` at the end |
 | 3. Every site / only sites I turn on | `--sites all` / `--sites ask` |
 | 4. A file path | `--gemini-key-file <path>` |
+| 4. No key for now | no `--gemini-key-file`; leave out hand-over item 2 |
 
 `--known-top N` marks the N most common words in `data/lexicon.csv` as known, so the stage follows on its own
 (Stage 2 at 40 known words, Stage 3 at 150). It only touches words not introduced yet, so a rerun never resets or
@@ -150,7 +153,7 @@ Tell the person, in plain English (leave out the items for things they didn't pi
    once; until then it only runs on x.com); only-sites-I-turn-on mode, tick the box next to the site's name on each site
    they want.
 2. Chrome extension, no key file given: click the French Weave toolbar icon (puzzle piece menu -> pin it) and paste
-   the Gemini key.
+   the Gemini key. Until they do, the extension swaps only a few fixed words, and its popup says "Built-in list, no key".
 3. Codex CLI: at the next `codex` start, choose **Trust all and continue** when it asks about the new hook.
 4. Chat weaving and the `/french-weave:*` commands start in the next Claude Code session they open, or right away
    in this one after they type `/reload-plugins` (until then the commands answer "Unknown command"); in Codex, at
