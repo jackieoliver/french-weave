@@ -20,6 +20,14 @@
   #siteList .row { margin: 4px 0; }
   #notice:empty { display: none; }
   summary { cursor: pointer; margin: 6px 0; }
+  /* Your words: collapsed by default, scrolls inside when long so the popup stays short. */
+  #wordList [data-counts] { display: block; padding-left: 16px; }
+  #wordList [data-rows] { max-height: 170px; overflow: auto; }
+  #wordList .word-note { margin: 2px 0 6px; }
+  #wordList .word-group { margin: 6px 0 2px; font-weight: 600; }
+  #wordList .word { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; }
+  #wordList .word-fr { flex: 0 0 auto; }
+  #wordList .word-en { text-align: right; }
   @media (prefers-color-scheme: dark) {
     body { color: #eee; background: #15181c; }
     section { border-color: #333; }
@@ -55,6 +63,9 @@
     <label class="row"><span>Gemini key</span><input type="password" id="apiKey" placeholder="AIza…" autocomplete="off"></label>
     <div class="row"><span>Words</span><span id="wordInfo" class="small"></span></div>
     <div class="row"><button id="syncWords">Sync words</button><button id="clearCache">Clear cache</button></div>
+  </section>
+  <section>
+    <details id="wordList"><summary>Your words <span data-counts class="small"></span></summary><div data-rows></div></details>
   </section>
   <p class="small">Sites where it's on send readable page text to Gemini with your key. With a free key, Google may use it to improve its products; a paid key avoids that. Links and inline code go with their sentence but are never changed; code blocks, forms and editable text are skipped.</p>
   <div id="notice" class="small error" role="alert"></div>

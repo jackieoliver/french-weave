@@ -147,6 +147,12 @@ try {
   await popup.goto(`chrome-extension://${out.extensionId}/src/popup.html`);
   await popup.waitForTimeout(1500);
   out.popup = await popup.$eval('body', (b) => b.innerText);
+  // Your words: collapsed at first; opened, it lists the synced learning and shaky words.
+  const wordList = () => popup.$eval('#wordList', (d) => ({ open: d.open, counts: d.querySelector('[data-counts]').textContent,
+    rows: [...d.querySelectorAll('.word')].map((r) => `${r.dataset.status}: ${r.innerText.replace(/\s+/g, ' ')}`) }));
+  out.popupWordsOpenAtStart = (await wordList()).open;
+  await popup.click('#wordList summary');
+  out.popupWords = await wordList();
   // Turning the site off from the popup reverts the open article.
   await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'save', siteOverride: { host: 'reading.example', enabled: false } }));
   await reading.waitForTimeout(1500);
