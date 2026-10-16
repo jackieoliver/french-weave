@@ -138,11 +138,11 @@ async function failed(e, usedKey) {
 export const BADGE_ERROR = { text: '!', color: '#c5221f' };
 export const BADGE_NEW = { text: 'NEW', color: '#1a73e8' };
 let updateWaiting = null; // set by checkUpdate; null until it has run in this worker
-async function showBadge() {
+async function showBadge(checkFirst = true) {
   try {
     const { modelStatus } = await store.get('modelStatus');
     const problem = modelErrorText(modelStatus);
-    if (!problem && updateWaiting === null) { await checkUpdate(); return; }
+    if (!problem && updateWaiting === null) { if (checkFirst) await checkUpdate(); return; }
     const badge = problem ? BADGE_ERROR : updateWaiting ? BADGE_NEW : null;
     await chrome.action.setBadgeText({ text: badge?.text || '' });
     if (badge) {
@@ -204,9 +204,11 @@ async function save(msg) {
     if (typeof msg.apiKey === 'string') {
       if (msg.apiKey.length > 500) throw new Error('Key is too long');
       patch.apiKey = msg.apiKey.trim();
-      // A new key answers "Gemini rejected the key"; the next request says whether it works.
+      // A new key answers "Gemini rejected the key" and has its own limits; the next request says whether it works.
       const { modelStatus } = await store.get('modelStatus');
-      if (modelStatus?.kind === 'key') patch.modelStatus = { at: Date.now(), error: '' };
+      if (['key', 'daily', 'rate'].includes(modelStatus?.kind)) patch.modelStatus = { at: Date.now(), error: '' };
+      patch.dailyQuota = {};
+      cooldown.clear();
     }
     await store.set(patch);
   });
@@ -304,3 +306,4 @@ chrome.alarms.onAlarm.addListener((a) => {
   void checkUpdate();
 });
 void ready.then(registerSites).catch(() => {});
+void ready.then(() => showBadge(false)); // a stored failure shows from the start, without an update check

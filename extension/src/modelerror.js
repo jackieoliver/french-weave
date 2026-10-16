@@ -5,6 +5,8 @@
 
 // "5:00 PM" or "17:00", the reader's own clock.
 export const clockTime = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+// The same, with "tomorrow" when that is not today (a limit can run a full day from when it was hit).
+const when = (ms, now) => `${new Date(ms).toDateString() === new Date(now).toDateString() ? '' : 'tomorrow '}about ${clockTime(ms)}`;
 
 // The case a failed request falls in. daily: Google's per-day quota; rate: per-minute 429; key: Google refused the
 // key (a 400 only when its body says so, since a malformed request is a 400 too); busy: 5xx or no answer in time;
@@ -25,7 +27,7 @@ export function modelErrorText(modelStatus, now = Date.now()) {
   const code = s.httpStatus;
   switch (s.kind) {
     case 'daily': return `Daily Gemini limit reached (${code || 429})${!s.retryAt ? '' : s.retryAt > now
-      ? `; resumes about ${clockTime(s.retryAt)}` : '; should work again with the next page'}`;
+      ? `; resumes ${when(s.retryAt, now)}` : '; should work again with the next page'}`;
     case 'rate': return `Gemini rate limit (${code || 429}). Retrying shortly.`;
     case 'key': return `Gemini rejected the key (${code}). Paste a new one below.`;
     case 'busy': return `Gemini is busy (${code || 'timed out'}). Retrying.`;

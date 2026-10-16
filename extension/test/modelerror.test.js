@@ -53,8 +53,11 @@ describe('model error notice', () => {
     expect(minute.err.googleStatus).toBe('RESOURCE_EXHAUSTED');
     const day = await shown(lite, perDay);
     expect(day.err).toMatchObject({ kind: 'daily', status: 429, googleStatus: 'RESOURCE_EXHAUSTED' });
-    expect(day.text).toBe(`Daily Gemini limit reached (429); resumes about ${clockTime(day.err.resumeAt)}`);
-    expect(day.text).toMatch(/^Daily Gemini limit reached \(429\); resumes about \d{1,2}:\d{2}/);
+    expect(day.text).toEndWith(`about ${clockTime(day.err.resumeAt)}`); // "tomorrow about" after 23:00
+    expect(day.text).toMatch(/^Daily Gemini limit reached \(429\); resumes (tomorrow )?about \d{1,2}:\d{2}/);
+    const evening = new Date(2026, 9, 15, 17, 3).getTime();
+    expect(modelErrorText({ error: 'x', kind: 'daily', httpStatus: 429, retryAt: evening + 86400000 }, evening))
+      .toBe(`Daily Gemini limit reached (429); resumes tomorrow about ${clockTime(evening + 86400000)}`);
     // Once the resume time has passed, an old time would read as tomorrow's.
     expect(modelErrorText({ error: day.err.message, kind: 'daily', httpStatus: 429, retryAt: day.err.resumeAt }, day.err.resumeAt + 1))
       .toBe('Daily Gemini limit reached (429); should work again with the next page');
@@ -178,9 +181,11 @@ describe('model error notice', () => {
       const off = await openPopup();
       expect(off).toEqual({ site: 'off.example', operation: 'Off on this site', modelError: 'Gemini rejected the key (400). Paste a new one below.' });
 
-      // Pasting a new key clears the key error; the next request says whether it works.
+      // Pasting a new key clears the key error and the old key's spent days; the next request says whether it works.
+      data.dailyQuota = { 'gemini-3.5-flash-lite': Date.now() + 3600000 };
       await dispatch({ type: 'save', apiKey: KEY }, popupSender);
       expect(data.modelStatus.error).toBe('');
+      expect(data.dailyQuota).toEqual({});
       expect(badge.text).toBe('NEW');
 
       // A refusal of the old key that lands after a new key was pasted doesn't bring the error back.
