@@ -497,6 +497,32 @@ class Host(Home):
         self.converse({'type': 'state', 'extension': '0.3.0'})
         self.assertEqual(fwlib.extension_seen()['version'], '0.3.0')
 
+    def test_channel_dev_from_the_dev_marketplace(self):
+        plugins = self.home / 'claude' / 'plugins'
+        dev = plugins / 'cache' / 'french-weave' / 'french-weave' / '0.2.9'
+        public = plugins / 'cache' / 'fw-public' / 'french-weave' / '0.2.9'
+        fwlib.write_json(plugins / 'known_marketplaces.json', {
+            'french-weave': {'source': {'source': 'github', 'repo': 'jackieoliver/french-weave-dev'}},
+            'fw-public': {'source': {'source': 'github', 'repo': 'jackieoliver/french-weave'}},
+            'fw-git': {'source': {'source': 'git', 'url': 'https://github.com/jackieoliver/french-weave-dev.git'}}})
+        self.assertEqual(fwlib.plugin_channel(dev), 'dev')
+        self.assertEqual(fwlib.plugin_channel(public), '')
+        self.assertEqual(fwlib.plugin_channel(plugins / 'cache' / 'fw-git' / 'french-weave' / '0.2.9'), 'dev')
+        self.assertEqual(fwlib.plugin_channel(plugins / 'cache' / 'unknown' / 'french-weave' / '0.2.9'), '')
+        self.assertEqual(fwlib.plugin_channel(ROOT), '')  # a repo checkout is not a marketplace install
+        # Setup's copies record it; the host sends it with the state; a public install removes it again.
+        for name in ('extension', 'scripts', 'data', '.claude-plugin'):
+            (dev / name).parent.mkdir(parents=True, exist_ok=True)
+            (dev / name).symlink_to(ROOT / name)
+        fwlib.install_copies(dev)
+        self.assertEqual(fwlib.installed_channel(), 'dev')
+        reply, = self.converse({'type': 'state'})
+        self.assertEqual(reply['channel'], 'dev')
+        fwlib.install_copies(ROOT)
+        self.assertEqual(fwlib.installed_channel(), '')
+        reply, = self.converse({'type': 'state'})
+        self.assertNotIn('channel', reply)
+
     def test_message_framing(self):
         stream = io.BytesIO()
         fw_host.write_message(stream, {'a': 'é'})

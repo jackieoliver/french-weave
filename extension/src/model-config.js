@@ -7,7 +7,7 @@
 // Measurements behind the defaults: internal evaluation notes (not published), 2026-10-15 (gemini-3.1-flash-lite at
 // medium thinking matched paid 3.8 Flash on density with zero leaks in Spanish and French, 6 s median and 21 s p90
 // per batch; gpt-6-luna with reasoning off leaked nothing in six languages at about $0.0006 a request).
-// levelFirst: one Claude Haiku 5.5 step that goes before the chain at the listed extension levels (Auto only), with one
+// levelFirst: one Claude Haiku 5.5 step that goes before the chain at the listed extension levels (Recommended), with one
 // way to reach it per provider: direct to Anthropic when the reader has an Anthropic key, else through OpenRouter when
 // they have an OpenRouter key, else none, so without either key the chain is unchanged. Only one of the two is ever in
 // a chain, so a batch makes at most one Haiku attempt. Each runs only under its provider's daily spend cap. Measured
