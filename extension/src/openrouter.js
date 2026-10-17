@@ -3,6 +3,13 @@
 // (not published). No chrome APIs; fetch is injectable for tests. The key goes only in the Authorization header.
 export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 export const DEFAULT_DAILY_CAP_USD = 0.25;
+// The most one request is taken to cost, for the worker's spend cap under concurrency (limits.js). OpenRouter's price
+// is only known from the reply, and the request sets no max_tokens, so this is a ceiling with a wide margin rather
+// than a computed one: the chain's OpenRouter models cost about $0.0006 (gpt-6-luna) and $0.0015-0.002 (Claude Haiku
+// 5.5) a request (model-config.js); $0.05 is 25 times the dearer one, or 100,000 output tokens at Haiku's $0.50 per
+// million. A request that costs more than this can take a cap past its limit by the difference, as one call at a
+// time always could by a whole request.
+export const MAX_REQUEST_USD = 0.05;
 
 // A Gemini generateContent body -> an OpenRouter chat body. jsonOnly: plain JSON mode for an endpoint that refuses
 // the schema (the prompt already spells out the shape).

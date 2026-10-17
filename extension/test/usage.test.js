@@ -115,6 +115,29 @@ test('usage: the buffer is bounded, persisted for the next worker, and flushed i
   expect(withToday.sent[0].events.map((e) => e.k)).toEqual(['worker_start', 'popup']);
 });
 
+// Regression: a failing host once made save() flush at once, the failed flush saved again, and that save flushed
+// again, forever (each send a copy of the full buffer: 23 GB in 8 minutes). A failed send must wait for the timer.
+test('usage: a failing host is retried by the timer, never in a loop, and the buffer stays at its cap', async () => {
+  // Past a few sends the host never answers, so the old loop stops and fails this test instead of eating the machine.
+  let calls = 0;
+  const h = harness({ host: () => (++calls > 5 ? new Promise(() => {}) : Promise.resolve({ ok: false, error: 'disk full' })) });
+  await h.settle();
+  for (let round = 0; round < 3; round++) {
+    for (let i = 0; i < MAX_EVENTS * 2; i++) h.usage.record('word', { what: 'seen', word: 'et' });
+    await h.settle();
+    await h.settle();
+  }
+  expect(h.sent.length).toBe(1); // the one send at FLUSH_AT; after it failed, only the timer may try again
+  expect((await h.stored()).events.length).toBe(MAX_EVENTS);
+  expect((await h.stored()).hostFails).toBe(1);
+  // Each timer firing is one more send, and a failure leaves exactly one timer behind it.
+  const pending = h.timers.length;
+  h.timers.at(-1).fn();
+  await h.settle();
+  expect(h.sent.length).toBe(2);
+  expect(h.timers.length).toBe(pending + 1);
+});
+
 test('usage: the popup switch turns the log off and back on', async () => {
   const h = harness();
   h.usage.record('popup', {});

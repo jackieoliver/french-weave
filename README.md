@@ -130,6 +130,14 @@ per language in `extension/src/model-config.js` (today the same for every langua
   5.6 s against 9.5 s for 8 in one request, about 22% more cost); a real-browser run took 4-5 s a batch. Without
   either key, past that provider's daily cap, after it refused the key or ran out of credit, or with a Gemini model
   picked in the popup, the chain starts at step 1 (or the picked model).
+- Up to 4 batches run at once, so a page you keep scrolling (X's timeline) doesn't wait behind every batch asked
+  for before; each page has at most 2 out, and the next one carries the passages on screen or nearest to it (posts
+  that scrolled away and were unmounted are dropped, and asked for again if they come back). Gemini requests still go
+  one at a time (free keys allow a few a minute). The daily caps hold as with one call at a time: a paid batch starts
+  alongside others only while today's spend plus the most each batch out could cost stays under the cap.
+- A passage's swaps are cached for 3 days and reused on any page, even after your word list changes, so a newly
+  learned word reaches a passage you've already seen within 3 days rather than at once. A new level, a setting that
+  changes swaps, a pause or **Clear cache** in the popup re-swaps at once.
 - A per-day 429 (the key's daily quota) moves on to the next key or step until Google resets it; a per-minute 429
   waits a minute; a busy model (503) or one that doesn't answer in time moves straight to the next step.
 - The model only picks which of the places the extension found to swap (the "candidates" design), so it can't
