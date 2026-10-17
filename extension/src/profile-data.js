@@ -88,7 +88,9 @@ export const GENERIC = {
     "sense_note": "",
     "adjective_example": null,
     "level_examples": {},
-    "synonyms": {}
+    "synonyms": {},
+    "contexts": {},
+    "question_words": []
   }
 };
 
@@ -793,8 +795,8 @@ export const PROFILES = {
       ]
     },
     "sense_notes": {
-      "brief": "per never after ask, wait, look or pay, or for a span still going on; quindi only for therefore, the intensifier so is così; ecco for here's, qui only for a place; a filler well is beh or allora, bene only for fine or done properly; anche only for as well, too meaning excessively is troppo; come only for how or like in a comparison, never the verb like; prima, dopo and durante only alone or before a noun; tutto is everything, tutti everyone; cosa only for what in a question; e is and, è is is, so keep the accents",
-      "export": "per never follows ask, wait, look or pay (chiedere, aspettare, cercare and pagare take none), and never marks a span still going on (\"for years\" is da anni); quindi only for \"so\" meaning therefore, while \"so\" as an intensifier is così and \"so far\" is finora; \"here's\" or \"here is\" introducing something is ecco, never qui (qui is a place); a filler \"well\" is beh or allora, never bene; anche is \"too\" only as \"as well\", and \"too\" meaning excessively is troppo; come is \"how\" or \"like\" in a comparison, never the verb \"like\" (mi piace); prima, dopo and durante only alone or before a noun, never before a clause; tutto is everything, tutti is everyone; cosa only for \"what\" in a question; accents change the word: e is \"and\", è is \"is\", si is \"oneself\", sì is \"yes\"",
+      "brief": "per never after ask, wait, look or pay, or for a span still going on; quindi only for therefore, the intensifier so is così; ecco for here's, qui only for a place; a filler well is beh or allora, bene only for fine or done properly; anche only for as well, too meaning excessively is troppo; come only for how or like in a comparison, never the verb like; prima, dopo and durante only alone or before a noun; tutto is everything, tutti everyone; cosa only for what in a question; chi and quale only ask too, and a relative who or which is che; è never for the is of is + -ing, which is sta; e is and, è is is, so keep the accents",
+      "export": "per never follows ask, wait, look or pay (chiedere, aspettare, cercare and pagare take none), and never marks a span still going on (\"for years\" is da anni); quindi only for \"so\" meaning therefore, while \"so\" as an intensifier is così and \"so far\" is finora; \"here's\" or \"here is\" introducing something is ecco, never qui (qui is a place); a filler \"well\" is beh or allora, never bene; anche is \"too\" only as \"as well\", and \"too\" meaning excessively is troppo; come is \"how\" or \"like\" in a comparison, never the verb \"like\" (mi piace); prima, dopo and durante only alone or before a noun, never before a clause; tutto is everything, tutti is everyone; cosa only for \"what\" in a question, and chi and quale only ask too: a relative \"who\" or \"which\" is che, and \"what\" meaning \"the thing that\" is quello che; è is never the \"is\" of \"is improving\" (that is sta); accents change the word: e is \"and\", è is \"is\", si is \"oneself\", sì is \"yes\"",
       "export_short": "per not after ask/wait or for durations; ecco = here's; e = and, è = is"
     },
     "drift_words": [
@@ -1006,7 +1008,7 @@ export const PROFILES = {
         "and",
         "e"
       ],
-      "sense_note": "\"so\" meaning therefore -> quindi; \"so\" as an intensifier, as in \"so slow\", is NOT quindi; \"here's\" or \"here is\" introducing something is ecco, NOT qui; \"well\" as a filler is NOT bene; \"too\" meaning excessively is NOT anche; e is \"and\" and è is \"is\": keep the accent",
+      "sense_note": "\"so\" meaning therefore -> quindi; \"so\" as an intensifier, as in \"so slow\", is NOT quindi; \"here's\" or \"here is\" introducing something is ecco, NOT qui; \"well\" as a filler is NOT bene; \"too\" meaning excessively is NOT anche; e is \"and\" and è is \"is\": keep the accent; \"is\" or \"it's\" before an -ing verb, as in \"is improving\", is sta, NOT è; a relative \"who\", \"which\" or \"what\", as in \"people who\", \"the tool which runs\" or \"some of what they said\", is che or quello che, NOT chi, quale or cosa (those only ask)",
       "adjective_example": [
         "a new feature",
         "a nuovo feature"
@@ -1017,7 +1019,17 @@ export const PROFILES = {
           "here's",
           "here is"
         ]
-      }
+      },
+      "contexts": {
+        "è": [
+          "[*] *ly|not|still|also|now|just|already|always|never|even? +ing"
+        ]
+      },
+      "question_words": [
+        "chi",
+        "quale",
+        "cosa"
+      ]
     }
   },
   "japanese": {
@@ -1292,8 +1304,8 @@ export const PROFILES = {
       ]
     },
     "sense_notes": {
-      "brief": "para never after ask, wait, look or pay, or for a duration; então only for therefore or then, never the intensifier so, which is tão; aqui only for a place, never here's; mais means more, never and; depois de and antes de before a noun; o tempo is time or weather, a vez an occasion, o time a team; atualmente means currently, a pasta a folder, a data a date, legal cool; não only as an answer; tem only for there is; the article a reads as English a, so use a nouns where the English had the",
-      "export": "para only for purpose or recipient, never after ask, wait, look or pay (pedir, esperar, procurar and pagar take no \"for\"), and never for a duration; então is \"so\" meaning therefore, or \"then\", but \"so\" as an intensifier is tão; aqui only for a place, never \"here's\"; mais means \"more\", never \"and\" or \"plus\" (mas is \"but\"); depois and antes alone mean afterwards and earlier, and before a noun they are depois de and antes de; o tempo is time or the weather, a vez an occasion (the first time), a hora clock time, and o time a sports team; false friends: atualmente is currently (actually is na verdade), a pasta a folder, a data a date (data is os dados), legal cool; ainda alone is still, and \"not yet\" is the whole ainda não; tem is there is or there are, not has; não only as the answer no; the feminine article a reads as English \"a\", so use those nouns where the English had \"the\"",
+      "brief": "para never after ask, wait, look or pay, or for a duration; então only for therefore or then, never the intensifier so, which is tão; aqui only for a place, never here's; mais means more, never and; depois de and antes de before a noun; o tempo is time or weather, a vez an occasion, o time a team; atualmente means currently, a pasta a folder, a data a date, legal cool; não only as an answer; tem only for there is; the article a reads as English a, so use a nouns where the English had the; é never for the is of is + -ing, which is está; qual and quem only ask, and a relative which, who or that is que",
+      "export": "para only for purpose or recipient, never after ask, wait, look or pay (pedir, esperar, procurar and pagar take no \"for\"), and never for a duration; então is \"so\" meaning therefore, or \"then\", but \"so\" as an intensifier is tão; aqui only for a place, never \"here's\"; mais means \"more\", never \"and\" or \"plus\" (mas is \"but\"); depois and antes alone mean afterwards and earlier, and before a noun they are depois de and antes de; o tempo is time or the weather, a vez an occasion (the first time), a hora clock time, and o time a sports team; false friends: atualmente is currently (actually is na verdade), a pasta a folder, a data a date (data is os dados), legal cool; ainda alone is still, and \"not yet\" is the whole ainda não; tem is there is or there are, not has; não only as the answer no; the feminine article a reads as English \"a\", so use those nouns where the English had \"the\"; é is never the \"is\" of \"is improving\" (that is está); qual and quem only ask a question, and a relative \"which\", \"who\" or \"that\" is que",
       "export_short": "para not after ask/wait or for durations; mais = more; atualmente = currently"
     },
     "drift_words": [
@@ -1506,7 +1518,7 @@ export const PROFILES = {
         "and",
         "e"
       ],
-      "sense_note": "\"so\" meaning therefore -> então; \"so\" as an intensifier, as in \"so slow\", is tão, NOT então; \"here\" introducing something, as in \"here's\", is NOT aqui; \"actually\" is NOT atualmente; \"and\" or \"plus\" is NOT mais; a noun listed with the article a reads as English \"a\", so swap it only where the English had \"the\"",
+      "sense_note": "\"so\" meaning therefore -> então; \"so\" as an intensifier, as in \"so slow\", is tão, NOT então; \"here\" introducing something, as in \"here's\", is NOT aqui; \"actually\" is NOT atualmente; \"and\" or \"plus\" is NOT mais; a noun listed with the article a reads as English \"a\", so swap it only where the English had \"the\"; \"is\" or \"it's\" before an -ing verb, as in \"is improving\", is está, NOT é; a relative \"which\" or \"who\", as in \"the tool which runs\" or \"people who\", is que, NOT qual or quem (those only ask)",
       "adjective_example": [
         "the fix is fast",
         "the fix is rápido"
@@ -1528,7 +1540,16 @@ export const PROFILES = {
         "hi": [
           "hey"
         ]
-      }
+      },
+      "contexts": {
+        "é": [
+          "[*] *ly|not|still|also|now|just|already|always|never|even? +ing"
+        ]
+      },
+      "question_words": [
+        "qual",
+        "quem"
+      ]
     }
   },
   "spanish": {

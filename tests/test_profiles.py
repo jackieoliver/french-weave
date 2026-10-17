@@ -95,6 +95,20 @@ class Profiles(unittest.TestCase):
         bad = make_profiles.english_problems({'phrases': ['now'], 'contexts': ['before i', '[a] [b] c', '[x]']})
         self.assertEqual(len(bad), 4)
 
+    def test_per_word_sense_rules_are_checked(self):
+        bundled = make_profiles.load(fwlib.PLUGIN_ROOT / 'data' / 'profiles')
+        generic, pt = bundled['_generic'], bundled['portuguese']['extension']
+        self.assertEqual(pt['question_words'], ['qual', 'quem'])
+        self.assertIn('+ing', pt['contexts']['é'][0])
+        good = {'language': 'Spanish', 'extension': {'contexts': {'es': ['[*] +ing']}, 'question_words': ['cuál']}}
+        self.assertEqual(make_profiles.problems(good, generic), [])
+        bad = {'language': 'Spanish', 'extension': {'contexts': {'es': '[*] +ing', 'está': ['is +ing']},
+                                                    'question_words': ['', 3]}}
+        found = '\n'.join(make_profiles.problems(bad, generic))
+        for expected in ('extension.contexts.es: must be a list', 'extension.contexts.está: needs one [swap] token',
+                         "extension.question_words: not a word: ''", 'extension.question_words: not a word: 3'):
+            self.assertIn(expected, found)
+
     def test_reading_schema_defaults_off(self):
         reading = fwlib.profile('French')['script']['reading']
         self.assertEqual(reading, {'early': 'none', 'late': 'none', 'late_from_stage': 0, 'late_only_with': '',
