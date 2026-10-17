@@ -3,7 +3,7 @@ export const TIER_TEXT = {
   gemini: {
     label: 'Gemini, with your key',
     note: '',
-    privacy: "Sites where it's on send readable page text to Gemini with your key. With an Anthropic key, at Levels 1-2 it goes to Anthropic first (at every level if you pick Claude Haiku as the model). With an OpenRouter key, it also goes to OpenRouter and the model's provider: Anthropic first at those levels if you have no Anthropic key, and OpenAI when Gemini can't answer. With a free key, Google may use it to improve its products; a paid key avoids that. Links and inline code go with their sentence but are never changed; code blocks, forms and editable text are skipped.",
+    privacy: "Sites where it's on send readable page text to Gemini with your key. With an Anthropic key, it goes to Anthropic first (unless you pick a Gemini model). With an OpenRouter key, it also goes to OpenRouter and the model's provider: Anthropic first if you have no Anthropic key, and OpenAI when Gemini can't answer. With a free key, Google may use it to improve its products; a paid key avoids that. Links and inline code go with their sentence but are never changed; code blocks, forms and editable text are skipped.",
   },
   local: {
     label: 'Built-in list, no key',

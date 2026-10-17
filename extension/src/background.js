@@ -226,7 +226,7 @@ async function swaps(msg, sender) {
         return fetch(url, init, ...rest);
       };
       const daily = await spentToday(chromeStorage); // a spent daily quota outlives the worker, so it is kept in storage
-      // Claude Haiku 5.5 first at Levels 1-2 on Auto, or at every level when picked in the popup (planFor).
+      // Claude Haiku 5.5 first with a Claude key unless a Gemini model is picked (planFor).
       try {
         return await requestSwaps({ keys, chain, design, level: ctx.level, words: wordState?.words, language: wordState?.language, fetchImpl,
           onOpenRouter: (r) => locked(() => countOpenRouter(chromeStorage, r)),

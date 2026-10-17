@@ -631,8 +631,8 @@ def main(argv=None):
     p = sub.add_parser('setup')
     p.add_argument('--gemini-key-file')
     p.add_argument('--backup-key-file', help='a second Gemini key, tried when the main one is out for the day')
-    p.add_argument('--anthropic-key-file', help='paid: Claude Haiku 5.5 first at Levels 1-2, direct to Anthropic')
-    p.add_argument('--openrouter-key-file', help='paid: Claude Haiku 5.5 first at Levels 1-2 without an Anthropic key, '
+    p.add_argument('--anthropic-key-file', help='paid: Claude Haiku 5.5 first at every level, direct to Anthropic')
+    p.add_argument('--openrouter-key-file', help='paid: Claude Haiku 5.5 first at every level without an Anthropic key, '
                    'else only when every Gemini step fails')
     p.add_argument('--user-data-dir', action='append', default=[])
     p.add_argument('--codex', action='store_true')

@@ -11,13 +11,14 @@
 // forms intact, seen/flip events flushed back to the word state, forged page events ignored, no swaps on webmail,
 // and the article reverting when its site is turned off. Expected for the tip: tipWithoutWait and hoverAfter show the gloss text,
 // peeksAfterQuickPass is 0 and peeksAfterDwell is 1 (on a profile that hasn't peeked at that word today).
-// With an Anthropic key too (setup's --anthropic-key-file), Levels 1-2 send each batch to Claude Haiku 5.5 first,
+// With an Anthropic key too (setup's --anthropic-key-file), every level sends each batch to Claude Haiku 5.5 first,
 // direct to Anthropic; with only an OpenRouter key (--openrouter-key-file), through OpenRouter. servedCounts names the
 // model behind each batch, lastProvider the provider of the last, anthropicUsd and openRouterUsd today's spend, and
 // batches lists each model request the worker made (provider, HTTP status, milliseconds, tokens; never the key).
 // E2E_LEVEL=1..4 forces that level from the popup before any page loads (level reports the one in effect).
-// E2E_MODEL=<choice> picks that Model in the popup the same way (claude-haiku-low: Claude Haiku first at every level).
-// The popup's Model menu (popupModelOptions, "!" marks one that can't be picked), its Next batch line (popupNext) and
+// E2E_MODEL=<choice> and E2E_REASONING=<level> pick that Model and Reasoning in the popup the same way.
+// The popup's Model and Reasoning menus (popupModelOptions, popupReasoningOptions; "!" marks one that can't be
+// picked), its header (popupVersion), Mode line (popupMode), Next batch line (popupNext) and
 // what the native host recorded as the running version (extensionSeen) are printed; E2E_SCREENSHOT=<file.png> also
 // saves the popup as an image.
 // CHROMIUM_PATH: a Chromium binary to use instead of the one this Playwright version expects.
@@ -211,7 +212,7 @@ try {
   out.popupTier = await popup.$eval('#tierInfo', (e) => e.textContent);
   out.modelCalls = await calls(); // Gemini requests this profile made today
   // Which models served today's batches, and today's OpenRouter spend: with an OpenRouter key (setup's
-  // --openrouter-key-file) at Levels 1-2, Claude Haiku 5.5 serves first.
+  // --openrouter-key-file), Claude Haiku 5.5 serves first.
   const served = await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'status' })
     .then((s) => ({ last: s.lastServed?.model || '', lastProvider: s.lastServed?.provider || '', counts: s.served?.counts || {},
       openRouterUsd: s.openRouter?.usd || 0, anthropicUsd: s.anthropic?.usd || 0, anthropicBlocked: s.anthropic?.blocked || '',
