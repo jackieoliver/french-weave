@@ -26,6 +26,7 @@ const VERSION = /^[0-9][0-9A-Za-z.+-]{0,39}$/;
 const HOSTNAME = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/;
 const LIST_WORD = /^[\p{L}\p{M}'’ -]{1,40}$/u; // a word from the reader's list (French, or another language's)
 const KEYLIKE = /\bAIza[\w-]{8,}|\bsk-[\w-]{8,}|[A-Za-z0-9_-]{24,}/g;
+const keyLike = (v) => /AIza|\bsk-|[A-Za-z0-9_-]{24,}/.test(v);
 
 // The site of a page: its hostname, lowercased, without a trailing dot. Never the path, query or fragment.
 export function domainOf(url) {
@@ -48,16 +49,16 @@ export function errorText(e) {
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 1e6) / 1e6 : undefined);
 const TYPES = {
   num,
-  int: (v) => (Number.isInteger(v) && v >= 0 && v <= 1e12 ? v : undefined),
+  int: (v) => (Number.isInteger(v) && v >= 0 && v <= 1e14 ? v : undefined),
   bool: (v) => (typeof v === 'boolean' ? v : undefined),
-  word: (v) => (typeof v === 'string' && WORD.test(v) ? v : undefined),
+  word: (v) => (typeof v === 'string' && WORD.test(v) && !keyLike(v) ? v : undefined),
   model: (v) => (typeof v === 'string' && MODEL.test(v) ? v : undefined),
   ver: (v) => (typeof v === 'string' && VERSION.test(v) ? v : undefined),
   domain: (v) => domainOf(v) || undefined,
   listWord: (v) => (typeof v === 'string' && LIST_WORD.test(v.trim()) ? v.trim().toLowerCase() : undefined),
   error: (v) => errorText(v) || undefined,
   // A setting's value: a switch, a number or a short word (a model choice, a reasoning level); never free text.
-  value: (v) => (typeof v === 'boolean' || v === null ? v : num(v) ?? (typeof v === 'string' && WORD.test(v) ? v : undefined)),
+  value: (v) => (typeof v === 'boolean' || v === null ? v : num(v) ?? (typeof v === 'string' && WORD.test(v) && !keyLike(v) ? v : undefined)),
   counts: (v) => {
     if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
     const out = Object.fromEntries(Object.entries(v).filter(([k, n]) => WORD.test(k) && num(n) !== undefined).slice(0, 16)
@@ -259,6 +260,7 @@ export function createUsage({ storage, sendNative, version = '', now = Date.now,
   let stored = true; // a buffer may be in storage (a previous worker's), to remove when the gate is closed
   let timer = null;
   let saving = null;
+  let flushing = null;
   let dirty = false;
   const notes = new WeakMap(); // swaps message -> what swaps() noted
   const inflight = new Map(); // tab id -> Set of batch tokens
@@ -284,7 +286,8 @@ export function createUsage({ storage, sendNative, version = '', now = Date.now,
     meta.aliveAt = now();
     await storage.set({ [BUFFER_KEY]: { events: mem.slice(), ...meta } });
     stored = true;
-    if (mem.length >= FLUSH_AT) void flush();
+    // A full batch goes at once, unless a send is out or the last one failed: then the timer retries.
+    if (mem.length >= FLUSH_AT && !flushing && !meta.hostFails) void flush();
     else if (mem.length && !timer) timer = setTimer(() => { timer = null; void flush(); }, FLUSH_DELAY_MS);
   }
 
@@ -309,21 +312,31 @@ export function createUsage({ storage, sendNative, version = '', now = Date.now,
   }
 
   // Sends the buffer to the native host. today: also ask for today's numbers (the popup's line).
-  async function flush({ today = false } = {}) {
+  // One send at a time; a flush asked for meanwhile runs after it.
+  function flush(options) {
+    const run = (flushing || Promise.resolve()).then(() => sendBuffer(options));
+    const mine = run.catch(() => {});
+    flushing = mine;
+    void mine.then(() => { if (flushing === mine) flushing = null; });
+    return run;
+  }
+  async function sendBuffer({ today = false } = {}) {
     await loaded;
     await saving;
     if (timer) { clearTimer(timer); timer = null; }
     if (!(await gate())) { await drop(); return { on: false }; }
-    if (meta.overflow) { mem.push(cleanEvent('overflow', { n: meta.overflow }, now(), version)); meta.overflow = 0; }
     const batch = mem.slice(0, 1000);
-    if (!batch.length && !today) return { on: true, sent: 0 };
+    const lost = meta.overflow;
+    const events = lost ? [...batch, cleanEvent('overflow', { n: lost }, now(), version)] : batch;
+    if (!events.length && !today) return { on: true, sent: 0 };
     try {
-      const reply = await sendNative({ type: 'usage', events: batch, ...(today ? { today: true } : {}) });
+      const reply = await sendNative({ type: 'usage', events, ...(today ? { today: true } : {}) });
       if (!reply?.ok) throw new Error(reply?.error || 'the native host refused usage events');
       mem.splice(0, batch.length);
+      meta.overflow -= lost;
       if (meta.hostFails) { record('host_error', { where: 'usage', n: meta.hostFails }); meta.hostFails = 0; }
       await persist();
-      return { on: true, sent: batch.length, today: reply.today || null, off: !!reply.off };
+      return { on: true, sent: events.length, today: reply.today || null, off: !!reply.off };
     } catch (e) {
       meta.hostFails++;
       // No native host at all: keep nothing until a word sync reaches one again (host()).
@@ -340,16 +353,16 @@ export function createUsage({ storage, sendNative, version = '', now = Date.now,
   // idle one after about 30 seconds).
   const loaded = (async () => {
     const saved = (await storage.get([BUFFER_KEY]))?.[BUFFER_KEY];
-    if (Array.isArray(saved?.events)) mem.unshift(...saved.events.slice(-MAX_EVENTS));
     Object.assign(meta, { overflow: saved?.overflow || 0, hostFails: saved?.hostFails || 0, caps: saved?.caps || meta.caps });
     const prevAliveAt = saved?.aliveAt || 0;
+    const start = cleanEvent('worker_start', prevAliveAt ? { prevAliveAt, idleMs: Math.max(0, now() - prevAliveAt) } : {}, now(), version);
+    // The previous worker's events, then this start, then anything recorded while this was read.
+    mem.unshift(...(Array.isArray(saved?.events) ? saved.events.slice(-MAX_EVENTS) : []), start);
+    if (mem.length > MAX_EVENTS) meta.overflow += mem.splice(0, mem.length - MAX_EVENTS).length;
     stored = !!saved;
     if (!(await gate())) await drop();
-    return prevAliveAt;
-  })().catch(() => 0);
-  void loaded.then((prevAliveAt) => {
-    record('worker_start', prevAliveAt ? { prevAliveAt, idleMs: Math.max(0, now() - prevAliveAt) } : {});
-  });
+    else void persist();
+  })().catch(() => {});
 
   onInstalled?.addListener?.((d) => {
     void loaded.then(() => record('installed', { reason: d?.reason, from: d?.previousVersion, to: version }));
