@@ -14,7 +14,9 @@
 // in the same notes, 2026-10-16 (Opus grading, 24 passages, Levels 1-2, six languages): Claude Haiku 5.5 at low
 // reasoning made 2.3% bad swaps [95% interval 1.4-3.7] against 15.3% for gemini-3.1-flash-lite medium and 8.1% for
 // the best Gemini setting (3.5-flash-lite high); median about 12 s, worst-language p90 22.9 s, about $0.0015-0.002
-// a request. maxPassages: the most passages one request of that step carries; a bigger batch goes as chunks of that
+// a request. Since 0.2.9 it goes first at every level (Jackie, 2026-10-17: "dont hide it out under"): for French at
+// Levels 3-4 Haiku low made 4.7% and 4.0% bad swaps, against about 15% for gemini-3.1-flash-lite at Levels 1-2.
+// maxPassages: the most passages one request of that step carries; a bigger batch goes as chunks of that
 // size in parallel (engine.js). Direct Haiku at 4 (French, Levels 1-2, internal test set, Opus-graded, 2026-10-17): median
 // 5.6 s, p90 10.8 s, 1/119 bad swaps, against 9.5 s, 13.7 s and 0/118 with all 8 in one request, for about 22% more
 // cost a page. Haiku 5.5 takes no fast mode or fixed thinking budget, so batch size is the speed lever.
@@ -27,7 +29,7 @@ export const MODEL_CONFIG = {
       { provider: 'openrouter', model: 'openai/gpt-6-luna', thinking: 'off', timeoutMs: 20000 },
     ],
     levelFirst: {
-      levels: [1, 2],
+      levels: [1, 2, 3, 4],
       via: { // in order of preference
         anthropic: { provider: 'anthropic', model: 'claude-haiku-5-5', thinking: 'low', timeoutMs: 35000, maxPassages: 4 },
         openrouter: { provider: 'openrouter', model: 'anthropic/claude-haiku-5.5', thinking: 'low', timeoutMs: 35000 },
@@ -55,17 +57,10 @@ export const STEP_TIMEOUT_MS = { 'gemini-3.1-flash-lite': 30000, 'gemini-3.5-fla
 export const HAIKU_CHOICE = 'claude-haiku-low';
 export const HAIKU_LABEL = 'Claude Haiku 5.5 (low)';
 
-// The levels Auto puts the Haiku step first at, as the popup writes them: "L1-2".
-export function haikuLevelsText(config = MODEL_CONFIG) {
-  const levels = [...(config.default.levelFirst?.levels || [])].sort((a, b) => a - b);
-  if (!levels.length) return '';
-  const contiguous = levels.every((l, i) => !i || l === levels[i - 1] + 1);
-  return `L${contiguous && levels.length > 1 ? `${levels[0]}-${levels.at(-1)}` : levels.join(', ')}`;
-}
-
-// Every choice the popup's Model menu offers, in order: id -> label.
+// Every choice the popup's Model menu offers, in order: id -> label. The popup adds what Auto runs right now
+// (popup-model.js).
 export const CHOICES = {
-  auto: `Auto (Haiku at ${haikuLevelsText()}, else Gemini)`,
+  auto: 'Auto',
   [HAIKU_CHOICE]: HAIKU_LABEL,
   ...MODELS,
 };
