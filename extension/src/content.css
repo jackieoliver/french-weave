@@ -16,6 +16,13 @@
 fw-gloss.fw-gloss {
   all: initial;
   display: none !important;
+  /* A page's own rules for elements it doesn't know can't hide the box: Reddit's post pages set
+     :not(:defined) { visibility: hidden }, and fw-gloss is never defined (content scripts can't register elements). */
+  visibility: visible !important;
+  opacity: 1 !important;
+  transform: none !important;
+  filter: none !important;
+  clip-path: none !important;
   position: fixed !important;
   left: 0;
   top: 0;
