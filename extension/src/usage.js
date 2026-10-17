@@ -475,12 +475,12 @@ export function createUsage({ storage, sendNative, version = '', now = Date.now,
     },
 
     // The popup opened (dev build): flush, and today's numbers from the host.
-    async today() {
+    async today(open = true) {
       await loaded;
-      record('popup', {});
+      if (open) record('popup', {});
       const r = await flush({ today: true });
       const s = await storage.get(['hostChannel', TOGGLE_KEY]);
-      return { dev: s?.hostChannel === 'dev', on: s?.[TOGGLE_KEY] !== false, line: todayLine(r.today), error: r.error || '' };
+      return { ok: true, dev: s?.hostChannel === 'dev', on: s?.[TOGGLE_KEY] !== false, line: todayLine(r.today), error: r.error || '' };
     },
 
     // The popup's "Usage log" switch. Turning it off records that, sends what is left, then keeps nothing.

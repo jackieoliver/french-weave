@@ -486,7 +486,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   const handlers = {
     config: () => { if (page) void recheckHost(); return usage.pageView(msg, sender, context(), activeOn); }, // a page load also notices a pause or resume
     swaps: () => usage.batch(msg, sender, () => swaps(msg, sender)),
-    usage: () => usage.pageEvents(msg, sender), usageToday: () => usage.today(), usageToggle: () => usage.toggle(msg.on),
+    usage: () => usage.pageEvents(msg, sender), usageToday: () => usage.today(msg.open !== false), usageToggle: () => usage.toggle(msg.on),
     event: () => record(msg, sender),
     status, syncWords, clearCache,
     applyUpdate: async () => ({ ok: true, ...(await checkUpdate()) }),

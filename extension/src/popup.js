@@ -181,10 +181,23 @@ $('clearCache').addEventListener('click', () => run(async () => {
   $('operation').textContent = `Cleared ${res.removed}`;
 }));
 
+// Dev build only: the local usage log's switch and today's line (usage.js). open: this popup opening, counted once.
+async function showUsage(open = true) {
+  const u = await send({ type: 'usageToday', open });
+  $('usageSection').hidden = !u?.dev;
+  $('usageOn').checked = !!u?.on;
+  $('usageToday').textContent = !u?.on ? 'Off: nothing is recorded.' : u.line || (u.error ? `Log not readable: ${u.error}` : 'Today: nothing recorded yet');
+}
+$('usageOn').addEventListener('change', (e) => run(async () => {
+  await send({ type: 'usageToggle', on: e.target.checked });
+  await showUsage(false);
+}));
+
 void run(async () => {
   [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   try { const u = new URL(tab?.url); if (/^https?:$/.test(u.protocol)) host = u.hostname.replace(/\.$/, ""); } catch { /* internal tab */ }
   await refresh();
+  if (status?.channel === 'dev') await showUsage();
 });
 
 $('openExtensions').addEventListener('click', () => {
