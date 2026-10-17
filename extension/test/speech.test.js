@@ -41,6 +41,8 @@ describe('voiceFor', () => {
     expect(voiceFor([...canada, v('French (Canada) espeak-ng', 'fr-CA')], 'French (Canada)').name).toBe('French (Canada) espeak-ng');
     expect(voiceFor([v('Online bare fr', 'fr', false), ...ESPEAK], 'French').name).toBe('French (France) espeak-ng');
     expect(voiceFor(GOOGLE, 'Canadian French').name).toBe('Google français'); // only online voices: the closest one
+    expect(voiceFor(GOOGLE, 'French (Canada)').name).toBe('Google français'); // no fr-CA voice: any French
+    expect(voiceFor(ESPEAK, 'French (Canada)').name).toBe('French (France) espeak-ng');
   });
   it('reads underscore tags, skips tags Intl cannot read, and breaks ties on the default voice', () => {
     expect(voiceFor([v('bad', ''), v('worse', 'not a tag!'), v('Android', 'fr_FR')], 'French').name).toBe('Android');
@@ -129,7 +131,7 @@ test('speaker in the gloss box says the word on a click or key press, and is nev
     const box = p.gloss();
     const button = box?.querySelector('fw-say');
     expect([box?.parentNode, et.contains(box), box?.firstChild, box?.textContent]).toEqual([p.win.document.documentElement, false, button, 'and · "ay"']);
-    expect([button?.getAttribute('role'), button?.getAttribute('aria-label'), button?.title, button?.tabIndex]).toEqual(['button', 'Say et', 'Say "et"', 0]);
+    expect([button?.getAttribute('role'), button?.getAttribute('aria-label'), button?.title, button?.tabIndex]).toEqual(['button', 'Say et', 'Say "et"', -1]);
     // The gloss text stays hidden from screen readers (the word's aria-label carries it); the button does not.
     expect([box.getAttribute('aria-hidden'), box.querySelector('fw-text')?.getAttribute('aria-hidden')]).toEqual([null, 'true']);
     expect([et.classList.contains('fw-tip'), box.classList.contains('fw-gloss-say')]).toEqual([true, true]);
@@ -364,7 +366,7 @@ test('pressing the speaker leaves the page focus alone and is not the page\'s to
   try {
     const { document } = p.win;
     const [et, tres] = p.words();
-    const seenByPage = [];
+    const seenByPage = []; // the page's own bubbling listeners (capturing ones on window still see a press, as with flips)
     for (const type of ['pointerdown', 'mousedown', 'click']) p.win.addEventListener(type, () => seenByPage.push(type));
     p.over(et);
     const button = p.gloss().querySelector('fw-say');
@@ -389,11 +391,34 @@ test('pressing the speaker leaves the page focus alone and is not the page\'s to
     p.over(tres); p.out(tres, document.body);
     await wait(350);
     expect([p.gloss()?.querySelector('fw-say'), tres.classList.contains('fw-tip'), document.activeElement]).toEqual([button, false, button]);
-    // Nor does a pointer leaving the word itself; focus leaving the speaker closes the gloss.
+    // Nor does a pointer leaving the word itself, and a quick pass over it is still no peek.
     p.over(et); p.out(et, document.body);
-    await wait(350);
+    await wait(800);
+    expect([p.gloss()?.querySelector('fw-say'), p.events]).toEqual([button, []]);
+    // Another window taking focus keeps the gloss for the speaker's return.
+    document.hasFocus = () => false;
+    p.blur(button);
     expect(p.gloss()?.querySelector('fw-say')).toBe(button);
+    document.hasFocus = () => true;
+    p.focus(button);
+    // Focus leaving the speaker within the page closes the gloss.
     p.blur(button, document.body);
+    expect(p.gloss()).toBeNull();
+    // Anything else that closes it while the speaker has focus puts focus back on the word, not in a hidden box.
+    const tabToSpeaker = () => {
+      et.focus(); p.focus(et);
+      const b = p.gloss().querySelector('fw-say');
+      p.key(et, 'Tab'); p.blur(et, b); p.focus(b, et);
+      return b;
+    };
+    tabToSpeaker();
+    p.click(et);
+    expect([p.gloss(), et.textContent, document.activeElement]).toEqual([null, 'and', et]);
+    p.click(et);
+    // A scroll that finds the word gone closes the gloss too.
+    tabToSpeaker();
+    p.win.document.querySelector('#a').remove();
+    p.win.dispatchEvent(new p.win.Event('scroll'));
     expect(p.gloss()).toBeNull();
   } finally {
     await p.win.happyDOM.close();

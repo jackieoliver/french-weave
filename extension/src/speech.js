@@ -25,8 +25,13 @@ function describe(lang) {
   return d;
 }
 
-// "French", "French (Canada)", "Mexican Spanish" or "Bahasa Indonesia" against what a voice's tag names.
-const speaks = (d, want) => !!d && (d.regional.includes(want) || d.names.some((n) => want === n || want.endsWith(` ${n}`)));
+// "French", "French (Canada)", "Mexican Spanish" or "Bahasa Indonesia" against what a voice's tag names; any voice of
+// the language does when none has the region.
+const speaks = (d, want) => {
+  if (!d) return false;
+  const base = want.replace(/\s*\(.*\)$/, ''); // "french (canada)" -> "french"
+  return d.regional.includes(want) || d.names.some((n) => want === n || base === n || want.endsWith(` ${n}`));
+};
 
 // The voice to use, or null when none says the language (then the tip shows no speaker). Best first: a voice on
 // this machine before an online one (Chrome's "Google" voices send the text to Google), always; the regional

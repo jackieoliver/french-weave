@@ -104,7 +104,7 @@ function speakerButton(span, v) {
   const word = span.getAttribute('data-fr') || '';
   const button = document.createElement('fw-say');
   button.setAttribute('role', 'button');
-  button.tabIndex = 0;
+  button.tabIndex = -1; // reached from its word (speakerInput), never as a stop of its own at the end of the page
   button.setAttribute('aria-label', `Say ${word}`);
   // Chrome's "Google" voices (and other online ones) send the text off to be spoken; the button says so.
   const online = /^google/i.test(v.name) ? ' (online voice: the word is sent to Google)' : ' (online voice: the word leaves this computer)';
@@ -166,6 +166,8 @@ function moveTip(span) {
 function hideTip() {
   clearTimeout(peekTimer); peekTimer = null;
   clearTimeout(graceTimer); graceTimer = null;
+  // Keyboard focus on the speaker goes back to its word rather than staying in a hidden box.
+  if (tipButton && document.activeElement === tipButton && tipWord?.isConnected) tipWord.focus({ preventScroll: true });
   for (const el of document.querySelectorAll(`.${SWAP_CLASS}.fw-tip`)) el.classList.remove('fw-tip');
   tipBox?.classList.remove('fw-gloss-on');
   tipWord = null; tipButton = null;
@@ -200,9 +202,11 @@ function disarmTip(e) {
   if (!from || (from !== tipWord && from !== tipButton)) return;
   const into = (el) => !!el?.contains(e.relatedTarget);
   if (into(tipWord) || into(tipButton)) return;
-  if (e.type === 'mouseout' && tipButton && document.activeElement === tipButton) return; // focus leaving closes it
-  if (!tipButton || e.type !== 'mouseout') { hideTip(); return; }
+  // Another window or tab taking focus: the speaker gets it back on return, so its gloss stays.
+  if (e.type === 'focusout' && from === tipButton && !e.relatedTarget && !document.hasFocus()) return;
+  if (e.type === 'focusout' || !tipButton) { hideTip(); return; }
   clearTimeout(peekTimer); peekTimer = null;
+  if (document.activeElement === tipButton) return; // keyboard focus is on the speaker: only focus leaving closes it
   clearTimeout(graceTimer); graceTimer = setTimeout(hideTip, TIP_GRACE_MS);
 }
 function seenVisible() {
@@ -360,7 +364,8 @@ function speakerInput(e) {
   if (!e.repeat) say(tipWord); // a held key would queue the word over and over, and the queue is never cancelled
   return true;
 }
-// A press on the speaker leaves the page's focus where it was (a reply being typed, say), and the page doesn't see it.
+// A press on the speaker leaves the page's focus where it was (a reply being typed, say), and goes no further than
+// this listener (a page's own capturing listeners on window, or added before this script, still see it, as with flips).
 function pressSpeaker(e) {
   if (!e.isTrusted || !tipButton?.contains(e.target)) return;
   if (e.type === 'mousedown') e.preventDefault();
