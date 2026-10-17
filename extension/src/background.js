@@ -183,7 +183,9 @@ async function context() {
   const paused = !!state?.paused;
   const origins = await grantedOrigins();
   const { openRouterDailyUsd, anthropicDailyUsd, ...affecting } = settings; // spend caps change no swap, so cached ones stay
-  const revision = hashKey(JSON.stringify([data.epoch || '', affecting, level, state?.version || '', paused, hasKey, origins]));
+  // The word list's version is left out, so a list change keeps cached swaps (cache.js CACHE_MAX_AGE_MS); its
+  // language stays in, since swaps in another language are no use.
+  const revision = hashKey(JSON.stringify([data.epoch || '', affecting, level, state?.language || '', paused, hasKey, origins]));
   return { settings, level, revision, hasKey, tier: tierFor(hasKey, state), paused, origins, stage: state?.stage || 0 };
 }
 
@@ -350,7 +352,7 @@ async function record(msg, sender) {
   return { ok: true };
 }
 
-// A new word-state version clears the decision cache, because cached swaps were chosen against the old list.
+// A new word-state version keeps the decision cache: cached swaps are asked for again after 3 days (cache.js).
 async function syncWords() {
   hostChecked = Date.now();
   await flush();
@@ -359,7 +361,6 @@ async function syncWords() {
   const version = runningVersion();
   const res = await refresh({ storage: chromeStorage, send, version });
   if (!res.error && version) await store.set({ [REPORTED_KEY]: { version, at: Date.now() } });
-  if (res.changed) await locked(() => cache.clear());
   const after = await store.get(HOST_KEYS);
   const changed = (k) => (before[k] || '') !== (after[k] || '');
   if (HOST_KEYS.some(changed)) await keyChanged(); // setup stored, replaced or removed a key

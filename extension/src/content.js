@@ -4,6 +4,7 @@ import { flatten, applySwaps, revert, toggle, isSwap, swapWord, SWAP_CLASS } fro
 import { hashKey } from './hash.js';
 import { siteEnabled, hasSiteAccess } from './settings.js';
 import { selector, readable } from './page.js';
+import { pickBatch } from './pick.js';
 
 let config = null;
 let observer = null;
@@ -21,9 +22,8 @@ const seen = new Set();
 const failures = new Map(); // text key -> failed model attempts; retried with backoff
 const MAX_RETRIES = 3;
 // Batches this page has out at once. The rest wait here rather than in the worker's queue, so each new batch is made
-// of the passages on screen or nearest to it at that moment (pickBatch), not of ones that scrolled away meanwhile.
-export const MAX_BATCHES_OUT = 2;
-export const BATCH_SIZE = 8;
+// of the passages on screen or nearest to it at that moment (pick.js), not of ones that scrolled away meanwhile.
+const MAX_BATCHES_OUT = 2;
 let batchesOut = 0;
 // Live text (countdowns, tickers, "updated 5s ago") would cost a model call per change, and a page that undoes
 // swaps would be repainted forever. Such an element stays English until the next page view.
@@ -158,33 +158,11 @@ function consider(el) {
   p.els.add(el);
   if (!timer) timer = setTimeout(flush, 250);
 }
-// How far an element is from the window, in pixels (0 when any of it shows); top breaks ties, so on-screen
-// passages go top to bottom.
-function placeOf(el) {
-  const r = el.getBoundingClientRect();
-  const height = window.innerHeight || document.documentElement.clientHeight || 0;
-  return { gap: r.bottom < 0 ? -r.bottom : r.top > height ? r.top - height : 0, top: r.top };
-}
-// The next batch: pending passages not already sent, nearest the window first. A passage whose elements have all
-// left the page (an infinite timeline unmounts what scrolled away) or now show other text is dropped instead: if it
-// comes back, it is asked for again then, or painted at once from memo when an answer already came.
-export function pickBatch(pendingMap, sent, keyOf, size = BATCH_SIZE) {
-  const ranked = [];
-  for (const [key, p] of pendingMap) {
-    if (sent.has(key)) continue;
-    for (const el of p.els) if (!el.isConnected || keyOf(el) !== key) p.els.delete(el);
-    if (!p.els.size) { pendingMap.delete(key); continue; }
-    const places = [...p.els].map(placeOf);
-    ranked.push({ key, text: p.text, gap: Math.min(...places.map((x) => x.gap)), top: Math.min(...places.map((x) => x.top)) });
-  }
-  ranked.sort((a, b) => a.gap - b.gap || a.top - b.top);
-  return ranked.slice(0, size).map(({ key, text }) => ({ key, text }));
-}
 async function flush() {
   timer = null;
   if (!on() || batchesOut >= MAX_BATCHES_OUT) return; // the reply to one out schedules the next
   const gen = generation;
-  const items = pickBatch(pending, inflight, (el) => keys.get(el));
+  const items = pickBatch(pending, inflight, (el) => keys.get(el), window.innerHeight || document.documentElement.clientHeight || 0);
   if (!items.length) return;
   for (const i of items) inflight.add(i.key);
   batchesOut++;
