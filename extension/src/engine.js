@@ -4,8 +4,8 @@
 import * as freeform from './prompt.js';
 import * as candidates from './candidates.js';
 import { buildRequest, callGemini, parseSwapsResponse, FALLBACK_MODEL } from './gemini.js';
-import { callOpenRouter } from './openrouter.js';
-import { callAnthropic } from './anthropic.js';
+import { callOpenRouter, MAX_REQUEST_USD } from './openrouter.js';
+import { callAnthropic, maxCostOf } from './anthropic.js';
 import { validateSwaps, capSwaps } from './levels.js';
 import { clockTime, errorKind } from './modelerror.js';
 import { LAST_TIMEOUT_MS } from './model-config.js';
@@ -88,12 +88,21 @@ export function chunked(items, size) {
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
 }
+const paidBodies = (a, plan) => {
+  const groups = chunked(plan.send, a.step.maxPassages);
+  return groups.map((items) => ({ items, body: buildRequest({ system: plan.system, user: groups.length === 1 ? plan.user : plan.userFor(items),
+    schema: plan.schema, thinkingLevel: a.step.thinking, model: a.step.model }) }));
+};
+// The most a paid step can cost (every chunk), for the worker's spend cap while other calls are out (limits.js).
+export function paidBound(a, plan) {
+  const bodies = paidBodies(a, plan);
+  if (a.keyName === 'anthropic') return bodies.reduce((sum, { body }) => sum + maxCostOf(a.step.model, body, { thinking: a.step.thinking }), 0);
+  return bodies.length * MAX_REQUEST_USD;
+}
 async function callPaid(a, { plan, fetchImpl, wait, count }) {
   const call = a.keyName === 'anthropic' ? callAnthropic : callOpenRouter;
-  const groups = chunked(plan.send, a.step.maxPassages);
-  const settled = await Promise.allSettled(groups.map(async (items) => {
-    const user = groups.length === 1 ? plan.user : plan.userFor(items);
-    const body = buildRequest({ system: plan.system, user, schema: plan.schema, thinkingLevel: a.step.thinking, model: a.step.model });
+  const groups = paidBodies(a, plan);
+  const settled = await Promise.allSettled(groups.map(async ({ body }) => {
     try {
       const reply = await call({ fetchImpl, apiKey: a.key, model: a.step.model, body, thinking: a.step.thinking, timeoutMs: wait });
       await count({ costUsd: reply.costUsd, status: 200 });
@@ -121,9 +130,13 @@ async function callPaid(a, { plan, fetchImpl, wait, count }) {
 // onOpenRouter({ costUsd, status }) and onAnthropic({ costUsd, status, credits }): after each request to that provider,
 // so the worker can count spend and stop on a refused key or an account that can't pay. timeoutMs: tests only;
 // otherwise each step's own.
+// admit(attempt, boundUsd): awaited before each request, for the worker's limits while several batches run at once
+// (one Gemini request at a time, the paid caps; limits.js). Resolves to { release } once the request may start, called
+// when it is done and its cost counted, or { error } when it may not (a cap reached meanwhile): that key's steps are
+// left out, and the error is thrown if no request was made at all. boundUsd: the most a paid step can cost.
 export async function requestSwaps({ apiKey, keys: given, model, chain: givenChain, design = 'freeform', level: chosen, batch, words, language,
   shownToday, page = '', fetchImpl, timeoutMs, cooldown = new Map(), daily = new Map(), now = Date.now, onOpenRouter = async () => {},
-  onAnthropic = async () => {} }) {
+  onAnthropic = async () => {}, admit = async () => ({ release: () => {} }) }) {
   const level = words ? chosen : Math.min(chosen, 2); // the bundled lists stop at Level 2
   const keys = given || { main: apiKey };
   const chain = givenChain || legacyChain(model);
@@ -141,8 +154,18 @@ export async function requestSwaps({ apiKey, keys: given, model, chain: givenCha
   const overloaded = new Set(); // steps whose model was busy or slow: the backup key would only wait again
   const stopped = new Set(); // paid providers that refused the key or can't be paid: their other steps would only fail too
   const skip = (b) => overloaded.has(b.index) || blocked(b.slot) || stopped.has(b.keyName);
+  const refused = []; // admit's errors
+  let tried = 0;
   for (const [n, a] of open.entries()) {
     if (skip(a)) continue;
+    const turn = await admit(a, PAID[a.keyName] ? paidBound(a, plan) : 0);
+    if (!turn?.release) {
+      refused.push(turn?.error || new Error(`${labelFor(a)}: not available`));
+      stopped.add(a.keyName);
+      continue;
+    }
+    if (skip(a)) { turn.release(); continue; } // cooled down or stopped by another request while this one waited
+    tried++;
     const later = open.slice(n + 1).some((b) => !skip(b));
     const wait = timeoutMs || (later ? a.step.timeoutMs : Math.max(a.step.timeoutMs || 0, LAST_TIMEOUT_MS));
     let costUsd = 0;
@@ -182,7 +205,15 @@ export async function requestSwaps({ apiKey, keys: given, model, chain: givenCha
       errors.push(`${labelFor(a)}: ${timeout ? 'timeout' : e?.message || e}`);
       failures.push({ provider: a.step.provider, keyName: a.keyName, cooled: !!pause, status: e?.status, googleStatus: e?.googleStatus, keyRejected: e?.keyRejected,
         daily: e?.daily, timeout, network: !!e?.network, credits: !!e?.credits });
+    } finally {
+      turn.release();
     }
+  }
+  // No request went out: every step was refused by admit, or cooled down by other batches while this one waited
+  // (as one batch at a time would have found them). Gemini's own daily cap first, then the wait.
+  if (!tried) {
+    const cooled = all.filter((a) => blocked(a.slot)).map((a) => a.slot);
+    throw refused.find((e) => e?.kind === 'local') || (cooled.length ? waitError(cooled, cooldown, daily, now()) : refused[0]);
   }
   const gemini = all.filter((a) => a.step.provider === 'gemini').map((a) => a.slot);
   const geminiFailures = failures.filter((f) => f.provider === 'gemini');

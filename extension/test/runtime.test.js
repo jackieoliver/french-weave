@@ -214,13 +214,15 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     expect(el.querySelector('.fw-word')).toBeNull();
     expect(Object.keys(local).filter((k) => k.startsWith('c:'))).toHaveLength(0);
 
-    // A new word-state version changes the revision; an old revision's request is stale.
+    // A new word-list version keeps the revision (cached swaps stay up to 3 days); an old revision's request is stale.
     const oldRevision = (await dispatch({ type: 'config' }, page())).revision;
     hostState = { ...hostState, version: 'test.2', stage: 2 };
     await call({ type: 'syncWords' });
     config = await dispatch({ type: 'config' }, page());
-    expect(config.revision).not.toBe(oldRevision);
+    expect(config.revision).toBe(oldRevision);
     const text = 'I enjoy cats and dogs every single day.';
+    const oldReply = await dispatch({ type: 'swaps', revision: 'an-old-revision', items: [{ key: `an-old-revision:${hashKey(text)}`, text }] }, page());
+    expect(oldReply.stale).toBe(true);
     const disabledReply = await dispatch({ type: 'swaps', revision: config.revision, items: [{ key: `${config.revision}:${hashKey(text)}`, text }] }, page());
     expect(disabledReply.stale).toBe(true);
     await call({ type: 'save', settings: { enabled: true } }); await wait();

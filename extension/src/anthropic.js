@@ -68,6 +68,18 @@ export function toAnthropicBody(model, geminiBody, { thinking = 'low' } = {}) {
   };
 }
 
+// The most one request with this body can cost, for the worker's spend cap under concurrency (limits.js): every
+// byte of the request counted as an input token (a token is never shorter than a byte) and the reply as max_tokens
+// of output (thinking included). Infinity for a model without a price, which then runs one call at a time.
+export function maxCostOf(model, geminiBody, { thinking = 'low' } = {}) {
+  const p = PRICES[model];
+  if (!p) return Infinity;
+  const body = toAnthropicBody(model, geminiBody, { thinking });
+  const bytes = new TextEncoder().encode(JSON.stringify(body)).length;
+  const long = bytes > p.longOver;
+  return (bytes * (long ? p.longInput : p.input) + body.max_tokens * (long ? p.longOutput : p.output)) / 1e6;
+}
+
 // Tokens from a reply's usage: prompt (input, cache reads and writes), answer (output without thinking), thinking.
 export function usageOf(usage = {}) {
   const n = (v) => (Number(v) > 0 ? Number(v) : 0);
