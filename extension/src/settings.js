@@ -1,12 +1,13 @@
 // Preferences, stored under chrome.storage.local["settings"]. The keys are stored apart from these, so the config
 // pages get never carries them.
-import { MODELS } from './model-config.js';
+import { CHOICES } from './model-config.js';
 import { DEFAULT_DAILY_CAP_USD } from './openrouter.js';
 import { DEFAULT_ANTHROPIC_DAILY_CAP_USD } from './anthropic.js';
 
 export const DEFAULT_SETTINGS = {
   enabled: true,
-  modelChoice: 'auto', // 'auto': the language's chain (model-config.js); else a Gemini model tried first
+  modelChoice: 'auto', // 'auto': the language's chain (model-config.js); HAIKU_CHOICE: Claude Haiku first at every
+  // level; else a Gemini model tried first
   openRouterDailyUsd: DEFAULT_DAILY_CAP_USD, // OpenRouter stops for the day once its reported spend reaches this
   anthropicDailyUsd: DEFAULT_ANTHROPIC_DAILY_CAP_USD, // likewise the direct Anthropic key, by spend computed from usage
   levelOverride: 0, // 0 = follow the Claude Code stage (Level 1 without the plugin)
@@ -20,7 +21,7 @@ export function cleanSettings(s = {}) {
   if (typeof s.newSitesEnabled === 'boolean') d.newSitesEnabled = s.newSitesEnabled;
   // Builds before the chain stored model, always set (default gemini-3.5-flash-lite, now step 2 of Auto); only the
   // paid 3.8 Flash was a choice worth keeping.
-  if (s.modelChoice === 'auto' || Object.hasOwn(MODELS, s.modelChoice)) d.modelChoice = s.modelChoice;
+  if (Object.hasOwn(CHOICES, s.modelChoice)) d.modelChoice = s.modelChoice;
   else if (s.model === 'gemini-3.8-flash') d.modelChoice = s.model;
   for (const name of ['openRouterDailyUsd', 'anthropicDailyUsd']) {
     const cap = Number(s[name]);

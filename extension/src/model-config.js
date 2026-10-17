@@ -41,7 +41,7 @@ export const MODEL_CONFIG = {
 
 export const LAST_TIMEOUT_MS = 20000;
 
-// Models the popup offers as the first step instead of the language's own (Auto).
+// Gemini models the popup offers as the first step instead of the language's own (Auto).
 export const MODELS = {
   'gemini-3.1-flash-lite': 'Gemini 3.1 Flash-Lite',
   'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
@@ -50,10 +50,31 @@ export const MODELS = {
 export const THINKING = { 'gemini-3.1-flash-lite': 'medium', 'gemini-3.5-flash-lite': 'low', 'gemini-3.8-flash': 'low' };
 export const STEP_TIMEOUT_MS = { 'gemini-3.1-flash-lite': 30000, 'gemini-3.5-flash-lite': 8000, 'gemini-3.8-flash': 20000 };
 
-// The design and chain for a language; choice: the popup's model ('auto', or a key of MODELS), which goes first,
-// followed by the rest of the language's chain. level: the extension's level (1-4); on Auto, a level listed in
-// levelFirst puts its step first, by the first provider in levelFirst.via the reader has a key for (has: { anthropic,
-// openrouter }, whether each key is set, capped or not). A model picked in the popup goes first instead, as before.
+// The popup's choice that puts the levelFirst step (Claude Haiku 5.5 at low effort) first at every level, by the
+// same provider preference as Auto. Without an Anthropic or OpenRouter key it has no step, so the chain is Auto's.
+export const HAIKU_CHOICE = 'claude-haiku-low';
+export const HAIKU_LABEL = 'Claude Haiku 5.5 (low)';
+
+// The levels Auto puts the Haiku step first at, as the popup writes them: "L1-2".
+export function haikuLevelsText(config = MODEL_CONFIG) {
+  const levels = [...(config.default.levelFirst?.levels || [])].sort((a, b) => a - b);
+  if (!levels.length) return '';
+  const contiguous = levels.every((l, i) => !i || l === levels[i - 1] + 1);
+  return `L${contiguous && levels.length > 1 ? `${levels[0]}-${levels.at(-1)}` : levels.join(', ')}`;
+}
+
+// Every choice the popup's Model menu offers, in order: id -> label.
+export const CHOICES = {
+  auto: `Auto (Haiku at ${haikuLevelsText()}, else Gemini)`,
+  [HAIKU_CHOICE]: HAIKU_LABEL,
+  ...MODELS,
+};
+
+// The design and chain for a language; choice: the popup's model ('auto', HAIKU_CHOICE, or a key of MODELS), which
+// goes first, followed by the rest of the language's chain. level: the extension's level (1-4); on Auto, a level
+// listed in levelFirst puts its step first, by the first provider in levelFirst.via the reader has a key for (has:
+// { anthropic, openrouter }, whether each key is set, capped or not). HAIKU_CHOICE puts that same step first at every
+// level. A Gemini model picked in the popup goes first instead, with no Haiku step.
 export function configFor(language, choice = 'auto', config = MODEL_CONFIG, level = 0, has = {}) {
   const own = config.languages?.[language] || {};
   const design = own.design || config.default.design;
@@ -64,9 +85,16 @@ export function configFor(language, choice = 'auto', config = MODEL_CONFIG, leve
   } else {
     const levelFirst = own.levelFirst || config.default.levelFirst;
     const via = Object.keys(levelFirst?.via || {}).find((provider) => has[provider]);
-    if (via && levelFirst.levels?.includes(Number(level))) chain = [levelFirst.via[via], ...chain];
+    const atLevel = choice === HAIKU_CHOICE || levelFirst?.levels?.includes(Number(level));
+    if (via && atLevel) chain = [levelFirst.via[via], ...chain];
   }
   return { design, chain };
 }
 
-export const modelLabel = (model) => MODELS[model] || String(model || '').replace(/^.*\//, '');
+// Names the popup shows for the models in a chain; anything else shows its id without the provider prefix.
+const LABELS = {
+  ...MODELS,
+  'claude-haiku-5-5': 'Claude Haiku 5.5 low',
+  'anthropic/claude-haiku-5.5': 'Claude Haiku 5.5 low',
+};
+export const modelLabel = (model) => LABELS[model] || String(model || '').replace(/^.*\//, '');
