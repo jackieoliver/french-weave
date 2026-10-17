@@ -1,5 +1,6 @@
 import { resolveLevel, MAX_BUILT_LEVEL } from './levels.js';
-import { MODELS, modelLabel } from './model-config.js';
+import { modelLabel } from './model-config.js';
+import { modelOptions, modelNote, servedLabel, nextText } from './popup-model.js';
 import { siteEnabled, siteOn, hasSiteAccess } from './settings.js';
 import { modelErrorText, openRouterText, anthropicText } from './modelerror.js';
 import { readCached } from './hostsource.js';
@@ -46,12 +47,19 @@ async function refresh() {
   const { stage, chosen } = resolveLevel(s, c.stage);
   $('levelInfo').textContent = `L${chosen}${stage && chosen !== stage ? ` (Claude Code stage ${stage})` : ''}${chosen > MAX_BUILT_LEVEL ? ` · L${MAX_BUILT_LEVEL} rules for now` : ''}`;
   $('levelOverride').value = String(s.levelOverride || 0);
-  $('model').value = s.modelChoice;
-  const last = status.lastServed;
+  const menu = $('model');
+  menu.replaceChildren(...modelOptions(status).map(({ value, label, disabled }) => {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    opt.disabled = disabled;
+    return opt;
+  }));
+  menu.value = s.modelChoice;
+  $('modelNote').textContent = modelNote(status);
+  $('nextInfo').textContent = nextText(status);
   const served = Object.entries(status.served?.counts || {}).map(([m, n]) => `${modelLabel(m)} ${n}`).join(' · ');
-  $('modelInfo').textContent = [last?.model ? `${modelLabel(last.model)}${last.keyName === 'backup' ? ' (backup key)'
-    : last.provider === 'anthropic' ? ' (Anthropic)' : last.provider === 'openrouter' ? ' (OpenRouter)' : ''}` : 'none yet',
-    served && `today: ${served}`].filter(Boolean).join('; ');
+  $('modelInfo').textContent = [servedLabel(status.lastServed) || 'none yet', served && `today: ${served}`].filter(Boolean).join('; ');
   $('apiKey').value = '';
   $('backupKey').value = '';
   $('backupKey').placeholder = status.backupKey ? 'saved (paste to replace)' : status.hostBackupKey ? 'from setup (paste to override)' : 'optional';
@@ -114,13 +122,6 @@ async function inject() {
     await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['src/content.css'] });
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['src/content-loader.js'] });
   } catch { $('notice').textContent = 'Reload this page to start. Chrome blocks extensions on some pages.'; }
-}
-
-for (const [id, label] of [['auto', 'Auto (recommended)'], ...Object.entries(MODELS)]) {
-  const opt = document.createElement('option');
-  opt.value = id;
-  opt.textContent = label;
-  $('model').appendChild(opt);
 }
 
 $('enabled').addEventListener('change', (e) => run(() => save({ settings: { enabled: e.target.checked } })));

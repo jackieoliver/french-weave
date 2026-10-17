@@ -94,7 +94,8 @@ and paste the block it prints. It carries your real progress; re-export about on
   your key. Links and inline code go with their sentence but are never changed; code blocks, forms and editable text
   are skipped. Without a key, no page text leaves your computer: swaps come from a list inside the extension.
 - With an Anthropic key (optional), the same text goes straight to Anthropic (Claude Haiku 5.5) first for every batch
-  at Levels 1-2. Without that key nothing goes there directly.
+  at Levels 1-2, or at every level if you pick Claude Haiku as the popup's Model. Without that key nothing goes there
+  directly.
 - With an OpenRouter key (optional), the same text goes to OpenRouter and the model's provider: Anthropic (Claude
   Haiku 5.5) first for every batch at Levels 1-2 if you have no Anthropic key, and OpenAI (gpt-6-luna) for any batch
   both Gemini steps failed to answer. Without that key nothing goes there.
@@ -145,8 +146,11 @@ per language in `extension/src/model-config.js` (today the same for every langua
 - OpenRouter stops for the day once its reported spend reaches the cap (default $0.25, about 125-165 Claude Haiku
   batches; set in the popup), or when OpenRouter answers 402 (credits used up). The popup shows which model served
   the last batch and through which provider, today's count per model, and today's Anthropic and OpenRouter spend.
-- **Model** in the popup: **Auto** follows the chain; picking a Gemini model puts it first instead of Claude Haiku
-  (3.8 Flash needs a paid key).
+- **Model** in the popup: **Auto** follows the chain (Claude Haiku first at Levels 1-2 with an Anthropic or
+  OpenRouter key, else Gemini). **Claude Haiku 5.5 (low)** puts Haiku first at every level, by the same key
+  preference, with the rest of the chain as the fallback; without either key it can't be picked. Picking a Gemini
+  model puts it first instead of Claude Haiku (3.8 Flash needs a paid key). **Next batch** names the model that will
+  serve the next batch at the level in effect, and **Last batch** the one that served the last.
 
 ## Turn it off
 
@@ -161,8 +165,10 @@ per language in `extension/src/model-config.js` (today the same for every langua
 
 Setup turns on Claude Code's auto-update for French Weave, so new versions install themselves: a few minutes into
 a session Claude Code shows "Plugin updated", and your next session runs the new version and says so, keeping your
-progress. If you use the extension, it reloads itself with the new version within about 30 minutes, or right
-away when you open its toolbar popup (the reload arrow on French Weave in `chrome://extensions` also works).
+progress. If you use the extension, it reloads itself with the new version within about 5 minutes while Chrome is
+open, or right away when you open its toolbar popup (the reload arrow on French Weave in `chrome://extensions` also
+works). `python3 ~/.french-weave/app/scripts/fw.py check` shows the version Chrome last reported running and
+when, and warns if it differs from the copy on disk.
 Keep Developer mode on in `chrome://extensions`: with it off, Chrome turns the extension off when it reloads.
 Auto-update is a switch in `/plugin` (Marketplaces, french-weave); setup leaves it alone if you've set it, or with
 `--no-auto-update`.

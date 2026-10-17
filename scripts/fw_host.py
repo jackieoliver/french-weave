@@ -3,10 +3,14 @@
 
 Messages (JSON, 4-byte native-endian length prefix, one per line of conversation):
   {"type": "ping"}                      -> {"ok": true, "host": 1}
-  {"type": "state"}                     -> {"ok": true, "version", "stage", "paused", "language", "words": [{fr, en, hint, reading?, status}],
+  {"type": "state", "extension"?: "0.2.8"}
+                                        -> {"ok": true, "version", "stage", "paused", "language", "words": [{fr, en, hint, reading?, status}],
                                             "prefs": {"extension_sites"?: "all" | "ask"} (absent means "all"),
                                             "geminiKey"?, "geminiBackupKey"?, "openRouterKey"?, "anthropicKey"?: keys setup stored}
   {"type": "events", "events": [{"word", "kind": "seen"|"flip"|"peek", "day"?}]} -> {"ok": true, "applied": n}
+
+"extension" (0.2.8 on) is the version Chrome is running; it is recorded in <state dir>/extension-seen.json as
+{"version", "at"} for `fw.py check`. Extensions before 0.2.8 leave it out, and hosts before 0.2.8 ignore it.
 """
 import json
 from pathlib import Path
@@ -19,6 +23,7 @@ import fwlib  # noqa: E402
 
 MAX_EVENTS = 500
 DAY = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+VERSION = re.compile(r'^[0-9][0-9A-Za-z.+-]{0,39}$')
 
 
 def read_message(stream):
@@ -43,6 +48,8 @@ def handle(message):
     if kind == 'ping':
         return {'ok': True, 'host': 1}
     if kind == 'state':
+        if isinstance(message.get('extension'), str) and VERSION.match(message['extension']):
+            fwlib.record_extension_seen(message['extension'])
         with fwlib.editing() as state:
             pass  # applies today's promotion before answering
         reply = dict(fwlib.public_state(state), ok=True, prefs=state.get('prefs') or {})
