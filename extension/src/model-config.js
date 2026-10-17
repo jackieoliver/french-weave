@@ -14,7 +14,10 @@
 // in the same notes, 2026-10-16 (Opus grading, 24 passages, Levels 1-2, six languages): Claude Haiku 5.5 at low
 // reasoning made 2.3% bad swaps [95% interval 1.4-3.7] against 15.3% for gemini-3.1-flash-lite medium and 8.1% for
 // the best Gemini setting (3.5-flash-lite high); median about 12 s, worst-language p90 22.9 s, about $0.0015-0.002
-// a request.
+// a request. maxPassages: the most passages one request of that step carries; a bigger batch goes as chunks of that
+// size in parallel (engine.js). Direct Haiku at 4 (French, Levels 1-2, internal test set, Opus-graded, 2026-10-17): median
+// 5.6 s, p90 10.8 s, 1/119 bad swaps, against 9.5 s, 13.7 s and 0/118 with all 8 in one request, for about 22% more
+// cost a page. Haiku 5.5 takes no fast mode or fixed thinking budget, so batch size is the speed lever.
 export const MODEL_CONFIG = {
   default: {
     design: 'candidates', // or 'freeform': the model writes the swaps itself (prompt.js)
@@ -26,7 +29,7 @@ export const MODEL_CONFIG = {
     levelFirst: {
       levels: [1, 2],
       via: { // in order of preference
-        anthropic: { provider: 'anthropic', model: 'claude-haiku-5-5', thinking: 'low', timeoutMs: 35000 },
+        anthropic: { provider: 'anthropic', model: 'claude-haiku-5-5', thinking: 'low', timeoutMs: 35000, maxPassages: 4 },
         openrouter: { provider: 'openrouter', model: 'anthropic/claude-haiku-5.5', thinking: 'low', timeoutMs: 35000 },
       },
     },

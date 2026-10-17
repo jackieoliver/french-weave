@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { requestSwaps, attemptsFor } from '../src/engine.js';
+import { requestSwaps, attemptsFor, chunked } from '../src/engine.js';
 import { MODEL_CONFIG, configFor } from '../src/model-config.js';
 import { RESPONSE_SCHEMA } from '../src/candidates.js';
 import { OPENROUTER_URL, toOpenRouterBody } from '../src/openrouter.js';
@@ -494,7 +494,7 @@ const ALL_KEYS = { ...KEYS, anthropic: 'synthetic-anthropic' };
 describe('Claude Haiku direct from Anthropic', () => {
   test('provider choice: Anthropic key -> direct; OpenRouter key only -> OpenRouter; neither -> no Haiku step', () => {
     const first = (has, level = 2) => configFor('French', 'auto', undefined, level, has).chain[0];
-    expect(first({ anthropic: true, openrouter: true })).toEqual({ provider: 'anthropic', model: DIRECT, thinking: 'low', timeoutMs: 35000 });
+    expect(first({ anthropic: true, openrouter: true })).toEqual({ provider: 'anthropic', model: DIRECT, thinking: 'low', timeoutMs: 35000, maxPassages: 4 });
     expect(first({ anthropic: true })).toMatchObject({ provider: 'anthropic', model: DIRECT });
     expect(first({ openrouter: true })).toMatchObject({ provider: 'openrouter', model: HAIKU });
     expect(first({})).toEqual(CHAIN[0]);
@@ -555,6 +555,64 @@ describe('Claude Haiku direct from Anthropic', () => {
     const { calls, fetchImpl } = recorder((who) => (who.startsWith('anthropic') ? status(529) : quota429(MINUTE)));
     await run(fetchImpl, { chain, keys: { main: KEYS.main, anthropic: 'synthetic-anthropic' } }).catch(() => {});
     expect(calls).toEqual([`anthropic ${DIRECT} synthetic-anthropic`, 'gemini-3.1-flash-lite synthetic-main', 'anthropic claude-other synthetic-anthropic']);
+  });
+
+  // Direct Haiku carries at most 4 passages a request: a batch of up to 8 goes as chunks of 4 at once, merged.
+  const NINE = Array.from({ length: 9 }, (_, i) => ({ id: `p${i}`, text: `The cat number ${i} and the dog sleep all day long.` }));
+  const idsIn = (init) => JSON.parse(JSON.parse(init.body).messages.at(-1).content.replace(/^Passages:\n/, '')).map((x) => x.id);
+  test('chunks: split in order, at most the step\'s size; no size or a small batch is one request', () => {
+    expect(chunked([1, 2, 3, 4, 5, 6, 7, 8, 9], 4)).toEqual([[1, 2, 3, 4], [5, 6, 7, 8], [9]]);
+    expect(chunked([1, 2, 3, 4], 4)).toEqual([[1, 2, 3, 4]]);
+    expect(chunked([1, 2, 3], undefined)).toEqual([[1, 2, 3]]);
+  });
+  test('a batch of 9: three Anthropic requests of 4, 4 and 1 passages, in parallel, merged; each counted on its own', async () => {
+    const chain = configFor('French', 'auto', undefined, 2, { anthropic: true }).chain;
+    const sent = [];
+    let open = 0;
+    let most = 0;
+    const fetchImpl = async (url, init) => {
+      expect(url).toBe(ANTHROPIC_URL);
+      sent.push(idsIn(init));
+      open += 1; most = Math.max(most, open);
+      await new Promise((r) => setTimeout(r, 20));
+      open -= 1;
+      return anthropicOk(init);
+    };
+    const spend = [];
+    const r = await run(fetchImpl, { chain, batch: NINE, keys: { main: KEYS.main, anthropic: 'synthetic-anthropic' }, onAnthropic: async (x) => { spend.push(x); } });
+    expect(sent).toEqual([['p0', 'p1', 'p2', 'p3'], ['p4', 'p5', 'p6', 'p7'], ['p8']]);
+    expect(most).toBe(3);
+    expect(Object.keys(r.results).sort()).toEqual(NINE.map((x) => x.id));
+    for (const id of Object.keys(r.results)) expect(r.results[id].map((s) => s.f)).toEqual(['et']);
+    expect(r).toMatchObject({ provider: 'anthropic', requests: 3, usage: { promptTokens: 12000, answerTokens: 1200, thinkingTokens: 600 } });
+    expect(r.costUsd).toBeCloseTo(0.0021, 10);
+    expect(spend.length).toBe(3);
+    expect(spend.every((x) => x.status === 200 && x.costUsd > 0)).toBe(true);
+    // OpenRouter's Haiku and Gemini keep one request for the whole batch.
+    for (const has of [{ openrouter: true }, {}]) {
+      const { calls, fetchImpl: f } = recorder((who, init) => (who.startsWith('openrouter') ? routerOk(init) : geminiOk(JSON.parse(init.body))));
+      const one = await run(f, { chain: configFor('French', 'auto', undefined, 2, has).chain, batch: NINE });
+      expect(calls.length).toBe(1);
+      expect(Object.keys(one.results).length).toBe(9);
+    }
+  });
+  test('one chunk failing fails the step: the whole batch goes on to Gemini; a refused key in any chunk stops Anthropic', async () => {
+    const chain = configFor('French', 'auto', undefined, 2, { anthropic: true }).chain;
+    for (const [fail, stops] of [[() => status(529), false], [() => status(401), true], [lowCredit, true]]) {
+      const geminiIds = [];
+      const spend = [];
+      const fetchImpl = async (url, init) => {
+        if (url === ANTHROPIC_URL) return idsIn(init).includes('p4') ? fail() : anthropicOk(init);
+        const body = JSON.parse(init.body);
+        geminiIds.push(JSON.parse(body.contents[0].parts[0].text.replace(/^Passages:\n/, '')).map((x) => x.id));
+        return geminiOk(body);
+      };
+      const r = await run(fetchImpl, { chain, batch: NINE, keys: { main: KEYS.main, anthropic: 'synthetic-anthropic' }, onAnthropic: async (x) => { spend.push(x); } });
+      expect(r).toMatchObject({ provider: 'gemini', step: 2 });
+      expect(geminiIds).toEqual([NINE.map((x) => x.id)]);
+      expect(spend.filter((x) => x.status === 200).length).toBe(2); // the chunks that answered are paid for
+      expect(spend.some((x) => x.status === 401 || x.credits)).toBe(stops);
+    }
   });
 
   test('worker: Level 2 with an Anthropic key (and an OpenRouter key) goes direct; stops, the cap and setup\'s key', async () => {
