@@ -567,6 +567,7 @@ chrome.runtime.onStartup.addListener(arm);
 chrome.alarms.onAlarm.addListener((a) => {
   if (a.name === ALARM) void syncWords().catch(() => {});
   if (a.name === ALARM || a.name === UPDATE_ALARM) void checkUpdate();
+  if (a.name === UPDATE_ALARM) void usage.flush().catch(() => {}); // a buffer whose 20 s timer died with its worker
 });
 // Right after a reload into a new version, tell the native host at once, even if Chrome skipped onInstalled. Only
 // when an earlier version was reported: a first install syncs from onInstalled. recheckHost skips this when arm()'s

@@ -78,7 +78,7 @@ test('usage: the buffer is bounded, persisted for the next worker, and flushed i
   await h.settle();
   expect(h.sent).toEqual([]); // worker_start waits in the buffer
   expect((await h.stored()).events.map((e) => e.k)).toEqual(['worker_start']);
-  expect(h.timers.map((t) => t.ms)).toEqual([60000]); // a flush is due within a minute
+  expect(h.timers.map((t) => t.ms)).toEqual([20000]); // a flush is due before Chrome stops an idle worker (30 s)
   // Below FLUSH_AT nothing is sent; at FLUSH_AT the buffer goes at once.
   fail = true;
   for (let i = 0; i < FLUSH_AT + MAX_EVENTS; i++) h.usage.record('word', { what: 'seen', word: 'et' });

@@ -16,7 +16,9 @@ export const BUFFER_KEY = 'usageLog';
 export const TOGGLE_KEY = 'usageOn'; // false: the popup's "Usage log" is off
 export const MAX_EVENTS = 500; // in the buffer; the oldest go first, and how many is recorded (overflow)
 export const FLUSH_AT = 100; // send at once from this many events
-export const FLUSH_DELAY_MS = 60000; // else this long after the first unsent one
+// Else this long after the first unsent one. Under 30 s, because Chrome stops an idle service worker after 30 s and
+// its timers with it; a buffer a stopped worker left is sent by the worker's 5-minute alarm (background.js).
+export const FLUSH_DELAY_MS = 20000;
 
 // ---- what may be stored ----
 
