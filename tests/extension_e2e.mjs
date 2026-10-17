@@ -89,9 +89,10 @@ try {
     await sw.evaluate((level) => chrome.storage.local.get('settings')
       .then(({ settings }) => chrome.storage.local.set({ settings: { ...settings, levelOverride: level } })), Number(process.env.E2E_LEVEL));
   }
-  if (process.env.E2E_MODEL) {
-    await sw.evaluate((modelChoice) => chrome.storage.local.get('settings')
-      .then(({ settings }) => chrome.storage.local.set({ settings: { ...settings, modelChoice } })), process.env.E2E_MODEL);
+  for (const [env, field] of [['E2E_MODEL', 'modelChoice'], ['E2E_REASONING', 'reasoning']]) {
+    if (!process.env[env]) continue;
+    await sw.evaluate(([name, value]) => chrome.storage.local.get('settings')
+      .then(({ settings }) => chrome.storage.local.set({ settings: { ...settings, [name]: value } })), [field, process.env[env]]);
   }
   // Each model request the worker makes: provider, status, time to the reply, and tokens (Anthropic's usage). The
   // worker calls the global fetch, so wrapping it here sees every request; nothing of the request is kept.
@@ -226,6 +227,11 @@ try {
   out.popupModelOptions = await popup.$$eval('#model option', (os) => os.map((o) => `${o.disabled ? '!' : ''}${o.textContent}`));
   out.popupNext = await popup.$eval('#nextInfo', (e) => e.textContent);
   out.popupModelNote = await popup.$eval('#modelNote', (e) => e.textContent);
+  out.popupReasoning = await popup.$eval('#reasoning', (e) => e.value);
+  out.popupReasoningOptions = await popup.$$eval('#reasoning option', (os) => os.map((o) => `${o.disabled ? '!' : ''}${o.textContent}`));
+  out.popupMode = await popup.$eval('#modeInfo', (e) => e.textContent);
+  out.popupVersion = await popup.$eval('h1', (e) => e.textContent);
+  out.popupVersionInfo = await popup.$eval('#versionInfo', (e) => e.textContent);
   if (process.env.E2E_SCREENSHOT) {
     await popup.setViewportSize({ width: 300, height: 900 });
     await popup.screenshot({ path: process.env.E2E_SCREENSHOT, fullPage: true });
