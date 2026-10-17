@@ -98,6 +98,8 @@ and paste the block it prints. It carries your real progress; re-export about on
 - With an OpenRouter key (optional), the same text goes to OpenRouter and the model's provider: Anthropic (Claude
   Haiku 5.5) first for every batch if you have no Anthropic key (unless you pick a Gemini model), and OpenAI
   (gpt-6-luna) for any batch both Gemini steps failed to answer. Without that key nothing goes there.
+- Each batch sent to a model also carries the page's title and site name (up to 200 characters), so the model can
+  leave sensitive pages alone.
 - With a free Gemini key, Google may use that text to improve its products, and human reviewers may read it. If you
   don't want that, use a paid key (turn on billing for the key's Google Cloud project): Google doesn't use paid-key
   prompts that way. In the EEA, UK and Switzerland the paid terms cover free keys too.
@@ -164,8 +166,7 @@ per language in `extension/src/model-config.js` (today the same for every langua
   level the newly picked model doesn't take goes back to Recommended.
 - The **Mode** line says what that comes to, e.g. "Mode: Recommended → Claude Haiku 5.5 · low reasoning · Level 2
   (Auto)"; **Next batch** names the model that will serve the next batch (after daily caps and busy models), and
-  **Last batch** the one that served the last. The header shows the running version, and "dev build" for a plugin
-  installed from the french-weave-dev marketplace.
+  **Last batch** the one that served the last. The header shows the running version.
 
 ## Turn it off
 
