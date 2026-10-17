@@ -3,14 +3,14 @@
 
 Messages (JSON, 4-byte native-endian length prefix, one per line of conversation):
   {"type": "ping"}                      -> {"ok": true, "host": 1}
-  {"type": "state", "extension"?: "0.2.8"}
+  {"type": "state", "extension"?: "0.2.9"}
                                         -> {"ok": true, "version", "stage", "paused", "language", "words": [{fr, en, hint, reading?, status}],
                                             "prefs": {"extension_sites"?: "all" | "ask"} (absent means "all"),
                                             "geminiKey"?, "geminiBackupKey"?, "openRouterKey"?, "anthropicKey"?: keys setup stored}
   {"type": "events", "events": [{"word", "kind": "seen"|"flip"|"peek", "day"?}]} -> {"ok": true, "applied": n}
 
-"extension" (0.2.8 on) is the version Chrome is running; it is recorded in <state dir>/extension-seen.json as
-{"version", "at"} for `fw.py check`. Extensions before 0.2.8 leave it out, and hosts before 0.2.8 ignore it.
+"extension" (0.2.9 on) is the version Chrome is running; it is recorded in <state dir>/extension-seen.json as
+{"version", "at"} for `fw.py check`. Extensions before 0.2.9 leave it out, and hosts before 0.2.9 ignore it.
 """
 import json
 from pathlib import Path

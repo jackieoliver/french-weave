@@ -229,7 +229,7 @@ def record_extension_seen(version, now=None):
 
 
 def extension_seen():
-    """{"version", "at"} from the last report, or None before any (an extension before 0.2.8 never reports)."""
+    """{"version", "at"} from the last report, or None before any (an extension before 0.2.9 never reports)."""
     data = read_json(home() / EXTENSION_SEEN)
     if not isinstance(data, dict) or not isinstance(data.get('version'), str) or not isinstance(data.get('at'), str):
         return None

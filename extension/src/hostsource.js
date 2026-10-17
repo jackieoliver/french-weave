@@ -44,7 +44,7 @@ export async function readCached(storage) {
 
 // Asks the host for the word state and stores it. Never throws: a missing host leaves the cached (or bundled)
 // list in place and reports the reason. The keys the plugin's setup stored come along, kept separately.
-// version: the extension's running version, which the host records for `fw.py check` (hosts before 0.2.8 ignore it).
+// version: the extension's running version, which the host records for `fw.py check` (hosts before 0.2.9 ignore it).
 export async function refresh({ storage, send, now = () => Date.now(), version = '' }) {
   const cached = await readCached(storage);
   try {

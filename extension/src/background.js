@@ -308,7 +308,7 @@ async function syncWords() {
   hostChecked = Date.now();
   await flush();
   const before = await store.get(HOST_KEYS);
-  // The running version goes along, so `fw.py check` can say which copy Chrome runs (a host before 0.2.8 ignores it).
+  // The running version goes along, so `fw.py check` can say which copy Chrome runs (a host before 0.2.9 ignores it).
   const version = runningVersion();
   const res = await refresh({ storage: chromeStorage, send, version });
   if (!res.error && version) await store.set({ [REPORTED_KEY]: { version, at: Date.now() } });

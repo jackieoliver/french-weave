@@ -8,7 +8,7 @@ import { ANTHROPIC_URL } from '../src/anthropic.js';
 import { API_BASE } from '../src/gemini.js';
 import { hashKey } from '../src/hash.js';
 
-// 0.2.8: the reader updated to 0.2.7 and could not find Claude Haiku anywhere in the popup. The Model menu now offers
+// 0.2.9: the reader updated to 0.2.7 and could not find Claude Haiku anywhere in the popup. The Model menu now offers
 // it (first at every level), Auto says what it does, a "Next batch" line names the model for the next batch, and the
 // worker tells the native host which version it runs (fw.py check), and checks for an update every 5 minutes.
 const CHAIN = MODEL_CONFIG.default.chain;
@@ -127,7 +127,7 @@ test('popup: the Model menu shows Claude Haiku and the Next batch line names the
 });
 
 // A fake Chrome around the real worker (background.js), storage in data.
-async function startWorker(data, tag, { native = async () => ({ ok: false }), version = '0.2.8' } = {}) {
+async function startWorker(data, tag, { native = async () => ({ ok: false }), version = '0.2.9' } = {}) {
   const on = (arr = []) => ({ addListener: (fn) => arr.push(fn) });
   const listeners = [];
   const installed = [];
@@ -165,7 +165,7 @@ test('worker: Haiku picked serves first at Level 3; Next follows keys, caps and 
   const saved = Object.fromEntries(['chrome', 'fetch'].map((k) => [k, globalThis[k]]));
   const calls = [];
   globalThis.fetch = async (url, init) => {
-    if (String(url).startsWith('chrome-extension://')) return { ok: true, json: async () => ({ version: '0.2.8' }) };
+    if (String(url).startsWith('chrome-extension://')) return { ok: true, json: async () => ({ version: '0.2.9' }) };
     const user = url === ANTHROPIC_URL ? JSON.parse(init.body).messages.at(-1).content : JSON.parse(init.body).contents[0].parts[0].text;
     const items = JSON.parse(user.replace(/^[^[]*/, '').replace(/\n[^\]]*$/, ''));
     const keep = JSON.stringify({ passages: items.map(({ id, candidates }) => ({ id, topic: 'ok', keep: (candidates || []).map((c) => c.n) })) });
@@ -224,34 +224,34 @@ describe('update proof', () => {
       async set(v) { Object.assign(this.data, v); } };
     const sent = [];
     const send = async (msg) => { sent.push(msg); return { ok: true, version: 'v1', stage: 1, words: WORDS }; };
-    await refresh({ storage, send, version: '0.2.8' });
+    await refresh({ storage, send, version: '0.2.9' });
     await refresh({ storage, send });
-    expect(sent).toEqual([{ type: 'state', extension: '0.2.8' }, { type: 'state' }]);
-    // A host before 0.2.8 answers the same way whatever extra field comes along: nothing else changes.
+    expect(sent).toEqual([{ type: 'state', extension: '0.2.9' }, { type: 'state' }]);
+    // A host before 0.2.9 answers the same way whatever extra field comes along: nothing else changes.
     expect(storage.data[STATE_KEY].words.map((w) => w.fr)).toEqual(['et']);
   });
 
   test('worker: reports its version on each sync and right after a reload; update check every 5 minutes', async () => {
     const saved = Object.fromEntries(['chrome', 'fetch'].map((k) => [k, globalThis[k]]));
-    let disk = '0.2.8';
+    let disk = '0.2.9';
     const fetched = [];
     globalThis.fetch = async (url) => { fetched.push(String(url)); return { ok: true, json: async () => ({ version: disk }) }; };
     const sent = [];
     const native = async (msg) => { sent.push(msg); return msg.type === 'state' ? { ok: true, version: 'v1', stage: 1, words: WORDS } : { ok: true, applied: 0 }; };
     try {
-      // Reloaded into 0.2.8 after 0.2.7 reported: the new worker tells the host at once, without onInstalled.
-      const data = { settings: { enabled: true }, versionReported: { version: '0.2.7', at: 1 } };
+      // Reloaded into 0.2.9 after 0.2.8 reported: the new worker tells the host at once, without onInstalled.
+      const data = { settings: { enabled: true }, versionReported: { version: '0.2.8', at: 1 } };
       const w = await startWorker(data, 'report-reload', { native });
       await wait();
-      expect(sent).toEqual([{ type: 'state', extension: '0.2.8' }]);
-      expect(data.versionReported.version).toBe('0.2.8');
+      expect(sent).toEqual([{ type: 'state', extension: '0.2.9' }]);
+      expect(data.versionReported.version).toBe('0.2.9');
       expect(data.versionReported.at).toBeGreaterThan(1);
 
       // onInstalled arms both alarms: word sync every 30 minutes, the update check every 5.
       w.installed.forEach((fn) => fn({ reason: 'update' }));
       await wait();
       expect(w.alarms).toEqual([['sync', 30], ['update', 5]]);
-      expect(sent.at(-1)).toEqual({ type: 'state', extension: '0.2.8' });
+      expect(sent.at(-1)).toEqual({ type: 'state', extension: '0.2.9' });
 
       // The update alarm only checks the manifest on disk; the sync alarm also syncs, with the version.
       const before = sent.length;
@@ -262,19 +262,19 @@ describe('update proof', () => {
       expect(fetched).toEqual(['chrome-extension://fw-test/manifest.json']);
       w.alarmed.forEach((fn) => fn({ name: 'sync' }));
       await wait();
-      expect(sent.slice(before)).toEqual([{ type: 'state', extension: '0.2.8' }]);
+      expect(sent.slice(before)).toEqual([{ type: 'state', extension: '0.2.9' }]);
 
       // Same version already reported (an ordinary worker restart): no extra host call at start.
       const quiet = [];
-      await startWorker({ settings: { enabled: true }, versionReported: { version: '0.2.8', at: 5 } }, 'report-same',
+      await startWorker({ settings: { enabled: true }, versionReported: { version: '0.2.9', at: 5 } }, 'report-same',
         { native: async (msg) => { quiet.push(msg); return { ok: false }; } });
       await wait();
       expect(quiet).toEqual([]);
       // A host that doesn't answer (missing, or refuses): nothing is recorded as reported.
-      const lost = { settings: { enabled: true }, versionReported: { version: '0.2.7', at: 1 } };
+      const lost = { settings: { enabled: true }, versionReported: { version: '0.2.8', at: 1 } };
       await startWorker(lost, 'report-nohost', { native: async () => ({ ok: false, error: 'unknown message type' }) });
       await wait();
-      expect(lost.versionReported).toEqual({ version: '0.2.7', at: 1 });
+      expect(lost.versionReported).toEqual({ version: '0.2.8', at: 1 });
     } finally {
       Object.assign(globalThis, saved);
     }

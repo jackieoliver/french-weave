@@ -416,7 +416,7 @@ def extension_running(seen, disk, now=None):
     <state dir>/extension/manifest.json ('' when missing). A difference is a warning, not a failure: Chrome may simply
     not have run the extension since the update."""
     if not seen:
-        return 'note', ('extension running version not reported yet (0.2.8 and later report it each time they sync with '
+        return 'note', ('extension running version not reported yet (0.2.9 and later report it each time they sync with '
                         'the native host: open the toolbar popup, or wait up to 30 minutes with Chrome open)')
     when = seen['at'] + (f' ({ago(seen["at"], now)})' if ago(seen['at'], now) else '')
     if disk and seen['version'] != disk:
