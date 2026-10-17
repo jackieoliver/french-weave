@@ -1,6 +1,6 @@
 import { resolveLevel, MAX_BUILT_LEVEL } from './levels.js';
 import { modelLabel } from './model-config.js';
-import { modelOptions, modelNote, servedLabel, nextText } from './popup-model.js';
+import { modelOptions, reasoningOptions, modelNote, modeText, servedLabel, nextText, versionText, updateText } from './popup-model.js';
 import { siteEnabled, siteOn, hasSiteAccess } from './settings.js';
 import { modelErrorText, openRouterText, anthropicText } from './modelerror.js';
 import { readCached } from './hostsource.js';
@@ -28,8 +28,29 @@ function ago(t) {
   return h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
 }
 
+const fill = (menu, options) => menu.replaceChildren(...options.map(({ value, label, disabled }) => {
+  const opt = document.createElement('option');
+  opt.value = value;
+  opt.textContent = label;
+  opt.disabled = !!disabled;
+  return opt;
+}));
+
+// An update waiting on disk: say so, then ask the worker to reload into it (which closes this popup). "Updated to X"
+// comes once, on the first status after the new version runs; later refreshes keep showing it.
+const UPDATE_DELAY_MS = 1500;
+let updateLine = '';
+let updateAsked = false;
+
 async function refresh() {
   status = await send({ type: 'status' });
+  updateLine = updateText(status) || updateLine;
+  $('version').textContent = versionText(status);
+  $('versionInfo').textContent = updateLine;
+  if (status.updating && !updateAsked) {
+    updateAsked = true;
+    setTimeout(() => { void send({ type: 'applyUpdate' }).then(refresh).catch(() => {}); }, UPDATE_DELAY_MS);
+  }
   $('update').hidden = !status.update;
   $('updateVersion').textContent = status.update || '';
   const c = status.config;
@@ -47,16 +68,13 @@ async function refresh() {
   const { stage, chosen } = resolveLevel(s, c.stage);
   $('levelInfo').textContent = `L${chosen}${stage && chosen !== stage ? ` (Claude Code stage ${stage})` : ''}${chosen > MAX_BUILT_LEVEL ? ` · L${MAX_BUILT_LEVEL} rules for now` : ''}`;
   $('levelOverride').value = String(s.levelOverride || 0);
-  const menu = $('model');
-  menu.replaceChildren(...modelOptions(status).map(({ value, label, disabled }) => {
-    const opt = document.createElement('option');
-    opt.value = value;
-    opt.textContent = label;
-    opt.disabled = disabled;
-    return opt;
-  }));
-  menu.value = s.modelChoice;
+  fill($('model'), modelOptions(status));
+  $('model').value = s.modelChoice;
+  const reasoning = reasoningOptions(status);
+  fill($('reasoning'), reasoning.options);
+  $('reasoning').value = reasoning.selected;
   $('modelNote').textContent = modelNote(status);
+  $('modeInfo').textContent = modeText(status);
   $('nextInfo').textContent = nextText(status);
   const served = Object.entries(status.served?.counts || {}).map(([m, n]) => `${modelLabel(m)} ${n}`).join(' · ');
   $('modelInfo').textContent = [servedLabel(status.lastServed) || 'none yet', served && `today: ${served}`].filter(Boolean).join('; ');
@@ -128,6 +146,7 @@ $('enabled').addEventListener('change', (e) => run(() => save({ settings: { enab
 $('newSitesEnabled').addEventListener('change', (e) => run(() => save({ settings: { newSitesEnabled: e.target.value === 'true' } })));
 $('levelOverride').addEventListener('change', (e) => run(() => save({ settings: { levelOverride: Number(e.target.value) || 0 } })));
 $('model').addEventListener('change', (e) => run(() => save({ settings: { modelChoice: e.target.value } })));
+$('reasoning').addEventListener('change', (e) => run(() => save({ settings: { reasoning: e.target.value } })));
 $('apiKey').addEventListener('change', (e) => run(() => save({ apiKey: e.target.value })));
 $('backupKey').addEventListener('change', (e) => run(() => save({ backupKey: e.target.value })));
 $('openRouterKey').addEventListener('change', (e) => run(() => save({ openRouterKey: e.target.value })));

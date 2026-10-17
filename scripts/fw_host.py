@@ -6,7 +6,8 @@ Messages (JSON, 4-byte native-endian length prefix, one per line of conversation
   {"type": "state", "extension"?: "0.2.9"}
                                         -> {"ok": true, "version", "stage", "paused", "language", "words": [{fr, en, hint, reading?, status}],
                                             "prefs": {"extension_sites"?: "all" | "ask"} (absent means "all"),
-                                            "geminiKey"?, "geminiBackupKey"?, "openRouterKey"?, "anthropicKey"?: keys setup stored}
+                                            "geminiKey"?, "geminiBackupKey"?, "openRouterKey"?, "anthropicKey"?: keys setup stored,
+                                            "channel"?: "dev" when the plugin came from the french-weave-dev marketplace}
   {"type": "events", "events": [{"word", "kind": "seen"|"flip"|"peek", "day"?}]} -> {"ok": true, "applied": n}
 
 "extension" (0.2.9 on) is the version Chrome is running; it is recorded in <state dir>/extension-seen.json as
@@ -53,6 +54,8 @@ def handle(message):
         with fwlib.editing() as state:
             pass  # applies today's promotion before answering
         reply = dict(fwlib.public_state(state), ok=True, prefs=state.get('prefs') or {})
+        if fwlib.installed_channel():
+            reply['channel'] = fwlib.installed_channel()
         for name, field in (('gemini_key', 'geminiKey'), ('gemini_backup_key', 'geminiBackupKey'),
                             ('openrouter_key', 'openRouterKey'), ('anthropic_key', 'anthropicKey')):
             key = fwlib.home() / name

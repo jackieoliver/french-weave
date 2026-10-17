@@ -442,6 +442,8 @@ def check(_args):
     report((home / 'extension' / 'manifest.json').exists(), f'extension folder for Load unpacked: {home / "extension"}')
     disk = str((fwlib.read_json(home / 'extension' / 'manifest.json', {}) or {}).get('version') or '')
     print('{} {}'.format(*extension_running(fwlib.extension_seen(), disk)))
+    if fwlib.installed_channel():
+        print(f'ok   channel: {fwlib.installed_channel()} build (the popup says so)')
     for directory in host_dirs():
         path = directory / f'{HOST_NAME}.json'
         manifest = fwlib.read_json(path)

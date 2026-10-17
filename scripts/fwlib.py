@@ -246,9 +246,23 @@ def plugin_version(root=None):
     return str(data.get('version') or '')
 
 
+def plugin_channel(root=None):
+    """'dev' when this copy is a Claude Code plugin install from a marketplace whose source is the french-weave-dev
+    repo, else ''. Claude Code keeps an install at <config>/plugins/cache/<marketplace>/<plugin>/<version>, and each
+    marketplace's source in <config>/plugins/known_marketplaces.json."""
+    root = Path(root or PLUGIN_ROOT).resolve()
+    if len(root.parents) < 4 or root.parents[2].name != 'cache':
+        return ''
+    entry = (read_json(root.parents[3] / 'known_marketplaces.json', {}) or {}).get(root.parents[1].name)
+    source = entry.get('source') if isinstance(entry, dict) else None
+    where = ' '.join(str(source.get(k) or '') for k in ('repo', 'url')) if isinstance(source, dict) else ''
+    return 'dev' if re.search(r'(^|/)french-weave-dev(\.git)?(\s|$)', where) else ''
+
+
 def install_copies(root=None, directory=None):
     """Copy the extension, scripts and data into the state dir. Each folder is built next to its target and
-    swapped in, so the native host and Chrome never see a half-copied folder. Records the version in app/VERSION.
+    swapped in, so the native host and Chrome never see a half-copied folder. Records the version in app/VERSION
+    and the channel ('dev', plugin_channel) in app/CHANNEL, absent for the public one.
     Callers hold copies.lock, so pid-named staging folders found here are leftovers from a run that died."""
     root, directory = Path(root or PLUGIN_ROOT), Path(directory or home())
     for name, skip in COPIES:
@@ -268,6 +282,19 @@ def install_copies(root=None, directory=None):
     version = plugin_version(root)
     if version:
         (directory / 'app' / 'VERSION').write_text(version + '\n')
+    channel = plugin_channel(root)
+    if channel:
+        (directory / 'app' / 'CHANNEL').write_text(channel + '\n')
+    else:
+        (directory / 'app' / 'CHANNEL').unlink(missing_ok=True)
+
+
+def installed_channel():
+    """The channel the copies in the state dir came from ('dev', or '' for the public one)."""
+    try:
+        return (home() / 'app' / 'CHANNEL').read_text().strip()
+    except OSError:
+        return ''
 
 
 def refresh_copies():

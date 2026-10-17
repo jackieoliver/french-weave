@@ -11,7 +11,7 @@ import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent, countD
   countOpenRouter, anthropicToday, countAnthropic, paidBlocked, clearPaidStop, servedToday, countServed } from './quota.js';
 import { modelErrorText, replaceLegacyStatus } from './modelerror.js';
 import { API_BASE } from './gemini.js';
-import { configFor } from './model-config.js';
+import { configFor, reasoningLevels } from './model-config.js';
 import { localSwaps, localOff } from './local.js';
 
 const store = chrome.storage.local;
@@ -82,6 +82,7 @@ const languageOf = (wordState) => (wordState?.words?.length ? wordState.language
 // The Haiku step's provider follows which keys are set (model-config.js levelFirst): a capped or stopped Anthropic key
 // means no Haiku step, not OpenRouter's.
 async function planFor(ctx, wordState, choice = ctx.settings.modelChoice) {
+  const reasoning = choice === ctx.settings.modelChoice ? ctx.settings.reasoning : 'auto';
   const { main, backup } = await geminiKeys();
   const paid = await paidKeys();
   const mainOut = !main || await keyCapped('main');
@@ -89,9 +90,24 @@ async function planFor(ctx, wordState, choice = ctx.settings.modelChoice) {
   const openRouterOn = !!paid.openrouter && !paidBlocked(await openRouterToday(chromeStorage), ctx.settings.openRouterDailyUsd);
   const anthropicOn = !!paid.anthropic && !paidBlocked(await anthropicToday(chromeStorage), ctx.settings.anthropicDailyUsd);
   const { design, chain } = configFor(languageOf(wordState), choice, undefined, ctx.level,
-    { anthropic: !!paid.anthropic, openrouter: !!paid.openrouter });
+    { anthropic: !!paid.anthropic, openrouter: !!paid.openrouter }, reasoning);
   return { design, chain, main, backup, keys: { main: mainOut ? '' : main, backup: backupOut ? '' : backup,
     openrouter: openRouterOn ? paid.openrouter : '', anthropic: anthropicOn ? paid.anthropic : '' } };
+}
+
+// The first step of a choice as configured (keys set, caps and cooldowns aside), for the popup's menus and Mode line:
+// first, with the reader's reasoning; firstDefault, with Recommended reasoning (the Reasoning menu's first entry);
+// recommended, what the Recommended model resolves to.
+async function modeInfo(settings, level) {
+  const { wordState } = await store.get('wordState');
+  const paid = await paidKeys();
+  const has = { anthropic: !!paid.anthropic, openrouter: !!paid.openrouter };
+  const first = (choice, reasoning) => {
+    const s = configFor(languageOf(wordState), choice, undefined, level, has, reasoning).chain[0];
+    return s ? { model: s.model, provider: s.provider, thinking: s.thinking } : null;
+  };
+  return { first: first(settings.modelChoice, settings.reasoning), firstDefault: first(settings.modelChoice),
+    recommended: first('auto') };
 }
 
 // What the popup's "Next" line names: the first request the next batch would make at the current level, skipping
@@ -354,6 +370,12 @@ async function save(msg) {
       else merged.siteOverrides[msg.siteOverride.host] = msg.siteOverride.enabled;
     }
     const patch = { settings: cleanSettings(merged) };
+    // A new model that doesn't take the chosen reasoning level goes back to Recommended reasoning.
+    const next = patch.settings;
+    if (next.reasoning !== 'auto' && next.modelChoice !== cleanSettings(saved.settings).modelChoice) {
+      const { first } = await modeInfo(next, (await context()).level);
+      if (!reasoningLevels(first).includes(next.reasoning)) next.reasoning = 'auto';
+    }
     if (typeof msg.apiKey === 'string') {
       if (msg.apiKey.length > 500) throw new Error('Key is too long');
       patch.apiKey = msg.apiKey.trim();
@@ -396,7 +418,7 @@ async function updatedOnce() {
 async function status() {
   const config = await context();
   const data = await store.get(['wordState', 'apiKey', 'hostKey', 'backupKey', 'hostBackupKey', 'openRouterKey', 'hostOpenRouterKey',
-    'anthropicKey', 'hostAnthropicKey', 'modelStatus', 'lastServed']);
+    'anthropicKey', 'hostAnthropicKey', 'modelStatus', 'lastServed', 'hostChannel']);
   const openRouter = await openRouterToday(chromeStorage);
   const anthropic = await anthropicToday(chromeStorage);
   return { config, words: data.wordState?.words?.length || 0, fetchedAt: data.wordState?.fetchedAt || 0,
@@ -407,8 +429,8 @@ async function status() {
     openRouter: { ...openRouter, blocked: paidBlocked(openRouter, config.settings.openRouterDailyUsd) },
     anthropic: { ...anthropic, blocked: paidBlocked(anthropic, config.settings.anthropicDailyUsd) },
     dropped: await droppedToday(chromeStorage),
-    next: await nextModel(config), autoNext: await nextModel(config, 'auto'),
-    version: runningVersion(), updated: await updatedOnce(),
+    next: await nextModel(config), ...await modeInfo(config.settings, config.level),
+    version: runningVersion(), channel: data.hostChannel || '', updated: await updatedOnce(),
     // updating: a newer copy on disk the popup announces before it asks for the reload (applyUpdate); update: one
     // that a reload already failed to load, for the popup's "reload by hand" line.
     ...await popupUpdate() };
