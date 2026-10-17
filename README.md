@@ -93,11 +93,11 @@ and paste the block it prints. It carries your real progress; re-export about on
 - With a Gemini key, the extension sends readable text from the sites where it's on to Google's Gemini API with
   your key. Links and inline code go with their sentence but are never changed; code blocks, forms and editable text
   are skipped. Without a key, no page text leaves your computer: swaps come from a list inside the extension.
-- With an Anthropic key (optional), the same text goes straight to Anthropic (Claude Haiku 5.5) first for every batch
-  at Levels 1-2. Without that key nothing goes there directly.
+- With an Anthropic key (optional), the same text goes straight to Anthropic (Claude Haiku 5.5) first for every batch,
+  unless you pick a Gemini model in the popup. Without that key nothing goes there directly.
 - With an OpenRouter key (optional), the same text goes to OpenRouter and the model's provider: Anthropic (Claude
-  Haiku 5.5) first for every batch at Levels 1-2 if you have no Anthropic key, and OpenAI (gpt-6-luna) for any batch
-  both Gemini steps failed to answer. Without that key nothing goes there.
+  Haiku 5.5) first for every batch if you have no Anthropic key (unless you pick a Gemini model), and OpenAI
+  (gpt-6-luna) for any batch both Gemini steps failed to answer. Without that key nothing goes there.
 - With a free Gemini key, Google may use that text to improve its products, and human reviewers may read it. If you
   don't want that, use a paid key (turn on billing for the key's Google Cloud project): Google doesn't use paid-key
   prompts that way. In the EEA, UK and Switzerland the paid terms cover free keys too.
@@ -116,19 +116,20 @@ per language in `extension/src/model-config.js` (today the same for every langua
 
 | Step | Model | Key | Cost | Waits |
 |---|---|---|---|---|
-| first, Levels 1-2 only | Claude Haiku 5.5 direct from Anthropic, low effort, 4 passages a request | Anthropic key, optional | paid, about $0.0006 a batch | 35 s |
+| first | Claude Haiku 5.5 direct from Anthropic, low effort, 4 passages a request | Anthropic key, optional | paid, about $0.0006 a batch | 35 s |
 | or, without an Anthropic key | Claude Haiku 5.5 through OpenRouter, low reasoning | OpenRouter key, optional | paid, about $0.0015-0.002 a batch | 35 s |
 | 1 | Gemini 3.1 Flash-Lite, medium thinking | your Gemini key, then the backup key | free tier | 30 s |
 | 2 | Gemini 3.5 Flash-Lite, low thinking | your Gemini key, then the backup key | free tier (a separate daily quota) | 8 s |
 | 3 | gpt-6-luna through OpenRouter, reasoning off | OpenRouter key, optional | paid, about $0.0006 a batch | 20 s |
 
-- At Levels 1-2, Claude Haiku 5.5 goes first: direct to Anthropic with an Anthropic key, else through OpenRouter
-  with an OpenRouter key, never both for one batch. Graded by Opus on 24 real passages in six languages, 2.3% of its
-  swaps were bad, against 15.3% for Gemini 3.1 Flash-Lite and 8.1% for the best Gemini setting. Through OpenRouter
+- Claude Haiku 5.5 goes first at every level (Levels 1-2 only before 0.2.9): direct to Anthropic with an Anthropic
+  key, else through OpenRouter with an OpenRouter key, never both for one batch. Graded by Opus on 24 real passages
+  in six languages at Levels 1-2, 2.3% of its swaps were bad, against 15.3% for Gemini 3.1 Flash-Lite and 8.1% for
+  the best Gemini setting; for French at Levels 3-4, 4.7% and 4.0%. Through OpenRouter
   it's slower (about 12 s a batch). Direct, a batch of more than 4 passages goes as requests of 4 at once (median
   5.6 s against 9.5 s for 8 in one request, about 22% more cost); a real-browser run took 4-5 s a batch. Without
-  either key, past that provider's daily cap, after it refused the key or ran out of credit, or at Levels 3-4, the
-  chain starts at step 1.
+  either key, past that provider's daily cap, after it refused the key or ran out of credit, or with a Gemini model
+  picked in the popup, the chain starts at step 1 (or the picked model).
 - A per-day 429 (the key's daily quota) moves on to the next key or step until Google resets it; a per-minute 429
   waits a minute; a busy model (503) or one that doesn't answer in time moves straight to the next step.
 - The model only picks which of the places the extension found to swap (the "candidates" design), so it can't
@@ -145,8 +146,18 @@ per language in `extension/src/model-config.js` (today the same for every langua
 - OpenRouter stops for the day once its reported spend reaches the cap (default $0.25, about 125-165 Claude Haiku
   batches; set in the popup), or when OpenRouter answers 402 (credits used up). The popup shows which model served
   the last batch and through which provider, today's count per model, and today's Anthropic and OpenRouter spend.
-- **Model** in the popup: **Auto** follows the chain; picking a Gemini model puts it first instead of Claude Haiku
-  (3.8 Flash needs a paid key).
+- **Model** in the popup: **Recommended** (the default) follows the chain and says what it resolves to: Claude Haiku
+  5.5 with an Anthropic or OpenRouter key, else Gemini 3.1 Flash-Lite. Below it each model is listed by name: Claude
+  Haiku 5.5 (only with one of those keys; without one it says a Claude key is needed), Gemini 3.1 Flash-Lite, Gemini
+  3.5 Flash-Lite and Gemini 3.8 Flash (paid key). The picked model goes first; the rest of the chain stays behind it.
+- **Reasoning**: **Recommended** keeps each model's measured setting (Claude Haiku low, Gemini 3.1 Flash-Lite
+  medium, 3.5 Flash-Lite and 3.8 Flash low); a level applies to the first model only. Claude Haiku takes off (no
+  thinking), low, medium and high (adaptive thinking at that effort); Gemini takes minimal, low, medium and high. A
+  level the newly picked model doesn't take goes back to Recommended.
+- The **Mode** line says what that comes to, e.g. "Mode: Recommended → Claude Haiku 5.5 · low reasoning · Level 2
+  (Auto)"; **Next batch** names the model that will serve the next batch (after daily caps and busy models), and
+  **Last batch** the one that served the last. The header shows the running version, and "dev build" for a plugin
+  installed from the french-weave-dev marketplace.
 
 ## Turn it off
 
@@ -161,8 +172,10 @@ per language in `extension/src/model-config.js` (today the same for every langua
 
 Setup turns on Claude Code's auto-update for French Weave, so new versions install themselves: a few minutes into
 a session Claude Code shows "Plugin updated", and your next session runs the new version and says so, keeping your
-progress. If you use the extension, it reloads itself with the new version within about 30 minutes, or right
-away when you open its toolbar popup (the reload arrow on French Weave in `chrome://extensions` also works).
+progress. If you use the extension, it reloads itself with the new version within about 5 minutes while Chrome is
+open, or right away when you open its toolbar popup, which says "Updating to X…" and closes as it reloads; the next
+time you open it, it says "Updated to X" (the reload arrow on French Weave in `chrome://extensions` also works). `python3 ~/.french-weave/app/scripts/fw.py check` shows the version Chrome last reported running and
+when, and warns if it differs from the copy on disk.
 Keep Developer mode on in `chrome://extensions`: with it off, Chrome turns the extension off when it reloads.
 Auto-update is a switch in `/plugin` (Marketplaces, french-weave); setup leaves it alone if you've set it, or with
 `--no-auto-update`.

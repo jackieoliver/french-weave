@@ -202,7 +202,7 @@ describe('OpenRouter spend', () => {
       .toBe('OpenRouter today: $0.2600 of $0.25. Daily cap reached: stopped until tomorrow.');
     expect(openRouterText({ openRouterKey: true, openRouter: { ...broke, blocked: 'credits' } }, 0.25)).toContain('Credits used up (402)');
     expect(openRouterText({ openRouterKey: false }, 0.25)).toContain('Optional');
-    expect(openRouterText({ openRouterKey: false }, 0.25)).toContain('Claude Haiku 5.5 goes first at Levels 1-2');
+    expect(openRouterText({ openRouterKey: false }, 0.25)).toContain('Claude Haiku 5.5 goes first (direct instead with an Anthropic key)');
     await countOpenRouter(storage, { costUsd: 0, status: 401 }, '2026-10-18');
     expect(openRouterBlocked(await openRouterToday(storage, '2026-10-18'), 5)).toBe('key');
   });
@@ -210,9 +210,9 @@ describe('OpenRouter spend', () => {
   // The real worker: OpenRouter after Gemini, spend kept, the cap and a 402 stop it, the title guard sends nothing.
   test('worker: spend cap, 402 and the title guard', async () => {
     const saved = Object.fromEntries(['chrome', 'fetch'].map((k) => [k, globalThis[k]]));
-    // Level 3: the Gemini chain with gpt-6-luna last (Levels 1-2 put Claude Haiku first; tested below).
+    // A Gemini model picked: the Gemini chain with gpt-6-luna last (Recommended puts Claude Haiku first; tested below).
     const data = {
-      settings: { enabled: true, newSitesEnabled: true },
+      settings: { enabled: true, newSitesEnabled: true, modelChoice: 'gemini-3.1-flash-lite' },
       apiKey: 'synthetic-main', openRouterKey: 'synthetic-openrouter-key',
       [STATE_KEY]: { version: 't.1', stage: 3, paused: false, sites: 'all', fetchedAt: Date.now(), words: WORDS },
     };
@@ -315,8 +315,8 @@ describe('OpenRouter spend', () => {
 
   test('worker: backup and OpenRouter keys from setup join the chain; a pasted key wins over setup\'s', async () => {
     const saved = Object.fromEntries(['chrome', 'fetch'].map((k) => [k, globalThis[k]]));
-    const data = { // Level 3: OpenRouter only as the last step
-      settings: { enabled: true, newSitesEnabled: true },
+    const data = { // A Gemini model picked: OpenRouter only as the last step
+      settings: { enabled: true, newSitesEnabled: true, modelChoice: 'gemini-3.1-flash-lite' },
       [STATE_KEY]: { version: 't.1', stage: 3, paused: false, sites: 'all', fetchedAt: Date.now(), words: WORDS },
     };
     const used = [];
@@ -360,23 +360,24 @@ describe('OpenRouter spend', () => {
   }, 30000);
 });
 
-// Levels 1-2 on Auto: Claude Haiku 5.5 through OpenRouter first, when an OpenRouter key (and no Anthropic key) is set
-// and today's spend is under the cap; the Gemini chain follows. Levels 3-4 and readers without an OpenRouter key keep
+// Recommended, at every level since 0.2.9 (Levels 1-2 before): Claude Haiku 5.5 through OpenRouter first, when an
+// OpenRouter key (and no Anthropic key) is set and today's spend is under the cap; the Gemini chain follows. A Gemini
+// model picked in the popup, an unknown level and readers without an OpenRouter key keep
 // the chain as before. The direct Anthropic step is tested in the next block.
 const HAIKU = 'anthropic/claude-haiku-5.5';
 const ROUTER_ONLY = { openrouter: true };
 const TODAY = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'openai/gpt-6-luna'];
 
-describe('Claude Haiku first at Levels 1-2', () => {
-  test('chain selection: Haiku first at Levels 1-2 in every language; Levels 3-4 and a popup pick unchanged', () => {
+describe('Claude Haiku first on Recommended', () => {
+  test('chain selection: Haiku first at every level in every language; a popup pick of Gemini unchanged', () => {
     for (const language of ['French', 'Spanish', 'German', 'Italian', 'Portuguese', 'Japanese', 'Korean']) {
-      for (const level of [1, 2]) {
+      for (const level of [1, 2, 3, 4]) {
         const { design, chain } = configFor(language, 'auto', undefined, level, ROUTER_ONLY);
         expect(design).toBe('candidates');
         expect(chain.map((s) => s.model)).toEqual([HAIKU, ...TODAY]);
         expect(chain[0]).toEqual({ provider: 'openrouter', model: HAIKU, thinking: 'low', timeoutMs: 35000 });
       }
-      for (const level of [3, 4, 0, undefined]) expect(configFor(language, 'auto', undefined, level, ROUTER_ONLY).chain).toEqual(CHAIN);
+      for (const level of [0, undefined]) expect(configFor(language, 'auto', undefined, level, ROUTER_ONLY).chain).toEqual(CHAIN);
       expect(configFor(language, 'auto', undefined, 1).chain).toEqual(CHAIN); // no paid key: no Haiku step
     }
     // A Gemini model picked in the popup goes first, as before, with no Haiku step.
@@ -431,7 +432,7 @@ describe('Claude Haiku first at Levels 1-2', () => {
     expect(seen).toEqual([{ costUsd: 0, status: 402 }]);
   });
 
-  test('worker: Haiku first at Levels 1-2 until the spend cap; Level 3 and no key use the Gemini chain', async () => {
+  test('worker: Haiku first until the spend cap, Level 3 too; a Gemini pick and no key use the Gemini chain', async () => {
     const saved = Object.fromEntries(['chrome', 'fetch'].map((k) => [k, globalThis[k]]));
     const calls = [];
     globalThis.fetch = async (url, init) => {
@@ -468,10 +469,15 @@ describe('Claude Haiku first at Levels 1-2', () => {
       await ask('The cow and the goat eat all day long.');
       expect(calls).toEqual(['gemini-3.1-flash-lite']);
       expect((await dispatch({ type: 'status' }, popup)).lastServed.model).toBe('gemini-3.1-flash-lite');
-      // Level 3 with the key and room under a higher cap: the Gemini chain, unchanged.
+      // Level 3 with the key and room under a higher cap: Haiku first there too (0.2.9).
       await dispatch({ type: 'save', settings: { levelOverride: 3, openRouterDailyUsd: 5 } }, popup);
       calls.length = 0;
       await ask('The fox and the hen run all day long.');
+      expect(calls).toEqual([HAIKU]);
+      // A Gemini model picked in the popup: the Gemini chain, no Haiku.
+      await dispatch({ type: 'save', settings: { modelChoice: 'gemini-3.1-flash-lite' } }, popup);
+      calls.length = 0;
+      await ask('The pig and the duck nap all day long.');
       expect(calls).toEqual(['gemini-3.1-flash-lite']);
       // Level 1 without an OpenRouter key: the Gemini chain as today.
       dispatch = await startWorker({ settings: { enabled: true, newSitesEnabled: true }, apiKey: 'synthetic-main', [STATE_KEY]: state(1) },
@@ -498,7 +504,7 @@ describe('Claude Haiku direct from Anthropic', () => {
     expect(first({ anthropic: true })).toMatchObject({ provider: 'anthropic', model: DIRECT });
     expect(first({ openrouter: true })).toMatchObject({ provider: 'openrouter', model: HAIKU });
     expect(first({})).toEqual(CHAIN[0]);
-    expect(first({ anthropic: true, openrouter: true }, 3)).toEqual(CHAIN[0]);
+    expect(first({ anthropic: true, openrouter: true }, 3)).toMatchObject({ provider: 'anthropic', model: DIRECT });
     for (const has of [{ anthropic: true, openrouter: true }, { anthropic: true }, { openrouter: true }, {}]) {
       const chain = configFor('French', 'auto', undefined, 1, has).chain;
       expect(chain.filter((s) => /haiku/.test(s.model)).length).toBe(has.anthropic || has.openrouter ? 1 : 0);
@@ -697,8 +703,12 @@ describe('Claude Haiku direct from Anthropic', () => {
       calls.length = 0;
       await ask();
       expect(calls).toEqual(['anthropic synthetic-anthropic-pasted']);
-      // Level 3: the Gemini chain, no Haiku from either provider.
+      // Level 3: Haiku direct there too (0.2.9); a Gemini model picked: the Gemini chain, no Haiku from either provider.
       await dispatch({ type: 'save', settings: { levelOverride: 3 } }, popup);
+      calls.length = 0;
+      await ask();
+      expect(calls).toEqual(['anthropic synthetic-anthropic-pasted']);
+      await dispatch({ type: 'save', settings: { modelChoice: 'gemini-3.1-flash-lite' } }, popup);
       calls.length = 0;
       await ask();
       expect(calls).toEqual(['gemini-3.1-flash-lite']);

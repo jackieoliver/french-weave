@@ -1,4 +1,4 @@
-// Anthropic's Messages API, direct: the Claude Haiku 5.5 step at Levels 1-2 when the reader has an Anthropic key
+// Anthropic's Messages API, direct: the Claude Haiku 5.5 step (first at every level) when the reader has an Anthropic key
 // (paid; under its own daily spend cap). The same prompt and schema as the Gemini body; no chrome APIs; fetch is
 // injectable for tests. The key goes only in the x-api-key header.
 // Request shapes checked 2026-10-17 against platform.claude.com/docs (via context7 /websites/platform_claude_en and
