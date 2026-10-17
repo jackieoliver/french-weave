@@ -7,8 +7,9 @@ import { DAILY_MODEL_CALLS } from '../src/quota.js';
 import { hashKey } from '../src/hash.js';
 import { STATE_KEY } from '../src/hostsource.js';
 
-// 2026-10-15: both free keys hit the 500/day quota for about an hour and nothing showed it. The popup said "Off on
-// this site" (the site check won over the model error), and even where it showed, it was a bare "HTTP 429".
+// 2026-10-15: with the main and backup keys both past the 500/day quota for about an hour, nothing showed it. The
+// popup said "Off on this site" (the site check won over the model error), and even where it showed, it was a bare
+// "HTTP 429".
 const KEY = 'synthetic-gemini-key-0123456789';
 const googleBody = (code, status, message, details = []) => JSON.stringify({ error: { code, status, message, details } });
 const fail = (code, status, message = 'failed', details = []) => ({ ok: false, status: code, text: async () => googleBody(code, status, message, details) });

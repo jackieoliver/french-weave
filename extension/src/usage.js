@@ -1,5 +1,5 @@
-// Local usage log for the dev build: what the extension does, when, and how long it takes, so Jackie and her agents
-// can see how she uses it (`python3 scripts/fw.py usage`). It records only while the native host says this is the dev
+// Local usage log for the dev build: what the extension does, when, and how long it takes, so a developer can see
+// how the extension is used (`python3 scripts/fw.py usage`). It records only while the native host says this is the dev
 // build (hostChannel "dev", from app/CHANNEL) and the popup's "Usage log" toggle is on (on by default there); the
 // public build, or no native host, records nothing.
 // Events wait in a small bounded buffer (chrome.storage.local, so a worker that MV3 stops loses nothing) and go to the

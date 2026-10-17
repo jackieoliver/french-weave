@@ -1,8 +1,8 @@
 // Decision cache: key -> swaps. Storage adapter is injected (chrome.storage.local in the extension).
 const PREFIX = 'c:';
-// A passage's cached swaps are reused for this long, then asked for again (Jackie, 2026-10-17: "have the cached
-// choices only swap like, every 3 days"). The word list's version is not in the cache key, so a list change keeps
-// them: a newly learned word reaches an already cached passage within 3 days, not at once.
+// A passage's cached swaps are reused for this long, then asked for again, so a page read again within a few days
+// costs no model calls. The word list's version is not in the cache key, so a list change keeps them: a newly
+// learned word reaches an already cached passage within 3 days, not at once.
 export const CACHE_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
 export function createCache(storage, { max = 5000, pruneBy = 1000, pruneEvery = 100, maxAgeMs = CACHE_MAX_AGE_MS, now = Date.now } = {}) {

@@ -9,8 +9,8 @@ import { ANTHROPIC_URL } from '../src/anthropic.js';
 import { API_BASE } from '../src/gemini.js';
 import { hashKey } from '../src/hash.js';
 
-// 0.2.9: the reader updated to 0.2.7 and could not find Claude Haiku anywhere in the popup (Jackie: "dont hide it out
-// under"). The Model menu now starts with Recommended (what it resolves to: Claude Haiku first at every level with a
+// 0.2.9: in 0.2.7 Claude Haiku appeared nowhere in the popup, so a reader with a Claude key could not find or pick
+// it. The Model menu now starts with Recommended (what it resolves to: Claude Haiku first at every level with a
 // Claude key, else Gemini) and lists each model; a Reasoning menu sets the first model's reasoning; a Mode line says
 // what that comes to, a "Next batch" line which model serves next; the header shows the version and channel, and
 // "Updating to X…" / "Updated to X". The worker tells the native host which version it runs (fw.py check) and checks

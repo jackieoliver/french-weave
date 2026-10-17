@@ -1,11 +1,11 @@
 name: test
 
-# Actions minutes on the private dev repo are capped, so this file keeps the per-change cost low:
-# - Feature-branch pushes do not run (gw saves push every turn); a branch is tested once it has a pull request, and
+# Actions minutes on private repos are limited, so this file keeps the per-change cost low:
+# - Feature-branch pushes do not run (branches are pushed often); a branch is tested once it has a pull request, and
 #   main is tested on every push.
 # - Every Ubuntu check runs in one job: each job bills at least a whole minute, and these checks take seconds.
 # - macOS bills at 10x on private repos. The public release repo (free minutes) runs it on every push and pull
-#   request; the private dev repo runs it weekly and on demand (Actions tab > test > Run workflow).
+#   request; a private copy runs it weekly and on demand (Actions tab > test > Run workflow).
 on:
   push:
     branches: [main]

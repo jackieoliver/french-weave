@@ -14,7 +14,8 @@
 // 400 without).
 export const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 export const ANTHROPIC_VERSION = '2023-06-01';
-// Jackie, 2026-10-17: "for the claude credit, cap it to $5 a day".
+// The default daily cap for a direct Anthropic key: a hard ceiling on a day's spend (about 8,000 batches at
+// $0.0006), changeable in the popup.
 export const DEFAULT_ANTHROPIC_DAILY_CAP_USD = 5;
 // USD per million tokens (platform.claude.com/docs/en/about-claude/pricing, 2026-10-17). Claude Haiku 5.5 has two rate
 // cards by prompt length: up to 100,000 prompt tokens (cache reads and writes included), and over. Cache writes are

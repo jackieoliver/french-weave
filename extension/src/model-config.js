@@ -14,7 +14,7 @@
 // in the same notes, 2026-10-16 (Opus grading, 24 passages, Levels 1-2, six languages): Claude Haiku 5.5 at low
 // reasoning made 2.3% bad swaps [95% interval 1.4-3.7] against 15.3% for gemini-3.1-flash-lite medium and 8.1% for
 // the best Gemini setting (3.5-flash-lite high); median about 12 s, worst-language p90 22.9 s, about $0.0015-0.002
-// a request. Since 0.2.9 it goes first at every level (Jackie, 2026-10-17: "dont hide it out under"): for French at
+// a request. Since 0.2.9 it goes first at every level, so a reader with a Claude key gets it everywhere: for French at
 // Levels 3-4 Haiku low made 4.7% and 4.0% bad swaps, against about 15% for gemini-3.1-flash-lite at Levels 1-2.
 // maxPassages: the most passages one request of that step carries; a bigger batch goes as chunks of that
 // size in parallel (engine.js). Direct Haiku at 4 (French, Levels 1-2, internal test set, Opus-graded, 2026-10-17): median
