@@ -61,7 +61,10 @@ test('worker: update badge follows the manifest on disk; concurrent page events 
     expect((await dispatch({ type: 'status' }, popup)).update).toBe('');
     expect(badges.at(-1)).toBe('');
     diskVersion = '0.2.2';
-    expect((await dispatch({ type: 'status' }, popup)).update).toBe('0.2.2');
+    // 0.2.9: the popup first says "Updating to 0.2.2…", then asks for the reload; this fake Chrome can't reload.
+    expect(await dispatch({ type: 'status' }, popup)).toMatchObject({ update: '', updating: '0.2.2' });
+    expect(await dispatch({ type: 'applyUpdate' }, popup)).toMatchObject({ ok: true, waiting: '0.2.2', reloading: false });
+    expect(await dispatch({ type: 'status' }, popup)).toMatchObject({ update: '0.2.2', updating: '' });
     expect(badges.at(-1)).toBe('NEW');
     diskVersion = '0.2.1'; // reloaded: the running copy matches the disk again
     expect((await dispatch({ type: 'status' }, popup)).update).toBe('');

@@ -65,7 +65,10 @@ test('an update on disk reloads the extension once per version, after any model 
     await wait();
     expect(log).toEqual(['model start']);
     diskVersion = '0.2.2';
-    const opened = dispatch({ type: 'status' }, popup); // opening the popup checks for an update
+    // Opening the popup checks for an update: it shows "Updating to 0.2.2…" and then asks for the reload (0.2.9).
+    expect(await dispatch({ type: 'status' }, popup)).toMatchObject({ updating: '0.2.2', update: '' });
+    expect(log).toEqual(['model start']);
+    const applied = dispatch({ type: 'applyUpdate' }, popup);
     await wait();
     expect(log).toEqual(['model start']);
     releaseModel();
@@ -73,7 +76,7 @@ test('an update on disk reloads the extension once per version, after any model 
     expect(log).toEqual(['model start', 'model end', 'reload']);
     expect(data[RELOADED_KEY]).toBe('0.2.2');
     expect(badges).not.toContain('NEW');
-    void opened;
+    void applied;
 
     // Still running 0.2.1 after reloading for 0.2.2 (Chrome kept the old copy): never loop, show NEW instead.
     expect((await dispatch({ type: 'status' }, popup)).update).toBe('0.2.2');
@@ -83,6 +86,8 @@ test('an update on disk reloads the extension once per version, after any model 
     // A newer version gets one try; if reload throws, the badge is the fallback.
     diskVersion = '0.2.3';
     reloadThrows = true;
+    expect((await dispatch({ type: 'status' }, popup)).updating).toBe('0.2.3');
+    await dispatch({ type: 'applyUpdate' }, popup);
     expect((await dispatch({ type: 'status' }, popup)).update).toBe('0.2.3');
     expect(log.filter((x) => x === 'reload')).toHaveLength(2);
     expect(badges.at(-1)).toBe('NEW');
