@@ -130,6 +130,12 @@ let tipBox = null;
 let tipWord = null; // the word the open gloss belongs to
 let tipButton = null; // its speaker, when a voice says the language
 const TIP_GAP = 4; // content.css's bridge from the speaker down to the word spans this gap
+// With a speaker, a pointer leaving the word or the speaker gets this long to reach the other by any route (the box
+// sits off to the side of a word near the window's edge, and the bridge only covers the way straight up).
+const TIP_GRACE_MS = 300;
+let graceTimer = null;
+// A modal <dialog> makes everything outside it inert, the gloss box included, so its speaker could not be pressed.
+const modalOpen = () => { try { return !!document.querySelector('dialog:modal'); } catch { return false; } };
 function placeTip(span) {
   if (!tipBox?.isConnected) {
     tipBox = document.createElement('fw-gloss');
@@ -139,7 +145,7 @@ function placeTip(span) {
   const text = document.createElement('fw-text');
   text.setAttribute('aria-hidden', 'true');
   text.textContent = span.getAttribute('data-tip') || '';
-  const v = voiceNow();
+  const v = modalOpen() ? null : voiceNow();
   tipButton = v ? speakerButton(span, v) : null;
   tipBox.replaceChildren(...(tipButton ? [tipButton] : []), text);
   tipBox.classList.toggle('fw-gloss-say', !!tipButton);
@@ -159,6 +165,7 @@ function moveTip(span) {
 // The gloss shows on the same event that brings the pointer or focus to a word; a dwell counts as a peek.
 function hideTip() {
   clearTimeout(peekTimer); peekTimer = null;
+  clearTimeout(graceTimer); graceTimer = null;
   for (const el of document.querySelectorAll(`.${SWAP_CLASS}.fw-tip`)) el.classList.remove('fw-tip');
   tipBox?.classList.remove('fw-gloss-on');
   tipWord = null; tipButton = null;
@@ -170,10 +177,15 @@ function scrolled() {
   else hideTip();
 }
 function showTip(e) {
-  const span = swapFor(e);
+  // The speaker counts as its word: reaching it keeps the gloss, and time on it is time on the word.
+  const span = swapFor(e) || (e.isTrusted && tipButton?.contains(e.target) ? tipWord : null);
   if (!span || !on()) return;
   if (!alive()) { orphan(); return; } // reloaded: no gloss that would vanish when the peek can't be sent
+  // Keyboard focus on the speaker keeps its gloss: a pointer resting on another word (the page scrolled under it)
+  // would otherwise take the box, and the focused button with it.
+  if (e.type === 'mouseover' && span !== tipWord && tipButton && document.activeElement === tipButton) return;
   if (span.classList.contains('fw-en')) { hideTip(); return; } // English showing: nothing to gloss
+  clearTimeout(graceTimer); graceTimer = null;
   if (!span.classList.contains('fw-tip')) { hideTip(); span.classList.add('fw-tip'); placeTip(span); }
   if (e.type !== 'mouseover' || peekTimer) return; // a page can focus a span from script, so focus never counts
   peekTimer = setTimeout(() => {
@@ -181,11 +193,17 @@ function showTip(e) {
     if (span.isConnected && span.classList.contains('fw-tip')) record(span, 'peek');
   }, PEEK_DWELL_MS);
 }
-// Leaving the word or its speaker closes the gloss, unless the pointer or focus is going from one to the other.
+// Leaving the word or its speaker closes the gloss, unless the pointer or focus is going from one to the other. A
+// pointer leaving for anywhere else stops the dwell at once, but with a speaker the box waits TIP_GRACE_MS for it.
 function disarmTip(e) {
   const from = swapFor(e) || (e.isTrusted && tipButton?.contains(e.target) ? tipButton : null);
+  if (!from || (from !== tipWord && from !== tipButton)) return;
   const into = (el) => !!el?.contains(e.relatedTarget);
-  if (from && !into(from) && !(tipButton && (into(tipButton) || into(tipWord)))) hideTip();
+  if (into(tipWord) || into(tipButton)) return;
+  if (e.type === 'mouseout' && tipButton && document.activeElement === tipButton) return; // focus leaving closes it
+  if (!tipButton || e.type !== 'mouseout') { hideTip(); return; }
+  clearTimeout(peekTimer); peekTimer = null;
+  clearTimeout(graceTimer); graceTimer = setTimeout(hideTip, TIP_GRACE_MS);
 }
 function seenVisible() {
   if (document.visibilityState === 'hidden') return;
@@ -325,8 +343,10 @@ function speakerInput(e) {
   if (!e.isTrusted || !tipButton || !tipWord?.isConnected || !on()) return false;
   if (e.type === 'keydown' && e.key === 'Tab' && !e.altKey && !e.ctrlKey && !e.metaKey) {
     if (e.target === tipWord && !e.shiftKey) {
-      e.preventDefault(); e.stopPropagation();
+      if (tipWord.closest('[aria-modal="true"]')) return false; // the page's own focus trap would pull focus straight back
       tipButton.focus({ preventScroll: true });
+      if (document.activeElement !== tipButton) return false; // it could not take focus: the Tab is the page's
+      e.preventDefault(); e.stopPropagation();
       return true;
     }
     if (e.target !== tipButton) return false;
@@ -337,8 +357,14 @@ function speakerInput(e) {
   if (!tipButton.contains(e.target)) return false;
   if (e.type === 'keydown' && !['Enter', ' '].includes(e.key)) return true;
   e.preventDefault(); e.stopPropagation();
-  say(tipWord);
+  if (!e.repeat) say(tipWord); // a held key would queue the word over and over, and the queue is never cancelled
   return true;
+}
+// A press on the speaker leaves the page's focus where it was (a reply being typed, say), and the page doesn't see it.
+function pressSpeaker(e) {
+  if (!e.isTrusted || !tipButton?.contains(e.target)) return;
+  if (e.type === 'mousedown') e.preventDefault();
+  e.stopPropagation();
 }
 function reveal(e) {
   if (speakerInput(e)) return;
@@ -355,6 +381,8 @@ chrome.runtime.onMessage.addListener((msg) => {
 });
 document.addEventListener('click', reveal, true);
 document.addEventListener('keydown', reveal, true);
+document.addEventListener('pointerdown', pressSpeaker, true);
+document.addEventListener('mousedown', pressSpeaker, true);
 document.addEventListener('mouseover', showTip, true);
 document.addEventListener('focusin', showTip, true);
 document.addEventListener('mouseout', disarmTip, true);

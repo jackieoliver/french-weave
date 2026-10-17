@@ -11,10 +11,12 @@
 // forms intact, seen/flip events flushed back to the word state, forged page events ignored, no swaps on webmail,
 // and the article reverting when its site is turned off. Expected for the tip: tipWithoutWait and hoverAfter show the gloss text,
 // peeksAfterQuickPass is 0 and peeksAfterDwell is 1 (on a profile that hasn't peeked at that word today). With a voice for
-// the language (on Linux: speech-dispatcher installed, see the launch flag), speaker names the button's tooltip,
-// bridgeKeepsGloss is true (the pointer moved from the word up to the button), afterSpeaker shows the word said, still
-// French, the gloss still open and no flip queued, keyboard shows Tab going from the word to its speaker and on from the
-// word to the next stop, and articleSpeaker names the article's button. SCREENSHOTS=<dir> saves the gloss on both pages.
+// the language (on Linux: speech-dispatcher installed, see the launch flag), speaker names the button's tooltip;
+// bridgeKeepsGloss and detourKeepsGloss are true (the pointer reached the button straight up, and round through the
+// page); afterSpeaker shows the word said, still French, the gloss still open and no flip queued; keyboard shows Tab
+// going from the word to its speaker, Shift+Tab back, and Tab on from the word to the next stop; articleSpeaker names
+// the article's button and articleSpeakerKeepsFocus is true (pressing it left focus in the textarea).
+// SCREENSHOTS=<dir> saves the gloss on both pages.
 // Without a key (setup without --gemini-key-file, and none pasted), the same run checks the no-key mode: tier is
 // "local", the popup says "Built-in list, no key", swaps come only from the built-in list, modelCalls is 0, and a page
 // whose title names a sensitive topic gets no swaps (sensitiveTitleSwaps 0; with a key, Gemini judges each passage).
@@ -113,6 +115,11 @@ try {
       await page.mouse.move(word.x + 3, word.y + word.height / 2);
       await page.mouse.move(button.x + button.width / 2, button.y + button.height / 2, { steps: 12 });
       out.bridgeKeepsGloss = await page.evaluate(() => !!document.querySelector('fw-gloss.fw-gloss-on > fw-say'));
+      // A detour: off the end of the word into the page, then over to the button (a box pushed aside by the window's edge).
+      await page.mouse.move(word.x + word.width - 1, word.y + word.height / 2);
+      await page.mouse.move(word.x + word.width + 30, word.y - 2, { steps: 4 });
+      await page.mouse.move(button.x + button.width / 2, button.y + button.height / 2, { steps: 6 });
+      out.detourKeepsGloss = await page.evaluate(() => !!document.querySelector('fw-gloss.fw-gloss-on > fw-say'));
       await page.evaluate(() => {
         window.fwSpoke = false;
         const t = setInterval(() => { if (speechSynthesis.speaking || speechSynthesis.pending) { window.fwSpoke = true; clearInterval(t); } }, 5);
@@ -127,18 +134,19 @@ try {
       // Keyboard: Tab from the focused word reaches its speaker, and Tab from there goes on to the stop after the word.
       await page.mouse.move(0, 0);
       const focused = () => page.evaluate(() => { const a = document.activeElement; return a?.dataset?.fr || a?.tagName.toLowerCase() || null; });
+      const onSpeaker = () => page.evaluate(() => document.activeElement?.matches('fw-gloss.fw-gloss-on > fw-say') || false);
+      const onFirst = () => page.evaluate(() => document.activeElement === document.querySelector('.fw-word'));
       await first.focus();
-      const wordStop = await focused();
+      out.keyboard = { wordStop: await focused() };
       await page.keyboard.press('Tab');
-      const onSpeaker = await page.evaluate(() => document.activeElement?.matches('fw-gloss.fw-gloss-on > fw-say') || false);
-      await page.keyboard.press('Tab');
-      const next = await page.evaluate(() => {
-        const words = [...document.querySelectorAll('.fw-word')];
-        return { stop: document.activeElement?.dataset?.fr || document.activeElement?.tagName.toLowerCase(), afterWord: words.indexOf(document.activeElement) === 1 };
-      });
-      out.keyboard = { wordStop, onSpeaker, next: next.stop, nextIsSecondWord: next.afterWord };
+      out.keyboard.onSpeaker = await onSpeaker();
       await page.keyboard.press('Shift+Tab');
-      out.keyboard.shiftTabBack = await focused();
+      out.keyboard.shiftTabBackToWord = await onFirst();
+      await page.keyboard.press('Tab');
+      out.keyboard.onSpeakerAgain = await onSpeaker();
+      await page.keyboard.press('Tab');
+      out.keyboard.next = await focused();
+      out.keyboard.nextIsSecondWord = await page.evaluate(() => [...document.querySelectorAll('.fw-word')].indexOf(document.activeElement) === 1);
       await page.evaluate(() => document.activeElement?.blur());
     }
     await first.click();
@@ -187,6 +195,13 @@ try {
     await reading.locator('.fw-word').first().hover();
     out.articleTip = await reading.evaluate(() => document.querySelector('fw-gloss.fw-gloss-on')?.textContent || '');
     out.articleSpeaker = await reading.evaluate(() => document.querySelector('fw-gloss.fw-gloss-on > fw-say')?.title || null);
+    if (out.articleSpeaker) {
+      // A press on the speaker leaves focus in the comment box being typed in.
+      await reading.focus('form textarea');
+      await reading.locator('.fw-word').first().hover();
+      await reading.locator('fw-gloss.fw-gloss-on > fw-say').click();
+      out.articleSpeakerKeepsFocus = await reading.evaluate(() => document.activeElement?.tagName === 'TEXTAREA');
+    }
     if (SHOTS) {
       const word = await reading.locator('.fw-word').first().boundingBox();
       const y = Math.max(0, Math.round(word.y) - 80);

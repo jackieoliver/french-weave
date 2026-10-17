@@ -156,6 +156,7 @@ test('speaker in the gloss box says the word on a click or key press, and is nev
     p.key(button, 'Enter');
     p.key(button, ' ');
     p.key(button, 'a');
+    p.key(button, 'Enter', { repeat: true }); // a held key says it once
     p.click(box.querySelector('fw-text'));
     p.click(box.querySelector('path'));
     expect(p.spoken.map((s) => s.text)).toEqual(['et', 'et', 'et', 'et']);
@@ -169,8 +170,10 @@ test('speaker in the gloss box says the word on a click or key press, and is nev
     await wait(800);
     expect(p.events).toEqual(['et:peek']);
 
-    // Leaving the speaker for the page closes the gloss, again without touching the passage.
+    // Leaving the speaker for the page closes the gloss after a moment, again without touching the passage.
     p.out(button, p.win.document.body);
+    expect(p.gloss()).toBe(box);
+    await wait(350);
     expect([p.gloss(), et.classList.contains('fw-tip')]).toEqual([null, false]);
     await wait(50);
     expect(p.words().length).toBe(2);
@@ -179,6 +182,7 @@ test('speaker in the gloss box says the word on a click or key press, and is nev
     p.over(et); p.out(et, tres); p.over(tres, et);
     expect([et.classList.contains('fw-tip'), p.gloss()?.querySelector('fw-say')?.title]).toEqual([false, 'Say "très"']);
     p.out(tres);
+    await wait(350);
 
     // A click on the word itself still flips it, and an English word gets no gloss and no speaker.
     p.over(et);
@@ -273,6 +277,8 @@ test('keyboard: Tab from the word reaches its speaker, Tab goes on from the word
     expect([p.gloss(), tres.classList.contains('fw-tip')]).toEqual([null, false]);
     // Tab with no gloss open, or from a word whose gloss is not the open one, is left to the page.
     expect(p.key(et, 'Tab').defaultPrevented).toBe(false);
+    et.focus(); p.focus(et); p.over(tres);
+    expect([p.gloss()?.querySelector('fw-say')?.title, p.key(et, 'Tab').defaultPrevented]).toEqual(['Say "très"', false]);
   } finally {
     await p.win.happyDOM.close();
     Object.assign(globalThis, saved);
@@ -306,9 +312,108 @@ test('the speaker bridge points at the word: down when the gloss is above it, up
     p.over(et);
     expect([p.gloss().classList.contains('fw-gloss-below'), p.gloss().style.top, p.gloss().style.left]).toEqual([false, '196px', '40px']);
     p.out(et);
+    await wait(350);
     at(0);
     p.over(et);
     expect([p.gloss().classList.contains('fw-gloss-below'), p.gloss().style.top]).toEqual([true, '20px']);
+  } finally {
+    await p.win.happyDOM.close();
+    Object.assign(globalThis, saved);
+  }
+}, 30000);
+
+test('a pointer gets a moment to reach the speaker by any route, and the dwell stops counting meanwhile', async () => {
+  const saved = Object.fromEntries(GLOBALS.map((k) => [k, globalThis[k]]));
+  const p = await page('say-grace', { voices: [...ESPEAK] });
+  try {
+    const { body } = p.win.document;
+    const [et] = p.words();
+    // A pass over the word that leaves for the page: the box stays a moment, but it is no peek, then closes.
+    p.over(et);
+    await wait(400);
+    p.out(et, body);
+    expect(p.gloss()).not.toBeNull();
+    await wait(400);
+    expect([p.gloss(), et.classList.contains('fw-tip'), p.events]).toEqual([null, false, []]);
+    // Off the word, across the page, onto the speaker: the gloss stays, and resting there is a peek of the word.
+    p.over(et);
+    const button = p.gloss().querySelector('fw-say');
+    p.out(et, body);
+    await wait(150);
+    p.over(button, body);
+    await wait(800);
+    expect([p.gloss()?.querySelector('fw-say'), p.events]).toEqual([button, ['et:peek']]);
+    // Off the speaker and back onto the word in time: still open.
+    p.out(button, body);
+    await wait(150);
+    p.over(et, body);
+    await wait(300);
+    expect(p.gloss()?.querySelector('fw-say')).toBe(button);
+    // Focus leaving does not wait.
+    p.focus(et); p.blur(et, body);
+    expect(p.gloss()).toBeNull();
+  } finally {
+    await p.win.happyDOM.close();
+    Object.assign(globalThis, saved);
+  }
+}, 30000);
+
+test('pressing the speaker leaves the page focus alone and is not the page\'s to see; keyboard focus on it survives other words', async () => {
+  const saved = Object.fromEntries(GLOBALS.map((k) => [k, globalThis[k]]));
+  const p = await page('say-press', { voices: [...ESPEAK] });
+  try {
+    const { document } = p.win;
+    const [et, tres] = p.words();
+    const seenByPage = [];
+    for (const type of ['pointerdown', 'mousedown', 'click']) p.win.addEventListener(type, () => seenByPage.push(type));
+    p.over(et);
+    const button = p.gloss().querySelector('fw-say');
+    const press = (type, trusted = true) => {
+      const e = new p.win.MouseEvent(type, { bubbles: true, cancelable: true });
+      if (trusted) Object.defineProperty(e, 'isTrusted', { value: true });
+      button.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    // mousedown is what moves focus, so only it is prevented; none of the three reaches the page.
+    expect([press('pointerdown'), press('mousedown'), (p.click(button), p.spoken.length)]).toEqual([false, true, 1]);
+    expect(seenByPage).toEqual([]);
+    // A page's own synthetic press is not touched.
+    expect(press('mousedown', false)).toBe(false);
+    expect(seenByPage).toEqual(['mousedown']);
+    // With keyboard focus on the speaker, a pointer resting on another word (after a scroll) leaves the gloss be.
+    p.out(et, document.body);
+    et.focus(); p.focus(et);
+    p.key(et, 'Tab'); p.blur(et, button); p.focus(button, et);
+    expect(document.activeElement).toBe(button);
+    p.win.dispatchEvent(new p.win.Event('scroll'));
+    p.over(tres); p.out(tres, document.body);
+    await wait(350);
+    expect([p.gloss()?.querySelector('fw-say'), tres.classList.contains('fw-tip'), document.activeElement]).toEqual([button, false, button]);
+    // Nor does a pointer leaving the word itself; focus leaving the speaker closes the gloss.
+    p.over(et); p.out(et, document.body);
+    await wait(350);
+    expect(p.gloss()?.querySelector('fw-say')).toBe(button);
+    p.blur(button, document.body);
+    expect(p.gloss()).toBeNull();
+  } finally {
+    await p.win.happyDOM.close();
+    Object.assign(globalThis, saved);
+  }
+}, 30000);
+
+test('modal pages: no Tab into the speaker past an aria-modal focus trap, or when it cannot take focus', async () => {
+  const saved = Object.fromEntries(GLOBALS.map((k) => [k, globalThis[k]]));
+  const p = await page('say-modal', { voices: [...ESPEAK] });
+  try {
+    const [et] = p.words();
+    et.focus(); p.focus(et);
+    // Focus that does not move (an inert box behind a modal <dialog>): Tab is left to the page.
+    p.gloss().querySelector('fw-say').focus = () => {};
+    expect(p.key(et, 'Tab').defaultPrevented).toBe(false);
+    // A word inside an aria-modal dialog: the redirect is skipped, the speaker still shows for the pointer.
+    p.blur(et); p.win.document.querySelector('main').setAttribute('aria-modal', 'true');
+    et.focus(); p.focus(et);
+    expect([p.key(et, 'Tab').defaultPrevented, p.gloss()?.querySelector('fw-say') !== null]).toEqual([false, true]);
   } finally {
     await p.win.happyDOM.close();
     Object.assign(globalThis, saved);
