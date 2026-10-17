@@ -92,8 +92,9 @@ and paste the block it prints. It carries your real progress; re-export about on
 - With a Gemini key, the extension sends readable text from the sites where it's on to Google's Gemini API with
   your key. Links and inline code go with their sentence but are never changed; code blocks, forms and editable text
   are skipped. Without a key, no page text leaves your computer: swaps come from a list inside the extension.
-- With an OpenRouter key (optional), the same text goes to OpenRouter and the model's provider (OpenAI for the
-  default, gpt-6-luna) for any batch both Gemini steps failed to answer. Without that key nothing goes there.
+- With an OpenRouter key (optional), the same text goes to OpenRouter and the model's provider: Anthropic (Claude
+  Haiku 5.5) first for every batch at Levels 1-2, and OpenAI (gpt-6-luna) for any batch both Gemini steps failed to
+  answer. Without that key nothing goes there.
 - With a free Gemini key, Google may use that text to improve its products, and human reviewers may read it. If you
   don't want that, use a paid key (turn on billing for the key's Google Cloud project): Google doesn't use paid-key
   prompts that way. In the EEA, UK and Switzerland the paid terms cover free keys too.
@@ -112,10 +113,15 @@ per language in `extension/src/model-config.js` (today the same for every langua
 
 | Step | Model | Key | Cost | Waits |
 |---|---|---|---|---|
+| first, Levels 1-2 only | Claude Haiku 5.5 through OpenRouter, low reasoning | OpenRouter key, optional | paid, about $0.0015-0.002 a batch | 35 s |
 | 1 | Gemini 3.1 Flash-Lite, medium thinking | your Gemini key, then the backup key | free tier | 30 s |
 | 2 | Gemini 3.5 Flash-Lite, low thinking | your Gemini key, then the backup key | free tier (a separate daily quota) | 8 s |
 | 3 | gpt-6-luna through OpenRouter, reasoning off | OpenRouter key, optional | paid, about $0.0006 a batch | 20 s |
 
+- At Levels 1-2, with an OpenRouter key and today's spend under the cap, Claude Haiku 5.5 goes first: graded by
+  Opus on 24 real passages in six languages, 2.3% of its swaps were bad, against 15.3% for Gemini 3.1 Flash-Lite
+  and 8.1% for the best Gemini setting. It's slower (about 12 s a batch). Without that key, past the cap, or at
+  Levels 3-4, the chain starts at step 1.
 - A per-day 429 (the key's daily quota) moves on to the next key or step until Google resets it; a per-minute 429
   waits a minute; a busy model (503) or one that doesn't answer in time moves straight to the next step.
 - The model only picks which of the places the extension found to swap (the "candidates" design), so it can't
@@ -124,10 +130,11 @@ per language in `extension/src/model-config.js` (today the same for every langua
   (its own daily quota), and an OpenRouter key from [openrouter.ai/keys](https://openrouter.ai/keys) with a few
   dollars of credit. They're stored like the Gemini key, only in the extension's background worker. Setup can hand
   them over instead: `--backup-key-file <path>` and `--openrouter-key-file <path>`; a key pasted in the popup wins.
-- OpenRouter stops for the day once its reported spend reaches the cap (default $0.25, set in the popup), or when
-  OpenRouter answers 402 (credits used up). The popup shows which model served the last batch, today's count per
-  model, and today's OpenRouter spend.
-- **Model** in the popup: **Auto** follows the chain; picking a Gemini model puts it first (3.8 Flash needs a paid key).
+- OpenRouter stops for the day once its reported spend reaches the cap (default $0.25, about 125-165 Claude Haiku
+  batches; set in the popup), or when OpenRouter answers 402 (credits used up). The popup shows which model served
+  the last batch, today's count per model, and today's OpenRouter spend.
+- **Model** in the popup: **Auto** follows the chain; picking a Gemini model puts it first instead of Claude Haiku
+  (3.8 Flash needs a paid key).
 
 ## Turn it off
 

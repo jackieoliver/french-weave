@@ -6,6 +6,12 @@
 // Measurements behind the defaults: internal evaluation notes (not published), 2026-10-15 (gemini-3.1-flash-lite at
 // medium thinking matched paid 3.8 Flash on density with zero leaks in Spanish and French, 6 s median and 21 s p90
 // per batch; gpt-6-luna with reasoning off leaked nothing in six languages at about $0.0006 a request).
+// levelFirst: a step that goes before the chain at the listed extension levels (Auto only). Like every OpenRouter step
+// it runs only with an OpenRouter key and under the day's spend cap, so without one the chain is unchanged. Measured
+// in the same notes, 2026-10-16 (Opus grading, 24 passages, Levels 1-2, six languages): Claude Haiku 5.5 at low
+// reasoning made 2.3% bad swaps [95% interval 1.4-3.7] against 15.3% for gemini-3.1-flash-lite medium and 8.1% for
+// the best Gemini setting (3.5-flash-lite high); median about 12 s, worst-language p90 22.9 s, about $0.0015-0.002
+// a request.
 export const MODEL_CONFIG = {
   default: {
     design: 'candidates', // or 'freeform': the model writes the swaps itself (prompt.js)
@@ -14,8 +20,12 @@ export const MODEL_CONFIG = {
       { provider: 'gemini', model: 'gemini-3.5-flash-lite', thinking: 'low', timeoutMs: 8000 },
       { provider: 'openrouter', model: 'openai/gpt-6-luna', thinking: 'off', timeoutMs: 20000 },
     ],
+    levelFirst: {
+      levels: [1, 2],
+      step: { provider: 'openrouter', model: 'anthropic/claude-haiku-5.5', thinking: 'low', timeoutMs: 35000 },
+    },
   },
-  // Per-language overrides, by the word state's language name: any of design and chain, e.g.
+  // Per-language overrides, by the word state's language name: any of design, chain and levelFirst, e.g.
   // Japanese: { design: 'freeform' }. None yet: every language measured so far does best with the default.
   languages: {},
 };
@@ -32,14 +42,18 @@ export const THINKING = { 'gemini-3.1-flash-lite': 'medium', 'gemini-3.5-flash-l
 export const STEP_TIMEOUT_MS = { 'gemini-3.1-flash-lite': 30000, 'gemini-3.5-flash-lite': 8000, 'gemini-3.8-flash': 20000 };
 
 // The design and chain for a language; choice: the popup's model ('auto', or a key of MODELS), which goes first,
-// followed by the rest of the language's chain.
-export function configFor(language, choice = 'auto', config = MODEL_CONFIG) {
+// followed by the rest of the language's chain. level: the extension's level (1-4); on Auto, a level listed in
+// levelFirst puts that step first. A model picked in the popup goes first instead, as before.
+export function configFor(language, choice = 'auto', config = MODEL_CONFIG, level = 0) {
   const own = config.languages?.[language] || {};
   const design = own.design || config.default.design;
   let chain = own.chain || config.default.chain;
   if (choice && choice !== 'auto' && MODELS[choice]) {
     const first = { provider: 'gemini', model: choice, thinking: THINKING[choice], timeoutMs: STEP_TIMEOUT_MS[choice] };
     chain = [first, ...chain.filter((s) => !(s.provider === 'gemini' && s.model === choice))];
+  } else {
+    const levelFirst = own.levelFirst || config.default.levelFirst;
+    if (levelFirst?.levels?.includes(Number(level))) chain = [levelFirst.step, ...chain];
   }
   return { design, chain };
 }

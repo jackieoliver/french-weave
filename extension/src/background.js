@@ -166,7 +166,9 @@ async function swaps(msg, sender) {
       };
       const daily = await spentToday(chromeStorage); // a spent daily quota outlives the worker, so it is kept in storage
       const openRouterOn = !!openRouterKey && !openRouterBlocked(await openRouterToday(chromeStorage), ctx.settings.openRouterDailyUsd);
-      const { design, chain } = configFor(wordState?.words?.length ? wordState.language || 'French' : 'French', ctx.settings.modelChoice);
+      // Levels 1-2 on Auto: Claude Haiku 5.5 through OpenRouter first, when openRouterOn (model-config.js levelFirst).
+      const { design, chain } = configFor(wordState?.words?.length ? wordState.language || 'French' : 'French', ctx.settings.modelChoice,
+        undefined, ctx.level);
       try {
         return await requestSwaps({ keys: { main: mainOut ? '' : usedKey, backup: backupOut ? '' : backupKey, openrouter: openRouterOn ? openRouterKey : '' },
           chain, design, level: ctx.level, words: wordState?.words, language: wordState?.language, fetchImpl,

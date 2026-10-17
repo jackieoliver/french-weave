@@ -11,6 +11,8 @@
 // forms intact, seen/flip events flushed back to the word state, forged page events ignored, no swaps on webmail,
 // and the article reverting when its site is turned off. Expected for the tip: tipWithoutWait and hoverAfter show the gloss text,
 // peeksAfterQuickPass is 0 and peeksAfterDwell is 1 (on a profile that hasn't peeked at that word today).
+// With an OpenRouter key too (setup's --openrouter-key-file), Levels 1-2 send each batch to Claude Haiku 5.5 first:
+// servedCounts names the model behind each batch and openRouterUsd is today's spend (a few tenths of a cent).
 // Without a key (setup without --gemini-key-file, and none pasted), the same run checks the no-key mode: tier is
 // "local", the popup says "Built-in list, no key", swaps come only from the built-in list, modelCalls is 0, and a page
 // whose title names a sensitive topic gets no swaps (sensitiveTitleSwaps 0; with a key, Gemini judges each passage).
@@ -161,6 +163,11 @@ try {
   out.tier = await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'status' }).then((s) => s.config.tier));
   out.popupTier = await popup.$eval('#tierInfo', (e) => e.textContent);
   out.modelCalls = await calls(); // Gemini requests this profile made today
+  // Which models served today's batches, and today's OpenRouter spend: with an OpenRouter key (setup's
+  // --openrouter-key-file) at Levels 1-2, Claude Haiku 5.5 serves first.
+  const served = await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'status' })
+    .then((s) => ({ last: s.lastServed?.model || '', counts: s.served?.counts || {}, openRouterUsd: s.openRouter?.usd || 0, level: s.config?.level })));
+  Object.assign(out, { lastServed: served.last, servedCounts: served.counts, openRouterUsd: served.openRouterUsd, level: served.level });
   // Your words: collapsed at first; opened, it lists the synced learning and shaky words.
   const wordList = () => popup.$eval('#wordList', (d) => ({ open: d.open, counts: d.querySelector('[data-counts]').textContent,
     rows: [...d.querySelectorAll('.word')].map((r) => `${r.dataset.status}: ${r.innerText.replace(/\s+/g, ' ')}`) }));

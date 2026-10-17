@@ -94,9 +94,11 @@ export async function requestSwaps({ apiKey, keys: given, model, chain: givenCha
   const errors = [];
   const failures = [];
   const overloaded = new Set(); // steps whose model was busy or slow: the backup key would only wait again
+  let routerStopped = false; // OpenRouter refused the key or the credits are gone: its other steps would only fail too
+  const skip = (b) => overloaded.has(b.index) || blocked(b.slot) || (routerStopped && b.keyName === 'openrouter');
   for (const [n, a] of open.entries()) {
-    if (overloaded.has(a.index) || blocked(a.slot)) continue;
-    const later = open.slice(n + 1).some((b) => !overloaded.has(b.index) && !blocked(b.slot));
+    if (skip(a)) continue;
+    const later = open.slice(n + 1).some((b) => !skip(b));
     const wait = timeoutMs || (later ? a.step.timeoutMs : Math.max(a.step.timeoutMs || 0, LAST_TIMEOUT_MS));
     const body = buildRequest({ system: plan.system, user: plan.user, schema: plan.schema, thinkingLevel: a.step.thinking, model: a.step.model });
     let costUsd = 0;
@@ -110,6 +112,7 @@ export async function requestSwaps({ apiKey, keys: given, model, chain: givenCha
           byId = plan.parse(reply.text);
         } catch (e) {
           if (e?.status) await onOpenRouter({ costUsd: 0, status: e.status });
+          if ([401, 402, 403].includes(e?.status)) routerStopped = true;
           throw e;
         }
       } else {

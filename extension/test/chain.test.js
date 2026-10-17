@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'bun:test';
 import { requestSwaps, attemptsFor } from '../src/engine.js';
-import { MODEL_CONFIG } from '../src/model-config.js';
+import { MODEL_CONFIG, configFor } from '../src/model-config.js';
+import { RESPONSE_SCHEMA } from '../src/candidates.js';
 import { OPENROUTER_URL, toOpenRouterBody } from '../src/openrouter.js';
 import { API_BASE } from '../src/gemini.js';
 import { countOpenRouter, openRouterToday, openRouterBlocked } from '../src/quota.js';
@@ -186,6 +187,7 @@ describe('OpenRouter spend', () => {
       .toBe('OpenRouter today: $0.2600 of $0.25. Daily cap reached: stopped until tomorrow.');
     expect(openRouterText({ openRouterKey: true, openRouter: { ...broke, blocked: 'credits' } }, 0.25)).toContain('Credits used up (402)');
     expect(openRouterText({ openRouterKey: false }, 0.25)).toContain('Optional');
+    expect(openRouterText({ openRouterKey: false }, 0.25)).toContain('Claude Haiku 5.5 goes first at Levels 1-2');
     await countOpenRouter(storage, { costUsd: 0, status: 401 }, '2026-10-18');
     expect(openRouterBlocked(await openRouterToday(storage, '2026-10-18'), 5)).toBe('key');
   });
@@ -193,10 +195,11 @@ describe('OpenRouter spend', () => {
   // The real worker: OpenRouter after Gemini, spend kept, the cap and a 402 stop it, the title guard sends nothing.
   test('worker: spend cap, 402 and the title guard', async () => {
     const saved = Object.fromEntries(['chrome', 'fetch'].map((k) => [k, globalThis[k]]));
+    // Level 3: the Gemini chain with gpt-6-luna last (Levels 1-2 put Claude Haiku first; tested below).
     const data = {
       settings: { enabled: true, newSitesEnabled: true },
       apiKey: 'synthetic-main', openRouterKey: 'synthetic-openrouter-key',
-      [STATE_KEY]: { version: 't.1', stage: 1, paused: false, sites: 'all', fetchedAt: Date.now(), words: WORDS },
+      [STATE_KEY]: { version: 't.1', stage: 3, paused: false, sites: 'all', fetchedAt: Date.now(), words: WORDS },
     };
     const calls = [];
     let router = (init) => routerOk(init, 0.2);
@@ -297,9 +300,9 @@ describe('OpenRouter spend', () => {
 
   test('worker: backup and OpenRouter keys from setup join the chain; a pasted key wins over setup\'s', async () => {
     const saved = Object.fromEntries(['chrome', 'fetch'].map((k) => [k, globalThis[k]]));
-    const data = {
+    const data = { // Level 3: OpenRouter only as the last step
       settings: { enabled: true, newSitesEnabled: true },
-      [STATE_KEY]: { version: 't.1', stage: 1, paused: false, sites: 'all', fetchedAt: Date.now(), words: WORDS },
+      [STATE_KEY]: { version: 't.1', stage: 3, paused: false, sites: 'all', fetchedAt: Date.now(), words: WORDS },
     };
     const used = [];
     globalThis.fetch = async (url, init) => {
@@ -317,7 +320,7 @@ describe('OpenRouter spend', () => {
         const { revision } = await dispatch({ type: 'config' }, page);
         return dispatch({ type: 'swaps', revision, items: [{ key: `${revision}:${hashKey(text)}`, text }] }, page);
       };
-      globalThis.chrome.runtime.sendNativeMessage = async () => ({ ok: true, version: 't.2', stage: 1, words: WORDS,
+      globalThis.chrome.runtime.sendNativeMessage = async () => ({ ok: true, version: 't.2', stage: 3, words: WORDS,
         geminiKey: 'synthetic-main', geminiBackupKey: 'synthetic-setup-backup', openRouterKey: 'synthetic-setup-router' });
       expect((await dispatch({ type: 'syncWords' }, popup)).ok).toBe(true);
       const st = await dispatch({ type: 'status' }, popup);
@@ -336,6 +339,129 @@ describe('OpenRouter spend', () => {
       expect(Object.values(second.results)[0]).toBeDefined();
       expect(used).toContain('synthetic-pasted-backup');
       expect(used).not.toContain('synthetic-setup-backup');
+    } finally {
+      Object.assign(globalThis, saved);
+    }
+  }, 30000);
+});
+
+// Levels 1-2 on Auto: Claude Haiku 5.5 through OpenRouter first, when an OpenRouter key is set and today's spend is
+// under the cap; the Gemini chain follows. Levels 3-4 and readers without an OpenRouter key keep the chain as before.
+const HAIKU = 'anthropic/claude-haiku-5.5';
+const TODAY = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'openai/gpt-6-luna'];
+
+describe('Claude Haiku first at Levels 1-2', () => {
+  test('chain selection: Haiku first at Levels 1-2 in every language; Levels 3-4 and a popup pick unchanged', () => {
+    for (const language of ['French', 'Spanish', 'German', 'Italian', 'Portuguese', 'Japanese', 'Korean']) {
+      for (const level of [1, 2]) {
+        const { design, chain } = configFor(language, 'auto', undefined, level);
+        expect(design).toBe('candidates');
+        expect(chain.map((s) => s.model)).toEqual([HAIKU, ...TODAY]);
+        expect(chain[0]).toEqual({ provider: 'openrouter', model: HAIKU, thinking: 'low', timeoutMs: 35000 });
+      }
+      for (const level of [3, 4, 0, undefined]) expect(configFor(language, 'auto', undefined, level).chain).toEqual(CHAIN);
+    }
+    // A Gemini model picked in the popup goes first, as before, with no Haiku step.
+    expect(configFor('French', 'gemini-3.5-flash-lite', undefined, 1).chain.map((s) => s.model))
+      .toEqual(['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'openai/gpt-6-luna']);
+  });
+
+  test('with a key: Haiku first, "low" sent as reasoning effort, 35 s timeout, and its reply parses with the schema', async () => {
+    const chain = configFor('French', 'auto', undefined, 1).chain;
+    const { calls, fetchImpl } = recorder((who, init) => (who.startsWith('openrouter') ? routerOk(init, 0.0018) : geminiOk(JSON.parse(init.body))));
+    const sent = [];
+    const timeouts = [];
+    const real = AbortSignal.timeout;
+    AbortSignal.timeout = (ms) => { timeouts.push(ms); return real.call(AbortSignal, ms); };
+    let r;
+    try {
+      r = await run(async (url, init) => { if (url === OPENROUTER_URL) sent.push(JSON.parse(init.body)); return fetchImpl(url, init); }, { chain, level: 1 });
+    } finally {
+      AbortSignal.timeout = real;
+    }
+    expect(calls).toEqual([`openrouter ${HAIKU} synthetic-openrouter`]);
+    expect(timeouts).toEqual([35000]);
+    expect(sent[0].reasoning).toEqual({ effort: 'low' });
+    expect(sent[0].response_format).toEqual({ type: 'json_schema', json_schema: { name: 'weave', strict: false, schema: RESPONSE_SCHEMA } });
+    expect(sent[0].provider).toEqual({ require_parameters: true });
+    expect(r).toMatchObject({ model: HAIKU, provider: 'openrouter', keyName: 'openrouter', step: 1, costUsd: 0.0018 });
+    expect(r.results.a.map((s) => s.f)).toEqual(['et']);
+  });
+
+  test('without a key: the Gemini chain as today', async () => {
+    const chain = configFor('French', 'auto', undefined, 2).chain;
+    const { calls, fetchImpl } = recorder(() => quota429(MINUTE));
+    await run(fetchImpl, { chain, keys: { main: KEYS.main, backup: KEYS.backup } }).catch(() => {});
+    expect(calls).toEqual(['gemini-3.1-flash-lite synthetic-main', 'gemini-3.1-flash-lite synthetic-backup',
+      'gemini-3.5-flash-lite synthetic-main', 'gemini-3.5-flash-lite synthetic-backup']);
+  });
+
+  test('Haiku slow or busy: the Gemini chain answers; out of credits: no other OpenRouter step that batch', async () => {
+    const chain = configFor('French', 'auto', undefined, 1).chain;
+    for (const fail of [() => { throw new DOMException('timed out', 'TimeoutError'); }, () => status(503)]) {
+      const cooldown = new Map();
+      const { calls, fetchImpl } = recorder((who, init) => (who.startsWith('openrouter') ? fail() : geminiOk(JSON.parse(init.body))));
+      const r = await run(fetchImpl, { chain, cooldown });
+      expect(calls).toEqual([`openrouter ${HAIKU} synthetic-openrouter`, 'gemini-3.1-flash-lite synthetic-main']);
+      expect(r).toMatchObject({ model: 'gemini-3.1-flash-lite', step: 2 });
+      expect(cooldown.get(`openrouter:${HAIKU}`)).toBeGreaterThan(Date.now()); // the next batches skip Haiku for a while
+    }
+    const seen = [];
+    const { calls, fetchImpl } = recorder((who) => (who.startsWith('openrouter') ? status(402) : quota429(MINUTE)));
+    await run(fetchImpl, { chain, onOpenRouter: async (x) => { seen.push(x); } }).catch(() => {});
+    expect(calls.filter((c) => c.startsWith('openrouter'))).toEqual([`openrouter ${HAIKU} synthetic-openrouter`]);
+    expect(seen).toEqual([{ costUsd: 0, status: 402 }]);
+  });
+
+  test('worker: Haiku first at Levels 1-2 until the spend cap; Level 3 and no key use the Gemini chain', async () => {
+    const saved = Object.fromEntries(['chrome', 'fetch'].map((k) => [k, globalThis[k]]));
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+      if (String(url).startsWith('chrome-extension://')) return { ok: true, json: async () => ({ version: '0.2.1' }) };
+      if (url === OPENROUTER_URL) { calls.push(JSON.parse(init.body).model); return routerOk(init, 0.2); }
+      calls.push(url.slice(API_BASE.length).split(':')[0]);
+      return geminiOk(JSON.parse(init.body));
+    };
+    const page = { id: 'fw-test', tab: { id: 1, title: 'Cats' }, url: 'https://example.com/article' };
+    const popup = { id: 'fw-test', url: 'chrome-extension://fw-test/src/popup.html' };
+    const asker = (dispatch) => async (text) => {
+      const { revision } = await dispatch({ type: 'config' }, page);
+      return dispatch({ type: 'swaps', revision, items: [{ key: `${revision}:${hashKey(text)}`, text }] }, page);
+    };
+    const state = (stage) => ({ version: 't.1', stage, paused: false, sites: 'all', fetchedAt: Date.now(), words: WORDS });
+    try {
+      // Level 1 (Claude Code stage 1) with an OpenRouter key.
+      let dispatch = await startWorker({ settings: { enabled: true, newSitesEnabled: true }, apiKey: 'synthetic-main',
+        openRouterKey: 'synthetic-openrouter-key', [STATE_KEY]: state(1) }, 'haiku-key');
+      let ask = asker(dispatch);
+      expect(Object.values((await ask('The cat and the dog sleep all day long.')).results)[0].map((s) => s.f)).toEqual(['et']);
+      expect(calls).toEqual([HAIKU]);
+      let st = await dispatch({ type: 'status' }, popup);
+      expect(st.lastServed).toMatchObject({ model: HAIKU, provider: 'openrouter', keyName: 'openrouter' });
+      expect(st.openRouter).toMatchObject({ usd: 0.2, blocked: '' });
+      // Level 2 too. This batch takes the day's spend to $0.40, past the default $0.25 cap.
+      await dispatch({ type: 'save', settings: { levelOverride: 2 } }, popup);
+      await ask('The bird and the fish swim all day long.');
+      expect(calls).toEqual([HAIKU, HAIKU]);
+      st = await dispatch({ type: 'status' }, popup);
+      expect(st.openRouter.blocked).toBe('cap');
+      // Cap reached: Haiku is skipped and the Gemini chain answers.
+      calls.length = 0;
+      await ask('The cow and the goat eat all day long.');
+      expect(calls).toEqual(['gemini-3.1-flash-lite']);
+      expect((await dispatch({ type: 'status' }, popup)).lastServed.model).toBe('gemini-3.1-flash-lite');
+      // Level 3 with the key and room under a higher cap: the Gemini chain, unchanged.
+      await dispatch({ type: 'save', settings: { levelOverride: 3, openRouterDailyUsd: 5 } }, popup);
+      calls.length = 0;
+      await ask('The fox and the hen run all day long.');
+      expect(calls).toEqual(['gemini-3.1-flash-lite']);
+      // Level 1 without an OpenRouter key: the Gemini chain as today.
+      dispatch = await startWorker({ settings: { enabled: true, newSitesEnabled: true }, apiKey: 'synthetic-main', [STATE_KEY]: state(1) },
+        'haiku-nokey');
+      ask = asker(dispatch);
+      calls.length = 0;
+      await ask('The owl and the bat fly all night long.');
+      expect(calls).toEqual(['gemini-3.1-flash-lite']);
     } finally {
       Object.assign(globalThis, saved);
     }
