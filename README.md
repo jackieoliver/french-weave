@@ -281,8 +281,9 @@ because it's a guess: it never makes a word known on its own.
 
 ## Other languages
 
-French is the default and the only full list (about 1,000 ranked words). For another language, give setup a word
-list; the hook, the commands, `export` and the extension then weave that language instead:
+French is the default. For another language, pick one of the lists below or give setup your own word list; the hook
+(Claude Code and Codex), the commands, `export` (claude.ai and ChatGPT blocks) and the extension then weave that
+language instead. The ready-made blocks in `blocks/` are French only; `export` makes them for the language you set up:
 
 ```sh
 python3 ~/.french-weave/app/scripts/fw.py setup --language Spanish --lexicon ~/spanish.csv
