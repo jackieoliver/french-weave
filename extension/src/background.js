@@ -93,7 +93,9 @@ async function context() {
   const origins = await grantedOrigins();
   const { openRouterDailyUsd, ...affecting } = settings; // the spend cap changes no swap, so cached ones stay
   const revision = hashKey(JSON.stringify([data.epoch || '', affecting, level, state?.version || '', paused, hasKey, origins]));
-  return { settings, level, revision, hasKey, tier: tierFor(hasKey, state), paused, origins, stage: state?.stage || 0 };
+  // The language picks the tip's voice. Not in the revision: another language brings another word list, so a new version.
+  return { settings, level, revision, hasKey, tier: tierFor(hasKey, state), paused, origins, stage: state?.stage || 0,
+    language: state?.language || 'French' };
 }
 
 // The model APIs' own host permissions (manifest) are not sites the reader granted: openrouter.ai is also a website,

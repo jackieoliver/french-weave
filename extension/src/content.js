@@ -1,9 +1,11 @@
 // Content script: watch readable text (tweets on X, prose elsewhere), ask the background for swaps, paint them,
-// show the gloss on hover or focus, handle click/Enter flip and seen/peek/flip events. Every async reply belongs to one config generation.
+// show the gloss on hover or focus (with a speaker button when a voice exists), handle click/Enter flip and
+// seen/peek/flip events. Every async reply belongs to one config generation.
 import { flatten, applySwaps, revert, toggle, isSwap, swapWord, SWAP_CLASS } from './text.js';
 import { hashKey } from './hash.js';
 import { siteEnabled, hasSiteAccess } from './settings.js';
 import { selector, readable } from './page.js';
+import { voiceFor } from './speech.js';
 
 let config = null;
 let observer = null;
@@ -29,6 +31,12 @@ let churn = new WeakMap(); // element -> { text, asks: [ms], paints: [ms], live 
 // mouse over a word on the way somewhere else doesn't hold it back.
 const PEEK_DWELL_MS = 700;
 let peekTimer = null;
+// Pronunciation: with a browser voice for the woven language, the gloss box starts with a speaker button (fw-say)
+// that says the word on a click or key press, never on its own. Without a voice there is no button.
+const speech = globalThis.speechSynthesis;
+let voice; // undefined: pick again (voices load after the page and can change)
+let voiceLanguage = '';
+speech?.addEventListener?.('voiceschanged', () => { voice = undefined; });
 // After the extension reloads itself for an update, this copy is cut off from the worker. It then goes quiet:
 // no more requests or errors, woven words stay as they are, and a page reload brings in the new copy.
 let orphaned = false;
@@ -70,33 +78,96 @@ function record(span, event) {
     if (!r?.ok && daily) seen.delete(id);
   }).catch(() => { if (daily) seen.delete(id); });
 }
+function voiceNow() {
+  if (!speech) return null;
+  const language = config?.language || 'French';
+  if (voice === undefined || voiceLanguage !== language) {
+    voiceLanguage = language;
+    voice = voiceFor(speech.getVoices(), language);
+  }
+  return voice;
+}
+const SVG = 'http://www.w3.org/2000/svg';
+function speakerIcon() {
+  const svg = document.createElementNS(SVG, 'svg');
+  for (const [k, v] of Object.entries({ viewBox: '0 0 16 16', width: '12', height: '12', 'aria-hidden': 'true' })) svg.setAttribute(k, v);
+  const cone = document.createElementNS(SVG, 'path');
+  cone.setAttribute('d', 'M2 6h3l4-3v10l-4-3H2z');
+  cone.setAttribute('fill', 'currentColor');
+  const waves = document.createElementNS(SVG, 'path');
+  for (const [k, v] of Object.entries({ d: 'M11.5 5.5a3.5 3.5 0 0 1 0 5M13.5 3.5a6.5 6.5 0 0 1 0 9', fill: 'none',
+    stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linecap': 'round' })) waves.setAttribute(k, v);
+  svg.append(cone, waves);
+  return svg;
+}
+function speakerButton(span, v) {
+  const word = span.getAttribute('data-fr') || '';
+  const button = document.createElement('fw-say');
+  button.setAttribute('role', 'button');
+  button.tabIndex = 0;
+  button.setAttribute('aria-label', `Say ${word}`);
+  // Chrome's "Google" voices (and other online ones) send the text off to be spoken; the button says so.
+  const online = /^google/i.test(v.name) ? ' (online voice: the word is sent to Google)' : ' (online voice: the word leaves this computer)';
+  button.title = `Say "${word}"${v.localService ? '' : online}`;
+  button.append(speakerIcon());
+  return button;
+}
+function say(span) {
+  const v = voiceNow();
+  if (!v || !span.isConnected) return;
+  const utterance = new globalThis.SpeechSynthesisUtterance(span.getAttribute('data-fr') || '');
+  utterance.voice = v;
+  utterance.lang = v.lang;
+  // Queued after anything already being said: cancel() would empty the page's own speech queue too.
+  speech.speak(utterance);
+}
 // The gloss is one box for the whole page, fixed to the viewport and placed over the word, so a container with
 // overflow: hidden (quoted posts on X, comment threads) can't clip or hide it the way a box inside the word could.
-// It sits outside every text block the extension reads, never takes the pointer, and is hidden from screen readers
-// (the word's aria-label carries the gloss).
+// It sits outside every text block the extension reads and lets the pointer through to the page; only the speaker
+// button (first, above the start of the word) takes it. The gloss text is hidden from screen readers (the word's
+// aria-label carries it); the button is not.
 let tipBox = null;
-const TIP_GAP = 4;
+let tipWord = null; // the word the open gloss belongs to
+let tipButton = null; // its speaker, when a voice says the language
+const TIP_GAP = 4; // content.css's bridge from the speaker down to the word spans this gap
 function placeTip(span) {
   if (!tipBox?.isConnected) {
     tipBox = document.createElement('fw-gloss');
     tipBox.className = 'fw-gloss';
-    tipBox.setAttribute('aria-hidden', 'true');
     document.documentElement.append(tipBox);
   }
-  tipBox.textContent = span.getAttribute('data-tip') || '';
+  const text = document.createElement('fw-text');
+  text.setAttribute('aria-hidden', 'true');
+  text.textContent = span.getAttribute('data-tip') || '';
+  const v = voiceNow();
+  tipButton = v ? speakerButton(span, v) : null;
+  tipBox.replaceChildren(...(tipButton ? [tipButton] : []), text);
+  tipBox.classList.toggle('fw-gloss-say', !!tipButton);
   tipBox.classList.add('fw-gloss-on');
+  tipWord = span;
+  moveTip(span);
+}
+function moveTip(span) {
   const word = span.getBoundingClientRect();
   const box = tipBox.getBoundingClientRect();
   const width = document.documentElement.clientWidth || window.innerWidth;
-  const top = word.top - box.height - TIP_GAP >= 0 ? word.top - box.height - TIP_GAP : word.bottom + TIP_GAP;
+  const above = word.top - box.height - TIP_GAP >= 0;
+  tipBox.classList.toggle('fw-gloss-below', !above); // the speaker's bridge then reaches up to the word
   tipBox.style.left = `${Math.max(TIP_GAP, Math.min(word.left, width - box.width - TIP_GAP))}px`;
-  tipBox.style.top = `${top}px`;
+  tipBox.style.top = `${above ? word.top - box.height - TIP_GAP : word.bottom + TIP_GAP}px`;
 }
 // The gloss shows on the same event that brings the pointer or focus to a word; a dwell counts as a peek.
 function hideTip() {
   clearTimeout(peekTimer); peekTimer = null;
   for (const el of document.querySelectorAll(`.${SWAP_CLASS}.fw-tip`)) el.classList.remove('fw-tip');
   tipBox?.classList.remove('fw-gloss-on');
+  tipWord = null; tipButton = null;
+}
+// A scroll moves the page under a resting pointer, so it closes the gloss; but while the speaker has keyboard focus
+// the gloss follows its word instead of taking the focused button away.
+function scrolled() {
+  if (tipButton && tipWord?.isConnected && document.activeElement === tipButton) moveTip(tipWord);
+  else hideTip();
 }
 function showTip(e) {
   const span = swapFor(e);
@@ -110,9 +181,11 @@ function showTip(e) {
     if (span.isConnected && span.classList.contains('fw-tip')) record(span, 'peek');
   }, PEEK_DWELL_MS);
 }
+// Leaving the word or its speaker closes the gloss, unless the pointer or focus is going from one to the other.
 function disarmTip(e) {
-  const span = swapFor(e);
-  if (span && !span.contains(e.relatedTarget)) hideTip();
+  const from = swapFor(e) || (e.isTrusted && tipButton?.contains(e.target) ? tipButton : null);
+  const into = (el) => !!el?.contains(e.relatedTarget);
+  if (from && !into(from) && !(tipButton && (into(tipButton) || into(tipWord)))) hideTip();
 }
 function seenVisible() {
   if (document.visibilityState === 'hidden') return;
@@ -215,6 +288,7 @@ function mutations(records) {
 }
 function start() {
   if (observer || !on()) return;
+  voiceNow(); // Chrome starts loading its voice list on the first ask, so it is there by the first hover
   visible = new IntersectionObserver((entries) => {
     for (const e of entries) {
       if (e.isIntersecting && e.intersectionRatio >= 0.5) visibleWords.add(e.target);
@@ -244,7 +318,30 @@ function update(next, retry = false) {
   if (!retry && next.revision === config?.revision) return;
   stop(); config = next; start();
 }
+// The speaker is in the gloss box, not in the word, so keyboard focus is carried across: Tab from a word whose
+// gloss is open goes to its speaker, Shift+Tab goes back, and Tab from the speaker carries on from the word.
+// A click, Enter or Space on the speaker says the word; it is never a flip. True when the event was the speaker's.
+function speakerInput(e) {
+  if (!e.isTrusted || !tipButton || !tipWord?.isConnected || !on()) return false;
+  if (e.type === 'keydown' && e.key === 'Tab' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+    if (e.target === tipWord && !e.shiftKey) {
+      e.preventDefault(); e.stopPropagation();
+      tipButton.focus({ preventScroll: true });
+      return true;
+    }
+    if (e.target !== tipButton) return false;
+    if (e.shiftKey) { e.preventDefault(); e.stopPropagation(); }
+    tipWord.focus({ preventScroll: true }); // a plain Tab's own move then starts from the word
+    return true;
+  }
+  if (!tipButton.contains(e.target)) return false;
+  if (e.type === 'keydown' && !['Enter', ' '].includes(e.key)) return true;
+  e.preventDefault(); e.stopPropagation();
+  say(tipWord);
+  return true;
+}
 function reveal(e) {
+  if (speakerInput(e)) return;
   const span = swapFor(e);
   if (!span || !on()) return;
   if (e.type === 'keydown' && !['Enter', ' '].includes(e.key)) return;
@@ -262,7 +359,7 @@ document.addEventListener('mouseover', showTip, true);
 document.addEventListener('focusin', showTip, true);
 document.addEventListener('mouseout', disarmTip, true);
 document.addEventListener('focusout', disarmTip, true);
-window.addEventListener('scroll', hideTip, { passive: true, capture: true });
+window.addEventListener('scroll', scrolled, { passive: true, capture: true });
 document.addEventListener('visibilitychange', seenVisible);
 window.addEventListener('online', () => { void send({ type: 'config' }).then((c) => update(c, true)).catch(() => {}); });
 // SPA navigation can reuse DOM nodes without changing their text.

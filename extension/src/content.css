@@ -12,7 +12,8 @@
   text-decoration-thickness: 1.5px;
 }
 /* The gloss shows as soon as the pointer or focus reaches a word (content.js adds .fw-tip to the word and shows one fixed box placed over it,
-   so overflow: hidden containers can't clip it). Page styles are reset so a site's CSS can't restyle or hide it. */
+   so overflow: hidden containers can't clip it). Page styles are reset so a site's CSS can't restyle or hide it. With a voice for the
+   language, a speaker button (fw-say) comes first; the box lets the pointer through to the page, and only the button takes it. */
 fw-gloss.fw-gloss {
   all: initial;
   display: none !important;
@@ -21,11 +22,11 @@ fw-gloss.fw-gloss {
   top: 0;
   max-width: calc(100vw - 8px);
   box-sizing: border-box;
+  align-items: center;
+  gap: 3px;
   padding: 3px 7px;
   font: normal 12px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   color: #fff;
   background: #1d1f23;
   border: 1px solid #555;
@@ -34,5 +35,52 @@ fw-gloss.fw-gloss {
   z-index: 2147483647 !important;
 }
 fw-gloss.fw-gloss.fw-gloss-on {
-  display: block !important;
+  display: flex !important;
 }
+fw-gloss.fw-gloss.fw-gloss-say {
+  padding-left: 3px;
+}
+fw-gloss.fw-gloss > fw-text {
+  all: unset;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The button sits above the start of the word. */
+fw-gloss.fw-gloss > fw-say {
+  all: unset;
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.3em;
+  border-radius: 4px;
+  opacity: 0.75;
+  cursor: pointer;
+  pointer-events: auto !important;
+}
+fw-gloss.fw-gloss > fw-say > svg {
+  all: unset;
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+/* Bridges the gap from the button to the word (the box's padding and border, and TIP_GAP in content.js), so moving
+   the pointer straight from the word to the button keeps the gloss open. */
+fw-gloss.fw-gloss > fw-say::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  right: 0;
+  top: 100%;
+  height: 8px; /* 3px padding + 1px border + 4px gap; more would take clicks meant for the word's edge */
+}
+fw-gloss.fw-gloss.fw-gloss-below > fw-say::before {
+  top: auto;
+  bottom: 100%;
+}
+fw-gloss.fw-gloss > fw-say:hover { opacity: 1; background: rgba(255, 255, 255, 0.16); }
+fw-gloss.fw-gloss > fw-say:focus-visible { opacity: 1; outline: 1px solid #8ab4ff; outline-offset: 0; }
