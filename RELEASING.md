@@ -53,5 +53,5 @@ One commit on the `public-release` branch, "Public release: leave out the dev bu
 - Same version, two builds: `claude plugin update` and `refresh_copies` (scripts/fwlib.py) only act when the version
   changes, so switching one install from the dev marketplace to the public one at the same version keeps the dev
   copies. Reinstall (or run setup again) after switching.
-- History: the public repo receives dev's full history, so the usage log's code and the commit messages that
-  describe it stay readable in older commits. Squash the release instead if that matters.
+- History: the public repo receives dev's full history as it is (commit messages included); it is never squashed or
+  rewritten, so each release stays a plain merge on top of the last.
