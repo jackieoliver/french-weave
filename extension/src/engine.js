@@ -1,9 +1,11 @@
 // One batch through the language's model chain (model-config.js), validated swaps out. Each Gemini step is tried with
-// the main key, then the backup key, before the next step; an OpenRouter step comes only when the worker allows it.
+// the main key, then the backup key, before the next step; an OpenRouter or Anthropic step comes only when the worker
+// allows it (a key, and that provider's spend under its cap).
 import * as freeform from './prompt.js';
 import * as candidates from './candidates.js';
 import { buildRequest, callGemini, parseSwapsResponse, FALLBACK_MODEL } from './gemini.js';
 import { callOpenRouter } from './openrouter.js';
+import { callAnthropic } from './anthropic.js';
 import { validateSwaps, capSwaps } from './levels.js';
 import { clockTime, errorKind } from './modelerror.js';
 import { LAST_TIMEOUT_MS } from './model-config.js';
@@ -15,15 +17,18 @@ export const COOLDOWN_MS = { 429: 60000, 503: 30000, timeout: 30000 };
 export { clockTime };
 
 // Where a step's state lives (cooldown, daily): the main key's Gemini slot is the bare model name, as stored before
-// the chain existed; the backup key's is "backup:<model>", OpenRouter's "openrouter:<model>".
+// the chain existed; the backup key's is "backup:<model>", OpenRouter's "openrouter:<model>", Anthropic's
+// "anthropic:<model>".
 export const slotFor = (keyName, model) => (keyName === 'main' ? model : `${keyName}:${model}`);
-const labelFor = (a) => (a.keyName === 'main' ? a.step.model : a.keyName === 'backup' ? `${a.step.model} (backup key)` : `OpenRouter ${a.step.model}`);
+const PAID = { openrouter: 'OpenRouter', anthropic: 'Anthropic' }; // providers paid per request, by their key's name
+const labelFor = (a) => (a.keyName === 'main' ? a.step.model : a.keyName === 'backup' ? `${a.step.model} (backup key)` : `${PAID[a.keyName]} ${a.step.model}`);
+const STOPS = [401, 402, 403]; // the key was refused or the account can't pay: that provider's other steps would fail too
 
-// The requests a chain makes, in order. keys: { main, backup, openrouter }; a step without its key is left out.
+// The requests a chain makes, in order. keys: { main, backup, openrouter, anthropic }; a step without its key is left out.
 export function attemptsFor(chain, keys) {
   const out = [];
   chain.forEach((step, index) => {
-    const names = step.provider === 'gemini' ? ['main', 'backup'] : step.provider === 'openrouter' ? ['openrouter'] : [];
+    const names = step.provider === 'gemini' ? ['main', 'backup'] : PAID[step.provider] ? [step.provider] : [];
     for (const keyName of names) {
       if (keys[keyName]) out.push({ step, index, keyName, key: keys[keyName], slot: slotFor(keyName, step.model) });
     }
@@ -72,13 +77,15 @@ function designFor(design, { level, batch, words, language, shownToday, page }) 
   };
 }
 
-// keys: { main, backup, openrouter } (apiKey: the main key, for older callers). chain and design: configFor's.
+// keys: { main, backup, openrouter, anthropic } (apiKey: the main key, for older callers). chain and design: configFor's.
 // daily: Map<slot, until ms> for slots whose per-day quota is spent (the worker keeps it in storage, since a day outlives
 // the worker); cooldown covers the per-minute limit and overload. page: the page title and site, for the topic check.
-// onOpenRouter({ costUsd, status }): after each OpenRouter request, so the worker can count spend and stop on a 402.
-// timeoutMs: tests only; otherwise each step's own.
+// onOpenRouter({ costUsd, status }) and onAnthropic({ costUsd, status, credits }): after each request to that provider,
+// so the worker can count spend and stop on a refused key or an account that can't pay. timeoutMs: tests only;
+// otherwise each step's own.
 export async function requestSwaps({ apiKey, keys: given, model, chain: givenChain, design = 'freeform', level: chosen, batch, words, language,
-  shownToday, page = '', fetchImpl, timeoutMs, cooldown = new Map(), daily = new Map(), now = Date.now, onOpenRouter = async () => {} }) {
+  shownToday, page = '', fetchImpl, timeoutMs, cooldown = new Map(), daily = new Map(), now = Date.now, onOpenRouter = async () => {},
+  onAnthropic = async () => {} }) {
   const level = words ? chosen : Math.min(chosen, 2); // the bundled lists stop at Level 2
   const keys = given || { main: apiKey };
   const chain = givenChain || legacyChain(model);
@@ -94,25 +101,30 @@ export async function requestSwaps({ apiKey, keys: given, model, chain: givenCha
   const errors = [];
   const failures = [];
   const overloaded = new Set(); // steps whose model was busy or slow: the backup key would only wait again
-  let routerStopped = false; // OpenRouter refused the key or the credits are gone: its other steps would only fail too
-  const skip = (b) => overloaded.has(b.index) || blocked(b.slot) || (routerStopped && b.keyName === 'openrouter');
+  const stopped = new Set(); // paid providers that refused the key or can't be paid: their other steps would only fail too
+  const skip = (b) => overloaded.has(b.index) || blocked(b.slot) || stopped.has(b.keyName);
   for (const [n, a] of open.entries()) {
     if (skip(a)) continue;
     const later = open.slice(n + 1).some((b) => !skip(b));
     const wait = timeoutMs || (later ? a.step.timeoutMs : Math.max(a.step.timeoutMs || 0, LAST_TIMEOUT_MS));
     const body = buildRequest({ system: plan.system, user: plan.user, schema: plan.schema, thinkingLevel: a.step.thinking, model: a.step.model });
     let costUsd = 0;
+    let usage;
+    const started = now();
     try {
       let byId;
-      if (a.keyName === 'openrouter') {
+      if (PAID[a.keyName]) {
+        const call = a.keyName === 'anthropic' ? callAnthropic : callOpenRouter;
+        const count = a.keyName === 'anthropic' ? onAnthropic : onOpenRouter;
         try {
-          const reply = await callOpenRouter({ fetchImpl, apiKey: a.key, model: a.step.model, body, thinking: a.step.thinking, timeoutMs: wait });
-          costUsd = reply.costUsd;
-          await onOpenRouter({ costUsd, status: 200 });
+          const reply = await call({ fetchImpl, apiKey: a.key, model: a.step.model, body, thinking: a.step.thinking, timeoutMs: wait });
+          ({ costUsd, usage } = reply);
+          await count({ costUsd, status: 200 });
           byId = plan.parse(reply.text);
         } catch (e) {
-          if (e?.status) await onOpenRouter({ costUsd: 0, status: e.status });
-          if ([401, 402, 403].includes(e?.status)) routerStopped = true;
+          // A billed reply that can't be used (Anthropic's refusal or max_tokens) still counts its cost.
+          if (e?.status || e?.costUsd) await count({ costUsd: e.costUsd || 0, status: e.status || 200, ...(e.credits ? { credits: true } : {}) });
+          if (STOPS.includes(e?.status) || e?.credits) stopped.add(a.keyName);
           throw e;
         }
       } else {
@@ -123,7 +135,8 @@ export async function requestSwaps({ apiKey, keys: given, model, chain: givenCha
         if (!byId.has(id)) throw new Error('Incomplete model response');
         results[id] = capSwaps(level, validateSwaps(level, plan.swaps(id, byId.get(id)), words, language, { stats: dropped, text }), text, words);
       }
-      return { results, model: a.step.model, provider: a.step.provider, keyName: a.keyName, step: a.index + 1, errors, dropped, costUsd };
+      return { results, model: a.step.model, provider: a.step.provider, keyName: a.keyName, step: a.index + 1, errors, dropped, costUsd,
+        ms: now() - started, ...(usage ? { usage } : {}) };
     } catch (e) {
       const timeout = e?.name === 'TimeoutError';
       const pause = e?.retryAfterMs || COOLDOWN_MS[timeout ? 'timeout' : e?.status];
@@ -136,7 +149,7 @@ export async function requestSwaps({ apiKey, keys: given, model, chain: givenCha
       }
       errors.push(`${labelFor(a)}: ${timeout ? 'timeout' : e?.message || e}`);
       failures.push({ provider: a.step.provider, keyName: a.keyName, cooled: !!pause, status: e?.status, googleStatus: e?.googleStatus, keyRejected: e?.keyRejected,
-        daily: e?.daily, timeout, network: !!e?.network });
+        daily: e?.daily, timeout, network: !!e?.network, credits: !!e?.credits });
     }
   }
   const gemini = all.filter((a) => a.step.provider === 'gemini').map((a) => a.slot);
@@ -146,10 +159,10 @@ export async function requestSwaps({ apiKey, keys: given, model, chain: givenCha
   // so passages don't wait for Google's reset when the paid step may answer in a minute.
   if (gemini.length && gemini.every((s) => daily.get(s) > now())) {
     const error = Object.assign(waitError(gemini, cooldown, daily, now()), { googleStatus: geminiFailures.at(-1)?.googleStatus });
-    const soon = all.filter((a) => a.keyName === 'openrouter').map((a) => cooldown.get(a.slot) || 0).filter((t) => t > now());
+    const soon = all.filter((a) => PAID[a.keyName]).map((a) => cooldown.get(a.slot) || 0).filter((t) => t > now());
     if (soon.length) error.retryAfterMs = Math.max(1000, Math.min(error.retryAfterMs, Math.min(...soon) - now()));
-    // An OpenRouter failure with no cooldown and no stop (a 500, no connection, a broken reply) may pass in seconds.
-    const passing = failures.some((f) => f.provider === 'openrouter' && !f.cooled && ![401, 402, 403].includes(f.status));
+    // A paid failure with no cooldown and no stop (a 500, no connection, a broken reply) may pass in seconds.
+    const passing = failures.some((f) => PAID[f.provider] && !f.cooled && !STOPS.includes(f.status) && !f.credits);
     if (passing) error.retryAfterMs = Math.min(error.retryAfterMs, COOLDOWN_MS[503]);
     throw error;
   }

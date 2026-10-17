@@ -3,6 +3,7 @@ import { requestSwaps, attemptsFor } from '../src/engine.js';
 import { MODEL_CONFIG, configFor } from '../src/model-config.js';
 import { RESPONSE_SCHEMA } from '../src/candidates.js';
 import { OPENROUTER_URL, toOpenRouterBody } from '../src/openrouter.js';
+import { ANTHROPIC_URL } from '../src/anthropic.js';
 import { API_BASE } from '../src/gemini.js';
 import { countOpenRouter, openRouterToday, openRouterBlocked } from '../src/quota.js';
 import { openRouterText } from '../src/modelerror.js';
@@ -31,10 +32,16 @@ const routerOk = (init, cost = 0.0006) => {
   return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: keepAll({ contents: [{ parts: [{ text: user }] }] }) } }], usage: { cost } }) };
 };
 
-// Who each request went to: "<model> <key>" for Gemini, "openrouter <model> <key>" for OpenRouter.
+// Who each request went to: "<model> <key>" for Gemini, "openrouter <model> <key>" for OpenRouter, "anthropic <model> <key>"
+// for Anthropic.
 function recorder(answer) {
   const calls = [];
   const fetchImpl = async (url, init) => {
+    if (url === ANTHROPIC_URL) {
+      const who = `anthropic ${JSON.parse(init.body).model} ${init.headers['x-api-key']}`;
+      calls.push(who);
+      return answer(who, init);
+    }
     if (url === OPENROUTER_URL) {
       const who = `openrouter ${JSON.parse(init.body).model} ${init.headers.Authorization.replace('Bearer ', '')}`;
       calls.push(who);
@@ -46,6 +53,14 @@ function recorder(answer) {
   };
   return { calls, fetchImpl };
 }
+// A Messages API reply that keeps every candidate, with a thinking block first as Haiku 5.5 sends one.
+const anthropicOk = (init, usage = { input_tokens: 4000, output_tokens: 600, output_tokens_details: { thinking_tokens: 200 } }) => {
+  const user = JSON.parse(init.body).messages.at(-1).content;
+  return { ok: true, status: 200, text: async () => JSON.stringify({ type: 'message', stop_reason: 'end_turn', usage,
+    content: [{ type: 'thinking', thinking: '', signature: 's' }, { type: 'text', text: keepAll({ contents: [{ parts: [{ text: user }] }] }) }] }) };
+};
+const lowCredit = () => ({ ok: false, status: 400, headers: { get: () => null }, text: async () => JSON.stringify({ type: 'error',
+  error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' } }) });
 const run = (fetchImpl, extra = {}) => requestSwaps({ keys: KEYS, chain: CHAIN, design: 'candidates', level: 2, batch: BATCH, words: WORDS,
   language: 'French', fetchImpl, ...extra });
 
@@ -345,29 +360,32 @@ describe('OpenRouter spend', () => {
   }, 30000);
 });
 
-// Levels 1-2 on Auto: Claude Haiku 5.5 through OpenRouter first, when an OpenRouter key is set and today's spend is
-// under the cap; the Gemini chain follows. Levels 3-4 and readers without an OpenRouter key keep the chain as before.
+// Levels 1-2 on Auto: Claude Haiku 5.5 through OpenRouter first, when an OpenRouter key (and no Anthropic key) is set
+// and today's spend is under the cap; the Gemini chain follows. Levels 3-4 and readers without an OpenRouter key keep
+// the chain as before. The direct Anthropic step is tested in the next block.
 const HAIKU = 'anthropic/claude-haiku-5.5';
+const ROUTER_ONLY = { openrouter: true };
 const TODAY = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'openai/gpt-6-luna'];
 
 describe('Claude Haiku first at Levels 1-2', () => {
   test('chain selection: Haiku first at Levels 1-2 in every language; Levels 3-4 and a popup pick unchanged', () => {
     for (const language of ['French', 'Spanish', 'German', 'Italian', 'Portuguese', 'Japanese', 'Korean']) {
       for (const level of [1, 2]) {
-        const { design, chain } = configFor(language, 'auto', undefined, level);
+        const { design, chain } = configFor(language, 'auto', undefined, level, ROUTER_ONLY);
         expect(design).toBe('candidates');
         expect(chain.map((s) => s.model)).toEqual([HAIKU, ...TODAY]);
         expect(chain[0]).toEqual({ provider: 'openrouter', model: HAIKU, thinking: 'low', timeoutMs: 35000 });
       }
-      for (const level of [3, 4, 0, undefined]) expect(configFor(language, 'auto', undefined, level).chain).toEqual(CHAIN);
+      for (const level of [3, 4, 0, undefined]) expect(configFor(language, 'auto', undefined, level, ROUTER_ONLY).chain).toEqual(CHAIN);
+      expect(configFor(language, 'auto', undefined, 1).chain).toEqual(CHAIN); // no paid key: no Haiku step
     }
     // A Gemini model picked in the popup goes first, as before, with no Haiku step.
-    expect(configFor('French', 'gemini-3.5-flash-lite', undefined, 1).chain.map((s) => s.model))
+    expect(configFor('French', 'gemini-3.5-flash-lite', undefined, 1, ROUTER_ONLY).chain.map((s) => s.model))
       .toEqual(['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'openai/gpt-6-luna']);
   });
 
   test('with a key: Haiku first, "low" sent as reasoning effort, 35 s timeout, and its reply parses with the schema', async () => {
-    const chain = configFor('French', 'auto', undefined, 1).chain;
+    const chain = configFor('French', 'auto', undefined, 1, ROUTER_ONLY).chain;
     const { calls, fetchImpl } = recorder((who, init) => (who.startsWith('openrouter') ? routerOk(init, 0.0018) : geminiOk(JSON.parse(init.body))));
     const sent = [];
     const timeouts = [];
@@ -389,7 +407,7 @@ describe('Claude Haiku first at Levels 1-2', () => {
   });
 
   test('without a key: the Gemini chain as today', async () => {
-    const chain = configFor('French', 'auto', undefined, 2).chain;
+    const chain = configFor('French', 'auto', undefined, 2, ROUTER_ONLY).chain;
     const { calls, fetchImpl } = recorder(() => quota429(MINUTE));
     await run(fetchImpl, { chain, keys: { main: KEYS.main, backup: KEYS.backup } }).catch(() => {});
     expect(calls).toEqual(['gemini-3.1-flash-lite synthetic-main', 'gemini-3.1-flash-lite synthetic-backup',
@@ -397,7 +415,7 @@ describe('Claude Haiku first at Levels 1-2', () => {
   });
 
   test('Haiku slow or busy: the Gemini chain answers; out of credits: no other OpenRouter step that batch', async () => {
-    const chain = configFor('French', 'auto', undefined, 1).chain;
+    const chain = configFor('French', 'auto', undefined, 1, ROUTER_ONLY).chain;
     for (const fail of [() => { throw new DOMException('timed out', 'TimeoutError'); }, () => status(503)]) {
       const cooldown = new Map();
       const { calls, fetchImpl } = recorder((who, init) => (who.startsWith('openrouter') ? fail() : geminiOk(JSON.parse(init.body))));
@@ -461,6 +479,170 @@ describe('Claude Haiku first at Levels 1-2', () => {
       ask = asker(dispatch);
       calls.length = 0;
       await ask('The owl and the bat fly all night long.');
+      expect(calls).toEqual(['gemini-3.1-flash-lite']);
+    } finally {
+      Object.assign(globalThis, saved);
+    }
+  }, 30000);
+});
+
+// Levels 1-2 on Auto with an Anthropic key: the Claude Haiku 5.5 step goes direct to Anthropic, never also through
+// OpenRouter; without one, OpenRouter's key as above; with neither, no Haiku step.
+const DIRECT = 'claude-haiku-5-5';
+const ALL_KEYS = { ...KEYS, anthropic: 'synthetic-anthropic' };
+
+describe('Claude Haiku direct from Anthropic', () => {
+  test('provider choice: Anthropic key -> direct; OpenRouter key only -> OpenRouter; neither -> no Haiku step', () => {
+    const first = (has, level = 2) => configFor('French', 'auto', undefined, level, has).chain[0];
+    expect(first({ anthropic: true, openrouter: true })).toEqual({ provider: 'anthropic', model: DIRECT, thinking: 'low', timeoutMs: 35000 });
+    expect(first({ anthropic: true })).toMatchObject({ provider: 'anthropic', model: DIRECT });
+    expect(first({ openrouter: true })).toMatchObject({ provider: 'openrouter', model: HAIKU });
+    expect(first({})).toEqual(CHAIN[0]);
+    expect(first({ anthropic: true, openrouter: true }, 3)).toEqual(CHAIN[0]);
+    for (const has of [{ anthropic: true, openrouter: true }, { anthropic: true }, { openrouter: true }, {}]) {
+      const chain = configFor('French', 'auto', undefined, 1, has).chain;
+      expect(chain.filter((s) => /haiku/.test(s.model)).length).toBe(has.anthropic || has.openrouter ? 1 : 0);
+      expect(chain.slice(-3)).toEqual(CHAIN); // the Gemini chain stays the fallback after it
+    }
+  });
+
+  test('with both keys: one Haiku attempt, to Anthropic, which answers with usage and cost', async () => {
+    const chain = configFor('French', 'auto', undefined, 2, { anthropic: true, openrouter: true }).chain;
+    const { calls, fetchImpl } = recorder((who, init) => (who.startsWith('anthropic') ? anthropicOk(init) : geminiOk(JSON.parse(init.body))));
+    const spend = [];
+    const r = await run(fetchImpl, { chain, keys: ALL_KEYS, onAnthropic: async (x) => { spend.push(x); }, onOpenRouter: async () => { throw new Error('no OpenRouter'); } });
+    expect(calls).toEqual([`anthropic ${DIRECT} synthetic-anthropic`]);
+    expect(r).toMatchObject({ model: DIRECT, provider: 'anthropic', keyName: 'anthropic', step: 1,
+      usage: { promptTokens: 4000, answerTokens: 400, thinkingTokens: 200 } });
+    expect(r.costUsd).toBeCloseTo(0.0007, 10);
+    expect(r.ms).toBeGreaterThanOrEqual(0);
+    expect(r.results.a.map((s) => s.f)).toEqual(['et']);
+    expect(spend).toEqual([{ costUsd: r.costUsd, status: 200 }]);
+  });
+
+  test('Anthropic slow, busy or failing: the Gemini chain answers, and OpenRouter\'s Haiku is never tried', async () => {
+    const chain = configFor('French', 'auto', undefined, 1, { anthropic: true, openrouter: true }).chain;
+    for (const fail of [() => { throw new DOMException('timed out', 'TimeoutError'); }, () => status(529), () => status(500), () => status(429), lowCredit]) {
+      const cooldown = new Map();
+      const { calls, fetchImpl } = recorder((who, init) => (who.startsWith('anthropic') ? fail() : geminiOk(JSON.parse(init.body))));
+      const r = await run(fetchImpl, { chain, keys: ALL_KEYS, cooldown });
+      expect(calls).toEqual([`anthropic ${DIRECT} synthetic-anthropic`, 'gemini-3.1-flash-lite synthetic-main']);
+      expect(r).toMatchObject({ model: 'gemini-3.1-flash-lite', provider: 'gemini', step: 2 });
+    }
+    // Every Gemini step failing too: the chain ends at gpt-6-luna, with no Haiku through OpenRouter on the way.
+    const { calls, fetchImpl } = recorder((who, init) => (who.startsWith('openrouter') ? routerOk(init) : who.startsWith('anthropic') ? status(529) : quota429(MINUTE)));
+    const r = await run(fetchImpl, { chain, keys: ALL_KEYS });
+    expect(calls.filter((c) => /haiku/.test(c))).toEqual([`anthropic ${DIRECT} synthetic-anthropic`]);
+    expect(r).toMatchObject({ model: 'openai/gpt-6-luna', provider: 'openrouter' });
+  });
+
+  test('a 401, 403 or "credit balance is too low" is reported and stops every Anthropic step for the rest of the batch', async () => {
+    const extra = { provider: 'anthropic', model: 'claude-other', thinking: 'off', timeoutMs: 1000 };
+    const chain = [...configFor('French', 'auto', undefined, 1, { anthropic: true }).chain.slice(0, 2), extra];
+    for (const [fail, report] of [[() => status(401), { costUsd: 0, status: 401 }], [() => status(403), { costUsd: 0, status: 403 }],
+      [lowCredit, { costUsd: 0, status: 400, credits: true }]]) {
+      const seen = [];
+      const { calls, fetchImpl } = recorder((who) => (who.startsWith('anthropic') ? fail() : quota429(MINUTE)));
+      const error = await run(fetchImpl, { chain, keys: { main: KEYS.main, anthropic: 'synthetic-anthropic' }, onAnthropic: async (x) => { seen.push(x); } })
+        .catch((e) => e);
+      expect(calls).toEqual([`anthropic ${DIRECT} synthetic-anthropic`, 'gemini-3.1-flash-lite synthetic-main']); // claude-other skipped
+      expect(seen).toEqual([report]);
+      expect(error.kind).toBe('rate'); // the popup names the Gemini failure; the Anthropic line says why it stopped
+      expect(error.message).toContain(`Anthropic ${DIRECT}: HTTP`);
+      expect(error.message).not.toContain('synthetic-anthropic');
+    }
+    // A 529 does not stop the provider: only that step cools down.
+    const { calls, fetchImpl } = recorder((who) => (who.startsWith('anthropic') ? status(529) : quota429(MINUTE)));
+    await run(fetchImpl, { chain, keys: { main: KEYS.main, anthropic: 'synthetic-anthropic' } }).catch(() => {});
+    expect(calls).toEqual([`anthropic ${DIRECT} synthetic-anthropic`, 'gemini-3.1-flash-lite synthetic-main', 'anthropic claude-other synthetic-anthropic']);
+  });
+
+  test('worker: Level 2 with an Anthropic key (and an OpenRouter key) goes direct; stops, the cap and setup\'s key', async () => {
+    const saved = Object.fromEntries(['chrome', 'fetch'].map((k) => [k, globalThis[k]]));
+    const calls = [];
+    let direct = (init) => anthropicOk(init);
+    globalThis.fetch = async (url, init) => {
+      if (String(url).startsWith('chrome-extension://')) return { ok: true, json: async () => ({ version: '0.2.1' }) };
+      if (url === ANTHROPIC_URL) { calls.push(`anthropic ${init.headers['x-api-key']}`); return direct(init); }
+      if (url === OPENROUTER_URL) { calls.push(`openrouter ${JSON.parse(init.body).model}`); return routerOk(init); }
+      calls.push(url.slice(API_BASE.length).split(':')[0]);
+      return geminiOk(JSON.parse(init.body));
+    };
+    const page = { id: 'fw-test', tab: { id: 1, title: 'Cats' }, url: 'https://example.com/article' };
+    const popup = { id: 'fw-test', url: 'chrome-extension://fw-test/src/popup.html' };
+    const data = { settings: { enabled: true, newSitesEnabled: true, levelOverride: 2 }, apiKey: 'synthetic-main',
+      openRouterKey: 'synthetic-openrouter-key', anthropicKey: 'synthetic-anthropic-pasted',
+      [STATE_KEY]: { version: 't.1', stage: 1, paused: false, sites: 'all', fetchedAt: Date.now(), words: WORDS } };
+    let n = 0;
+    const animals = ['cat', 'dog', 'bird', 'fish', 'cow', 'goat', 'fox', 'hen', 'owl', 'bat', 'ant', 'bee', 'elk', 'yak', 'pig', 'ram',
+      'eel', 'emu', 'gnu', 'cod', 'ape', 'koi', 'boar', 'crab'];
+    try {
+      const dispatch = await startWorker(data, 'anthropic-direct');
+      const ask = async () => {
+        const text = `The ${animals[n++]} and the ${animals[n++]} sleep all day long.`;
+        const { revision } = await dispatch({ type: 'config' }, page);
+        return dispatch({ type: 'swaps', revision, items: [{ key: `${revision}:${hashKey(text)}`, text }] }, page);
+      };
+      expect(Object.values((await ask()).results)[0].map((s) => s.f)).toEqual(['et']);
+      expect(calls).toEqual(['anthropic synthetic-anthropic-pasted']);
+      let st = await dispatch({ type: 'status' }, popup);
+      expect(st.config.level).toBe(2);
+      expect(st.lastServed).toMatchObject({ model: DIRECT, provider: 'anthropic', keyName: 'anthropic' });
+      expect(st.served.counts).toEqual({ [DIRECT]: 1 });
+      expect(st.anthropic).toMatchObject({ usd: 0.0007, blocked: '' });
+      expect(st.openRouter.usd).toBe(0);
+      expect(st).toMatchObject({ anthropicKey: true, hostAnthropicKey: false });
+      expect(JSON.stringify(st)).not.toContain('synthetic-anthropic');
+      // Low credit: stopped until tomorrow or a new key; the next batches go to Gemini, not to OpenRouter's Haiku.
+      direct = lowCredit;
+      calls.length = 0;
+      expect((await ask()).error).toBeUndefined(); // Gemini answered
+      expect(calls).toEqual(['anthropic synthetic-anthropic-pasted', 'gemini-3.1-flash-lite']);
+      expect((await dispatch({ type: 'status' }, popup)).anthropic.blocked).toBe('credits');
+      calls.length = 0;
+      await ask();
+      expect(calls).toEqual(['gemini-3.1-flash-lite']);
+      // A new pasted key clears the stop; a 401 sets the key stop.
+      direct = () => status(401);
+      await dispatch({ type: 'save', anthropicKey: 'synthetic-anthropic-new' }, popup);
+      expect((await dispatch({ type: 'status' }, popup)).anthropic.blocked).toBe('');
+      calls.length = 0;
+      await ask();
+      expect(calls).toEqual(['anthropic synthetic-anthropic-new', 'gemini-3.1-flash-lite']);
+      expect((await dispatch({ type: 'status' }, popup)).anthropic.blocked).toBe('key');
+      calls.length = 0;
+      await ask();
+      expect(calls).toEqual(['gemini-3.1-flash-lite']);
+      // The cap ($0.01 here): a batch that costs $0.01 takes the day past it; after it, Gemini.
+      direct = (init) => anthropicOk(init, { input_tokens: 50000, output_tokens: 10000 });
+      await dispatch({ type: 'save', anthropicKey: 'synthetic-anthropic-ok', settings: { anthropicDailyUsd: 0.01 } }, popup);
+      calls.length = 0;
+      await ask();
+      expect(calls).toEqual(['anthropic synthetic-anthropic-ok']);
+      st = await dispatch({ type: 'status' }, popup);
+      expect(st.anthropic).toMatchObject({ usd: 0.0107, blocked: 'cap' });
+      calls.length = 0;
+      await ask();
+      expect(calls).toEqual(['gemini-3.1-flash-lite']);
+      // Setup's key (native host), used once the pasted one is cleared; a pasted one wins again.
+      await dispatch({ type: 'save', anthropicKey: '', settings: { anthropicDailyUsd: 5 } }, popup);
+      globalThis.chrome.runtime.sendNativeMessage = async () => ({ ok: true, version: 't.2', stage: 1, words: WORDS,
+        geminiKey: 'synthetic-main', anthropicKey: 'synthetic-anthropic-setup' });
+      expect((await dispatch({ type: 'syncWords' }, popup)).ok).toBe(true);
+      st = await dispatch({ type: 'status' }, popup);
+      expect(st).toMatchObject({ anthropicKey: false, hostAnthropicKey: true });
+      expect(JSON.stringify(st)).not.toContain('synthetic-anthropic');
+      calls.length = 0;
+      await ask();
+      expect(calls).toEqual(['anthropic synthetic-anthropic-setup']);
+      await dispatch({ type: 'save', anthropicKey: 'synthetic-anthropic-pasted' }, popup);
+      calls.length = 0;
+      await ask();
+      expect(calls).toEqual(['anthropic synthetic-anthropic-pasted']);
+      // Level 3: the Gemini chain, no Haiku from either provider.
+      await dispatch({ type: 'save', settings: { levelOverride: 3 } }, popup);
+      calls.length = 0;
+      await ask();
       expect(calls).toEqual(['gemini-3.1-flash-lite']);
     } finally {
       Object.assign(globalThis, saved);

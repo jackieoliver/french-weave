@@ -67,7 +67,8 @@ and paste the block it prints. It carries your real progress; re-export about on
   hook adds about 2.5 KB of instructions to each message you send.
 - Extension with a key: your own Gemini API key. A free AI Studio key works (Google's free tier allowed 500 Gemini 3.5
   Flash-Lite requests a day when tested in October 2026); the extension stops itself at 500 Gemini calls a day per
-  key (see [Models and keys](#models-and-keys-extension) for the backup key and the paid OpenRouter step), and
+  key (see [Models and keys](#models-and-keys-extension) for the backup key and the paid Anthropic and OpenRouter
+  steps), and
   when Google says the key's daily limit is reached it waits until just after midnight Pacific time, when Google
   resets it, showing "Daily Gemini limit reached (429); resumes about ..." (in your own time) in its popup. Whenever Gemini calls fail (limit, rejected key, Gemini busy, no
   connection), the toolbar icon shows a small muted dot and the popup says why, with the HTTP code, until a call works again.
@@ -92,9 +93,11 @@ and paste the block it prints. It carries your real progress; re-export about on
 - With a Gemini key, the extension sends readable text from the sites where it's on to Google's Gemini API with
   your key. Links and inline code go with their sentence but are never changed; code blocks, forms and editable text
   are skipped. Without a key, no page text leaves your computer: swaps come from a list inside the extension.
+- With an Anthropic key (optional), the same text goes straight to Anthropic (Claude Haiku 5.5) first for every batch
+  at Levels 1-2. Without that key nothing goes there directly.
 - With an OpenRouter key (optional), the same text goes to OpenRouter and the model's provider: Anthropic (Claude
-  Haiku 5.5) first for every batch at Levels 1-2, and OpenAI (gpt-6-luna) for any batch both Gemini steps failed to
-  answer. Without that key nothing goes there.
+  Haiku 5.5) first for every batch at Levels 1-2 if you have no Anthropic key, and OpenAI (gpt-6-luna) for any batch
+  both Gemini steps failed to answer. Without that key nothing goes there.
 - With a free Gemini key, Google may use that text to improve its products, and human reviewers may read it. If you
   don't want that, use a paid key (turn on billing for the key's Google Cloud project): Google doesn't use paid-key
   prompts that way. In the EEA, UK and Switzerland the paid terms cover free keys too.
@@ -104,7 +107,7 @@ and paste the block it prints. It carries your real progress; re-export about on
   **Only sites I turn on**.
 - The extension reads your word list through a Chrome native messaging host that only this extension's ID may call.
   Key files you gave setup are copied to `~/.french-weave/` (`gemini_key`, `gemini_backup_key`, `openrouter_key`,
-  mode 600) and handed only to the extension's background worker, never to the pages it runs on.
+  `anthropic_key`, mode 600) and handed only to the extension's background worker, never to the pages it runs on.
 
 ## Models and keys (extension)
 
@@ -113,26 +116,33 @@ per language in `extension/src/model-config.js` (today the same for every langua
 
 | Step | Model | Key | Cost | Waits |
 |---|---|---|---|---|
-| first, Levels 1-2 only | Claude Haiku 5.5 through OpenRouter, low reasoning | OpenRouter key, optional | paid, about $0.0015-0.002 a batch | 35 s |
+| first, Levels 1-2 only | Claude Haiku 5.5 direct from Anthropic, low effort | Anthropic key, optional | paid, about $0.001 a batch | 35 s |
+| or, without an Anthropic key | Claude Haiku 5.5 through OpenRouter, low reasoning | OpenRouter key, optional | paid, about $0.0015-0.002 a batch | 35 s |
 | 1 | Gemini 3.1 Flash-Lite, medium thinking | your Gemini key, then the backup key | free tier | 30 s |
 | 2 | Gemini 3.5 Flash-Lite, low thinking | your Gemini key, then the backup key | free tier (a separate daily quota) | 8 s |
 | 3 | gpt-6-luna through OpenRouter, reasoning off | OpenRouter key, optional | paid, about $0.0006 a batch | 20 s |
 
-- At Levels 1-2, with an OpenRouter key and today's spend under the cap, Claude Haiku 5.5 goes first: graded by
-  Opus on 24 real passages in six languages, 2.3% of its swaps were bad, against 15.3% for Gemini 3.1 Flash-Lite
-  and 8.1% for the best Gemini setting. It's slower (about 12 s a batch). Without that key, past the cap, or at
-  Levels 3-4, the chain starts at step 1.
+- At Levels 1-2, Claude Haiku 5.5 goes first: direct to Anthropic with an Anthropic key, else through OpenRouter
+  with an OpenRouter key, never both for one batch. Graded by Opus on 24 real passages in six languages, 2.3% of its
+  swaps were bad, against 15.3% for Gemini 3.1 Flash-Lite and 8.1% for the best Gemini setting. It's slower (about
+  12 s a batch through OpenRouter). Without either key, past that provider's daily cap, after it refused the key or
+  ran out of credit, or at Levels 3-4, the chain starts at step 1.
 - A per-day 429 (the key's daily quota) moves on to the next key or step until Google resets it; a per-minute 429
   waits a minute; a busy model (503) or one that doesn't answer in time moves straight to the next step.
 - The model only picks which of the places the extension found to swap (the "candidates" design), so it can't
   invent English that isn't on the page. `"design": "freeform"` in the config lets the model write the swaps itself.
 - Add the keys in the toolbar popup under **Backup and paid keys**: a second Gemini key from another Google account
-  (its own daily quota), and an OpenRouter key from [openrouter.ai/keys](https://openrouter.ai/keys) with a few
-  dollars of credit. They're stored like the Gemini key, only in the extension's background worker. Setup can hand
-  them over instead: `--backup-key-file <path>` and `--openrouter-key-file <path>`; a key pasted in the popup wins.
+  (its own daily quota), an Anthropic key from [platform.claude.com](https://platform.claude.com/settings/keys) and
+  an OpenRouter key from [openrouter.ai/keys](https://openrouter.ai/keys), each with a few dollars of credit. They're
+  stored like the Gemini key, only in the extension's background worker. Setup can hand them over instead:
+  `--backup-key-file <path>`, `--anthropic-key-file <path>` and `--openrouter-key-file <path>`; a key pasted in the
+  popup wins.
+- Anthropic stops for the day once today's spend (worked out from each reply's token counts at Anthropic's published
+  Claude Haiku 5.5 price) reaches its cap (default $5.00, set in the popup), or when Anthropic refuses the key (401,
+  403) or says the credit balance is too low.
 - OpenRouter stops for the day once its reported spend reaches the cap (default $0.25, about 125-165 Claude Haiku
   batches; set in the popup), or when OpenRouter answers 402 (credits used up). The popup shows which model served
-  the last batch, today's count per model, and today's OpenRouter spend.
+  the last batch and through which provider, today's count per model, and today's Anthropic and OpenRouter spend.
 - **Model** in the popup: **Auto** follows the chain; picking a Gemini model puts it first instead of Claude Haiku
   (3.8 Flash needs a paid key).
 

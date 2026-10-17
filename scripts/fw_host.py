@@ -5,7 +5,7 @@ Messages (JSON, 4-byte native-endian length prefix, one per line of conversation
   {"type": "ping"}                      -> {"ok": true, "host": 1}
   {"type": "state"}                     -> {"ok": true, "version", "stage", "paused", "language", "words": [{fr, en, hint, reading?, status}],
                                             "prefs": {"extension_sites"?: "all" | "ask"} (absent means "all"),
-                                            "geminiKey"?, "geminiBackupKey"?, "openRouterKey"?: keys setup stored}
+                                            "geminiKey"?, "geminiBackupKey"?, "openRouterKey"?, "anthropicKey"?: keys setup stored}
   {"type": "events", "events": [{"word", "kind": "seen"|"flip"|"peek", "day"?}]} -> {"ok": true, "applied": n}
 """
 import json
@@ -47,7 +47,7 @@ def handle(message):
             pass  # applies today's promotion before answering
         reply = dict(fwlib.public_state(state), ok=True, prefs=state.get('prefs') or {})
         for name, field in (('gemini_key', 'geminiKey'), ('gemini_backup_key', 'geminiBackupKey'),
-                            ('openrouter_key', 'openRouterKey')):
+                            ('openrouter_key', 'openRouterKey'), ('anthropic_key', 'anthropicKey')):
             key = fwlib.home() / name
             if key.exists():
                 reply[field] = key.read_text().strip()

@@ -1,7 +1,7 @@
 import { resolveLevel, MAX_BUILT_LEVEL } from './levels.js';
 import { MODELS, modelLabel } from './model-config.js';
 import { siteEnabled, siteOn, hasSiteAccess } from './settings.js';
-import { modelErrorText, openRouterText } from './modelerror.js';
+import { modelErrorText, openRouterText, anthropicText } from './modelerror.js';
 import { readCached } from './hostsource.js';
 import { wordSummary, renderWordList } from './wordlist.js';
 import { tierText } from './tier.js';
@@ -49,7 +49,8 @@ async function refresh() {
   $('model').value = s.modelChoice;
   const last = status.lastServed;
   const served = Object.entries(status.served?.counts || {}).map(([m, n]) => `${modelLabel(m)} ${n}`).join(' · ');
-  $('modelInfo').textContent = [last?.model ? `${modelLabel(last.model)}${last.keyName === 'backup' ? ' (backup key)' : ''}` : 'none yet',
+  $('modelInfo').textContent = [last?.model ? `${modelLabel(last.model)}${last.keyName === 'backup' ? ' (backup key)'
+    : last.provider === 'anthropic' ? ' (Anthropic)' : last.provider === 'openrouter' ? ' (OpenRouter)' : ''}` : 'none yet',
     served && `today: ${served}`].filter(Boolean).join('; ');
   $('apiKey').value = '';
   $('backupKey').value = '';
@@ -59,6 +60,11 @@ async function refresh() {
     : status.hostOpenRouterKey ? 'from setup (paste to override)' : 'optional, paid';
   $('openRouterDailyUsd').value = String(s.openRouterDailyUsd);
   $('openRouterInfo').textContent = openRouterText(status, s.openRouterDailyUsd);
+  $('anthropicKey').value = '';
+  $('anthropicKey').placeholder = status.anthropicKey ? 'saved (paste to replace)'
+    : status.hostAnthropicKey ? 'from setup (paste to override)' : 'optional, paid';
+  $('anthropicDailyUsd').value = String(s.anthropicDailyUsd);
+  $('anthropicInfo').textContent = anthropicText(status, s.anthropicDailyUsd);
   $('apiKey').placeholder = status.pastedKey ? 'saved (paste to replace)' : status.hostKey ? 'from setup (paste to override)' : 'AIza…';
   $('wordInfo').textContent = status.words
     ? `${status.words} from Claude Code · ${ago(status.fetchedAt)}${c.paused ? ' · paused' : ''}`
@@ -127,6 +133,9 @@ $('openRouterKey').addEventListener('change', (e) => run(() => save({ openRouter
 // An emptied field keeps the saved cap (0 is a real choice: OpenRouter off).
 $('openRouterDailyUsd').addEventListener('change', (e) => run(() => (e.target.value.trim() === '' ? refresh()
   : save({ settings: { openRouterDailyUsd: Number(e.target.value) } }))));
+$('anthropicKey').addEventListener('change', (e) => run(() => save({ anthropicKey: e.target.value })));
+$('anthropicDailyUsd').addEventListener('change', (e) => run(() => (e.target.value.trim() === '' ? refresh()
+  : save({ settings: { anthropicDailyUsd: Number(e.target.value) } }))));
 $('siteEnabled').addEventListener('change', (e) => run(async () => {
   const enabled = e.target.checked;
   if (enabled && !hasSiteAccess(tab.url, status.config.origins)) {

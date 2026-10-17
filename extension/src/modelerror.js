@@ -55,10 +55,22 @@ export function replaceLegacyStatus(modelStatus, dailyQuota, models, now = Date.
 
 // The popup's OpenRouter line: today's spend against the cap, or why it stopped (st: the worker's status reply).
 export function openRouterText(st, cap) {
-  if (!st.openRouterKey && !st.hostOpenRouterKey) return 'Optional, paid: Claude Haiku 5.5 goes first at Levels 1-2; at Levels 3-4, used only when every Gemini step fails.';
+  if (!st.openRouterKey && !st.hostOpenRouterKey) {
+    return 'Optional, paid: Claude Haiku 5.5 goes first at Levels 1-2 (direct instead with an Anthropic key); otherwise used only when every Gemini step fails.';
+  }
   const spent = `OpenRouter today: $${(st.openRouter?.usd || 0).toFixed(4)} of $${Number(cap).toFixed(2)}`;
   if (st.openRouter?.blocked === 'credits') return `${spent}. Credits used up (402): stopped until tomorrow.`;
   if (st.openRouter?.blocked === 'cap') return `${spent}. Daily cap reached: stopped until tomorrow.`;
   if (st.openRouter?.blocked === 'key') return `${spent}. OpenRouter rejected the key: stopped until tomorrow or a new key.`;
+  return spent;
+}
+
+// The popup's Anthropic line, the same way: the direct Claude Haiku 5.5 step at Levels 1-2.
+export function anthropicText(st, cap) {
+  if (!st.anthropicKey && !st.hostAnthropicKey) return 'Optional, paid: Claude Haiku 5.5 goes first at Levels 1-2, straight to Anthropic (OpenRouter is then not used for it).';
+  const spent = `Anthropic today: $${(st.anthropic?.usd || 0).toFixed(4)} of $${Number(cap).toFixed(2)}`;
+  if (st.anthropic?.blocked === 'credits') return `${spent}. Credit balance too low: stopped until tomorrow or a new key.`;
+  if (st.anthropic?.blocked === 'cap') return `${spent}. Daily cap reached: stopped until tomorrow.`;
+  if (st.anthropic?.blocked === 'key') return `${spent}. Anthropic rejected the key: stopped until tomorrow or a new key.`;
   return spent;
 }

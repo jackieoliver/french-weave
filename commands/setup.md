@@ -1,6 +1,6 @@
 ---
 description: Set up French Weave (asks a few questions, then installs the word state, extension folder and native host)
-argument-hint: [--gemini-key-file <path>] [--backup-key-file <path>] [--openrouter-key-file <path>] [--language <name> [--lexicon <file>]]
+argument-hint: [--gemini-key-file <path>] [--backup-key-file <path>] [--anthropic-key-file <path>] [--openrouter-key-file <path>] [--language <name> [--lexicon <file>]]
 allowed-tools: Bash(python3:*), AskUserQuestion
 ---
 Setup plan (a dry run; nothing changed yet; don't show it to the user):
@@ -34,7 +34,8 @@ above:
 - Codex CLI picked: `--codex`
 - Chrome extension picked: `--sites all` or `--sites ask` (leave `--sites` out if they skipped question 3, so a
   rerun keeps their earlier choice), and `--gemini-key-file <path>` if they gave a file (likewise
-  `--backup-key-file` and `--openrouter-key-file` for a backup Gemini key and a paid OpenRouter key)
+  `--backup-key-file`, `--anthropic-key-file` and `--openrouter-key-file` for a backup Gemini key, a paid Anthropic
+  key and a paid OpenRouter key; with an Anthropic key, Claude Haiku 5.5 goes direct to Anthropic at Levels 1-2)
 
 Relay the human steps from the output to the user as a short numbered list, in plain English, leaving out the
 Chrome steps if they didn't pick the extension. If they picked the preferences block, run

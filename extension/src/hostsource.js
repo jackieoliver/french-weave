@@ -54,7 +54,7 @@ export async function refresh({ storage, send, now = () => Date.now() }) {
     const stored = { ...state, fetchedAt: now() };
     const text = (v) => (typeof v === 'string' ? v : '');
     await storage.set({ [STATE_KEY]: stored, hostKey: text(reply.geminiKey), hostBackupKey: text(reply.geminiBackupKey),
-      hostOpenRouterKey: text(reply.openRouterKey) });
+      hostOpenRouterKey: text(reply.openRouterKey), hostAnthropicKey: text(reply.anthropicKey) });
     return { state: stored, changed, error: null };
   } catch (e) {
     return { state: cached, changed: false, error: String(e?.message || e) };
