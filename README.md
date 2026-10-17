@@ -116,7 +116,7 @@ per language in `extension/src/model-config.js` (today the same for every langua
 
 | Step | Model | Key | Cost | Waits |
 |---|---|---|---|---|
-| first, Levels 1-2 only | Claude Haiku 5.5 direct from Anthropic, low effort | Anthropic key, optional | paid, about $0.001 a batch | 35 s |
+| first, Levels 1-2 only | Claude Haiku 5.5 direct from Anthropic, low effort, 4 passages a request | Anthropic key, optional | paid, about $0.0006 a batch | 35 s |
 | or, without an Anthropic key | Claude Haiku 5.5 through OpenRouter, low reasoning | OpenRouter key, optional | paid, about $0.0015-0.002 a batch | 35 s |
 | 1 | Gemini 3.1 Flash-Lite, medium thinking | your Gemini key, then the backup key | free tier | 30 s |
 | 2 | Gemini 3.5 Flash-Lite, low thinking | your Gemini key, then the backup key | free tier (a separate daily quota) | 8 s |
@@ -124,9 +124,11 @@ per language in `extension/src/model-config.js` (today the same for every langua
 
 - At Levels 1-2, Claude Haiku 5.5 goes first: direct to Anthropic with an Anthropic key, else through OpenRouter
   with an OpenRouter key, never both for one batch. Graded by Opus on 24 real passages in six languages, 2.3% of its
-  swaps were bad, against 15.3% for Gemini 3.1 Flash-Lite and 8.1% for the best Gemini setting. It's slower (about
-  12 s a batch through OpenRouter). Without either key, past that provider's daily cap, after it refused the key or
-  ran out of credit, or at Levels 3-4, the chain starts at step 1.
+  swaps were bad, against 15.3% for Gemini 3.1 Flash-Lite and 8.1% for the best Gemini setting. Through OpenRouter
+  it's slower (about 12 s a batch). Direct, a batch of more than 4 passages goes as requests of 4 at once (median
+  5.6 s against 9.5 s for 8 in one request, about 22% more cost); a real-browser run took 4-5 s a batch. Without
+  either key, past that provider's daily cap, after it refused the key or ran out of credit, or at Levels 3-4, the
+  chain starts at step 1.
 - A per-day 429 (the key's daily quota) moves on to the next key or step until Google resets it; a per-minute 429
   waits a minute; a busy model (503) or one that doesn't answer in time moves straight to the next step.
 - The model only picks which of the places the extension found to swap (the "candidates" design), so it can't
