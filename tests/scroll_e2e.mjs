@@ -80,8 +80,8 @@ const POSTS = [
   'The best part of a long trip is coming home, making tea, and sleeping in your own bed again.',
 ];
 
-const CELL_PX = 260;
-const MOUNT_PX = 1600; // with a 900 px window: about 16 cells mounted, as on X
+const CELL_PX = 190; // about 4.5 posts a screen
+const MOUNT_PX = 1100; // with a 900 px window: about 16 cells mounted, as on X
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>Home / X</title><style>
 body { margin: 0; font: 15px/1.4 sans-serif; } #feed { position: relative; width: 600px; margin: 0 auto; }
 .cell { position: absolute; left: 0; right: 0; height: ${CELL_PX - 20}px; border-bottom: 1px solid #ddd; padding: 10px; box-sizing: border-box; }
@@ -207,7 +207,10 @@ try {
   const swapped = first.filter((m) => m.swapAt !== undefined && m.swapAt < upAt);
   const mountToSwap = swapped.map((m) => m.swapAt - m.at);
   const viewToSwap = swapped.filter((m) => fw.inView[m.id] !== undefined).map((m) => Math.max(0, m.swapAt - fw.inView[m.id]));
-  const remounts = fw.mounts.filter((m) => m.remount && m.at >= upAt);
+  // Remounted posts that had a swap before and are now within the extension's 600 px look-ahead of the window.
+  const near = await page.evaluate((cell) => [...document.querySelectorAll('.cell')].map((c) => Number(c.dataset.i))
+    .filter((i) => i * cell - scrollY < innerHeight + 600 && i * cell + cell - scrollY > -600), CELL_PX);
+  const remounts = fw.mounts.filter((m) => m.remount && m.at >= upAt && near.includes(m.id));
   const remountsSwappedBefore = remounts.filter((m) => first.some((f) => f.id === m.id && f.swapAt !== undefined));
   out.posts = { mounted: first.length, withSwap: swapped.length, withoutSwap: first.length - swapped.length,
     inViewWithoutSwap: first.filter((m) => m.swapAt === undefined && fw.inView[m.id] !== undefined).map((m) => m.id) };
