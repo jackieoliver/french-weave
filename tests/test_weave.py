@@ -132,6 +132,11 @@ class Rules(Home):
         for w in words:
             self.assertTrue(w['en'] and w['hint'] and w['hint'] == w['hint'].lower(), w)
 
+    def test_japanese_hints_read_as_spoken(self):
+        # または is read "mata wa" (the particle は is "wa"), not letter by letter.
+        words = {w['fr']: w for w in fwlib.load_lexicon(ROOT / 'data' / 'lexicons' / 'japanese.csv')}
+        self.assertEqual(words['または']['hint'], 'mata wa')
+
     def test_new_state_starts_small(self):
         state = fwlib.new_state('2026-10-01')
         active = [w['fr'] for w in state['words'] if w['status'] == 'active']
@@ -486,6 +491,7 @@ class Host(Home):
 FAKE_KEY = 'AIzaTEST_placeholder_not_a_real_key_0000'
 FAKE_DOT_KEY = 'AQ.TEST_placeholder-not_a_real_key_00000000000000000'  # the newer key format
 FAKE_ROUTER_KEY = 'sk-or-v1-TEST_placeholder_not_a_real_key_0000000000000000'
+FAKE_ANTHROPIC_KEY = 'sk-ant-api03-TEST_placeholder_not_a_real_key_000000000000000000'
 
 
 class Setup(Home):
@@ -496,20 +502,27 @@ class Setup(Home):
         backup.write_text(FAKE_DOT_KEY + '\n')
         router = self.home / 'router.txt'
         router.write_text(FAKE_ROUTER_KEY + '\n')
-        args = ['--gemini-key-file', str(key), '--backup-key-file', str(backup), '--openrouter-key-file', str(router)]
+        direct = self.home / 'anthropic.txt'
+        direct.write_text(FAKE_ANTHROPIC_KEY + '\n')
+        args = ['--gemini-key-file', str(key), '--backup-key-file', str(backup), '--openrouter-key-file', str(router),
+                '--anthropic-key-file', str(direct)]
         with mock.patch.object(Path, 'home', return_value=self.home), \
                 mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': ''}), mock.patch('sys.stdout', new=io.StringIO()) as out:
             fw.main(['setup', '--dry-run', *args])
             self.assertFalse((self.home / 'fw').exists())
             self.assertIn('"gemini_backup_key": "would be stored"', out.getvalue())
+            self.assertIn('"anthropic_key": "would be stored"', out.getvalue())
             fw.main(['setup', *args])
         home = self.home / 'fw'
         self.assertIn('Load unpacked', out.getvalue())
         self.assertIn('backup key:  stored for the extension', out.getvalue())
-        self.assertNotIn(FAKE_ROUTER_KEY, out.getvalue())
+        self.assertIn('Anthropic:   stored for the extension', out.getvalue())
+        for secret in (FAKE_KEY, FAKE_DOT_KEY, FAKE_ROUTER_KEY, FAKE_ANTHROPIC_KEY):
+            self.assertNotIn(secret, out.getvalue())
         self.assertTrue((home / 'extension' / 'manifest.json').exists())
         self.assertFalse((home / 'extension' / 'test').exists())
-        for name, value in (('gemini_key', FAKE_KEY), ('gemini_backup_key', FAKE_DOT_KEY), ('openrouter_key', FAKE_ROUTER_KEY)):
+        for name, value in (('gemini_key', FAKE_KEY), ('gemini_backup_key', FAKE_DOT_KEY), ('openrouter_key', FAKE_ROUTER_KEY),
+                            ('anthropic_key', FAKE_ANTHROPIC_KEY)):
             self.assertEqual((home / name).read_text().strip(), value)
             self.assertEqual(oct((home / name).stat().st_mode & 0o777), '0o600')
         base = self.home / ('Library/Application Support/Google/Chrome' if sys.platform == 'darwin' else '.config/google-chrome')
@@ -526,6 +539,16 @@ class Setup(Home):
         self.assertEqual(reply['geminiKey'], FAKE_KEY)
         self.assertEqual(reply['geminiBackupKey'], FAKE_DOT_KEY)
         self.assertEqual(reply['openRouterKey'], FAKE_ROUTER_KEY)
+        self.assertEqual(reply['anthropicKey'], FAKE_ANTHROPIC_KEY)
+        # check names the stored keys without printing them.
+        with mock.patch.object(Path, 'home', return_value=self.home), \
+                mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': ''}), mock.patch('sys.stdout', new=io.StringIO()) as checked:
+            try:
+                fw.main(['check'])
+            except SystemExit:
+                pass
+        self.assertIn('ok   Anthropic key stored by setup', checked.getvalue())
+        self.assertNotIn(FAKE_ANTHROPIC_KEY, checked.getvalue())
 
     def test_setup_takes_the_newer_dotted_key_format(self):
         key = self.home / 'key.txt'
@@ -566,6 +589,18 @@ class Setup(Home):
         message = router_fails(str(wrong))
         self.assertIn('OpenRouter key file should hold only the key', message)
         self.assertNotIn(FAKE_KEY, message)
+        # The Anthropic key likewise: the key given as the path, or another provider's key in its file.
+        def anthropic_fails(arg):
+            with mock.patch.object(Path, 'home', return_value=self.home), mock.patch('sys.stdout', new=io.StringIO()) as out, \
+                    self.assertRaises(SystemExit) as caught:
+                fw.main(['setup', '--dry-run', '--anthropic-key-file', arg])
+            return str(caught.exception.code) + out.getvalue()
+        self.assertIn('looks like a key', anthropic_fails(FAKE_ANTHROPIC_KEY))
+        self.assertNotIn(FAKE_ANTHROPIC_KEY, anthropic_fails(FAKE_ANTHROPIC_KEY))
+        wrong.write_text(FAKE_ROUTER_KEY + '\n')
+        message = anthropic_fails(str(wrong))
+        self.assertIn('Anthropic key file should hold only the key (sk-ant-…)', message)
+        self.assertNotIn(FAKE_ROUTER_KEY, message)
         self.assertFalse((self.home / 'fw').exists())
 
     def run_setup(self, *flags):

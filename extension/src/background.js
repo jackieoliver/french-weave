@@ -8,7 +8,7 @@ import { resolveLevel, exactFr, isZeroFrench, wordCount } from './levels.js';
 import { hashKey } from './hash.js';
 import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from './hostsource.js';
 import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent, countDropped, droppedToday, openRouterToday,
-  countOpenRouter, openRouterBlocked, servedToday, countServed } from './quota.js';
+  countOpenRouter, anthropicToday, countAnthropic, paidBlocked, clearPaidStop, servedToday, countServed } from './quota.js';
 import { modelErrorText, replaceLegacyStatus } from './modelerror.js';
 import { API_BASE } from './gemini.js';
 import { configFor } from './model-config.js';
@@ -58,9 +58,14 @@ const localCapped = async () => {
   return (!!main || !!backup) && (!main || await keyCapped('main')) && (!backup || await keyCapped('backup'));
 };
 // Every key the worker holds, for scrubbing error text: none may reach a page, the popup or storage.
-const KEY_NAMES = ['apiKey', 'hostKey', 'backupKey', 'hostBackupKey', 'openRouterKey', 'hostOpenRouterKey'];
+const KEY_NAMES = ['apiKey', 'hostKey', 'backupKey', 'hostBackupKey', 'openRouterKey', 'hostOpenRouterKey', 'anthropicKey', 'hostAnthropicKey'];
 // Keys the native host hands over from setup; a change to any of them starts it with a clean slate.
-const HOST_KEYS = ['hostKey', 'hostBackupKey', 'hostOpenRouterKey'];
+const HOST_KEYS = ['hostKey', 'hostBackupKey', 'hostOpenRouterKey', 'hostAnthropicKey'];
+// The paid keys in use, each pasted in the popup, else from setup.
+async function paidKeys() {
+  const k = await store.get(['openRouterKey', 'hostOpenRouterKey', 'anthropicKey', 'hostAnthropicKey']);
+  return { openrouter: k.openRouterKey || k.hostOpenRouterKey || '', anthropic: k.anthropicKey || k.hostAnthropicKey || '' };
+}
 
 const ready = (async () => {
   // Content scripts run on every enabled site, so stored keys are kept out of their reach.
@@ -91,13 +96,14 @@ async function context() {
   const hasKey = !!(data.apiKey || data.hostKey || data.backupKey || data.hostBackupKey);
   const paused = !!state?.paused;
   const origins = await grantedOrigins();
-  const { openRouterDailyUsd, ...affecting } = settings; // the spend cap changes no swap, so cached ones stay
+  const { openRouterDailyUsd, anthropicDailyUsd, ...affecting } = settings; // spend caps change no swap, so cached ones stay
   const revision = hashKey(JSON.stringify([data.epoch || '', affecting, level, state?.version || '', paused, hasKey, origins]));
   return { settings, level, revision, hasKey, tier: tierFor(hasKey, state), paused, origins, stage: state?.stage || 0 };
 }
 
 // The model APIs' own host permissions (manifest) are not sites the reader granted: openrouter.ai is also a website,
-// which needs its own grant like any other.
+// which needs its own grant like any other. api.anthropic.com has no host permission: its fetches are CORS requests
+// the API allows (anthropic.js).
 const API_ORIGINS = ['https://generativelanguage.googleapis.com/*', 'https://openrouter.ai/*'];
 const grantedOrigins = async () => ((await chrome.permissions.getAll()).origins || []).filter((o) => !API_ORIGINS.includes(o));
 
@@ -151,8 +157,8 @@ async function swaps(msg, sender) {
       if ((await context()).revision !== ctx.revision) return null;
       const { main, backup: backupKey } = await geminiKeys();
       if (await localCapped()) throw Object.assign(new Error(localCapError(!!backupKey)), { kind: 'local' });
-      const { wordState, openRouterKey: pastedOpenRouterKey, hostOpenRouterKey } = await store.get(['wordState', 'openRouterKey', 'hostOpenRouterKey']);
-      const openRouterKey = pastedOpenRouterKey || hostOpenRouterKey || '';
+      const { wordState } = await store.get('wordState');
+      const paid = await paidKeys();
       usedKey = main;
       const mainOut = !main || await keyCapped('main');
       const backupOut = !backupKey || await keyCapped('backup');
@@ -165,12 +171,20 @@ async function swaps(msg, sender) {
         return fetch(url, init, ...rest);
       };
       const daily = await spentToday(chromeStorage); // a spent daily quota outlives the worker, so it is kept in storage
-      const openRouterOn = !!openRouterKey && !openRouterBlocked(await openRouterToday(chromeStorage), ctx.settings.openRouterDailyUsd);
-      const { design, chain } = configFor(wordState?.words?.length ? wordState.language || 'French' : 'French', ctx.settings.modelChoice);
+      // Each paid provider only with its key and while today's spend is under its cap and nothing stopped it.
+      const openRouterOn = !!paid.openrouter && !paidBlocked(await openRouterToday(chromeStorage), ctx.settings.openRouterDailyUsd);
+      const anthropicOn = !!paid.anthropic && !paidBlocked(await anthropicToday(chromeStorage), ctx.settings.anthropicDailyUsd);
+      // Levels 1-2 on Auto: Claude Haiku 5.5 first, direct to Anthropic with an Anthropic key, else through OpenRouter
+      // with an OpenRouter key (model-config.js levelFirst). The choice follows which keys are set: a capped or stopped
+      // Anthropic key means no Haiku step, not OpenRouter's.
+      const { design, chain } = configFor(wordState?.words?.length ? wordState.language || 'French' : 'French', ctx.settings.modelChoice,
+        undefined, ctx.level, { anthropic: !!paid.anthropic, openrouter: !!paid.openrouter });
       try {
-        return await requestSwaps({ keys: { main: mainOut ? '' : usedKey, backup: backupOut ? '' : backupKey, openrouter: openRouterOn ? openRouterKey : '' },
+        return await requestSwaps({ keys: { main: mainOut ? '' : usedKey, backup: backupOut ? '' : backupKey,
+          openrouter: openRouterOn ? paid.openrouter : '', anthropic: anthropicOn ? paid.anthropic : '' },
           chain, design, level: ctx.level, words: wordState?.words, language: wordState?.language, fetchImpl,
           onOpenRouter: (r) => locked(() => countOpenRouter(chromeStorage, r)),
+          onAnthropic: (r) => locked(() => countAnthropic(chromeStorage, r)),
           shownToday: await shownToday(chromeStorage), cooldown, daily, page: pageLabel(sender), batch: misses.map((i) => ({ id: i.key, text: i.text })) });
       } finally {
         await saveSpent(chromeStorage, daily);
@@ -181,7 +195,7 @@ async function swaps(msg, sender) {
       await cache.setMany(fresh.results);
       await countDropped(chromeStorage, fresh.dropped);
       if (!fresh.skipped) { // a batch without candidates made no request: the last model's status stands
-        const served = { at: Date.now(), model: fresh.model, provider: fresh.provider, keyName: fresh.keyName };
+        const served = { at: Date.now(), model: fresh.model, provider: fresh.provider, keyName: fresh.keyName, ms: fresh.ms || 0 };
         await store.set({ modelStatus: { ...served, error: '' }, lastServed: served }); // lastServed outlives a later failure
         await countServed(chromeStorage, fresh.model);
       }
@@ -270,10 +284,8 @@ async function syncWords() {
   const after = await store.get(HOST_KEYS);
   const changed = (k) => (before[k] || '') !== (after[k] || '');
   if (HOST_KEYS.some(changed)) await keyChanged(); // setup stored, replaced or removed a key
-  if (changed('hostOpenRouterKey')) {
-    const today = await openRouterToday(chromeStorage);
-    if (today.stopped) await store.set({ openRouterDay: { ...today, stopped: '' } });
-  }
+  if (changed('hostOpenRouterKey')) await clearPaidStop(chromeStorage, 'openrouter');
+  if (changed('hostAnthropicKey')) await clearPaidStop(chromeStorage, 'anthropic');
   await broadcast();
   return { ok: !res.error, error: res.error, count: res.state?.words?.length || 0, stage: res.state?.stage || 0 };
 }
@@ -314,22 +326,21 @@ async function save(msg) {
       patch.apiKey = msg.apiKey.trim();
       Object.assign(patch, await freshKeyPatch());
     }
-    // The backup Gemini key and the OpenRouter key: same rules as the main key; a new one starts with a clean slate.
-    for (const name of ['backupKey', 'openRouterKey']) {
+    // The backup Gemini key and the paid keys: same rules as the main key; a new one starts with a clean slate.
+    const prefixes = { backupKey: 'backup:', openRouterKey: 'openrouter:', anthropicKey: 'anthropic:' };
+    for (const name of Object.keys(prefixes)) {
       if (typeof msg[name] !== 'string') continue;
       if (msg[name].length > 500) throw new Error('Key is too long');
       patch[name] = msg[name].trim();
-      const prefix = name === 'backupKey' ? 'backup:' : 'openrouter:';
+      const prefix = prefixes[name];
       const { dailyQuota } = await store.get('dailyQuota');
       patch.dailyQuota = Object.fromEntries(Object.entries(patch.dailyQuota || dailyQuota || {}).filter(([slot]) => !slot.startsWith(prefix)));
       for (const slot of [...cooldown.keys()]) if (slot.startsWith(prefix)) cooldown.delete(slot);
       // A new backup key answers its own "rejected the backup key".
       const { modelStatus } = await store.get('modelStatus');
       if (name === 'backupKey' && modelStatus?.kind === 'key' && modelStatus.keyName === 'backup') patch.modelStatus = { at: Date.now(), error: '' };
-      if (name === 'openRouterKey') {
-        const today = await openRouterToday(chromeStorage);
-        if (today.stopped) await store.set({ openRouterDay: { ...today, stopped: '' } });
-      }
+      if (name === 'openRouterKey') await clearPaidStop(chromeStorage, 'openrouter');
+      if (name === 'anthropicKey') await clearPaidStop(chromeStorage, 'anthropic');
     }
     await store.set(patch);
   });
@@ -341,13 +352,16 @@ async function save(msg) {
 async function status() {
   const config = await context();
   const data = await store.get(['wordState', 'apiKey', 'hostKey', 'backupKey', 'hostBackupKey', 'openRouterKey', 'hostOpenRouterKey',
-    'modelStatus', 'lastServed']);
+    'anthropicKey', 'hostAnthropicKey', 'modelStatus', 'lastServed']);
   const openRouter = await openRouterToday(chromeStorage);
+  const anthropic = await anthropicToday(chromeStorage);
   return { config, words: data.wordState?.words?.length || 0, fetchedAt: data.wordState?.fetchedAt || 0,
     pastedKey: !!data.apiKey, hostKey: !!data.hostKey, backupKey: !!data.backupKey, hostBackupKey: !!data.hostBackupKey,
     openRouterKey: !!data.openRouterKey, hostOpenRouterKey: !!data.hostOpenRouterKey,
+    anthropicKey: !!data.anthropicKey, hostAnthropicKey: !!data.hostAnthropicKey,
     modelStatus: data.modelStatus || null, lastServed: data.lastServed || null, served: await servedToday(chromeStorage),
-    openRouter: { ...openRouter, blocked: openRouterBlocked(openRouter, config.settings.openRouterDailyUsd) },
+    openRouter: { ...openRouter, blocked: paidBlocked(openRouter, config.settings.openRouterDailyUsd) },
+    anthropic: { ...anthropic, blocked: paidBlocked(anthropic, config.settings.anthropicDailyUsd) },
     dropped: await droppedToday(chromeStorage),
     update: await checkUpdate() };
 }

@@ -9,9 +9,10 @@
                                                      already introduced (40: some basics, 150: simple French);
                                                      --sites: extension on every site (all) or only ones you
                                                      turn on (ask)
-  fw.py setup --backup-key-file FILE --openrouter-key-file FILE
-                                                     also store a backup Gemini key and a paid OpenRouter key
-                                                     for the extension (a key pasted in its popup wins)
+  fw.py setup --backup-key-file FILE --anthropic-key-file FILE --openrouter-key-file FILE
+                                                     also store a backup Gemini key and paid Anthropic and
+                                                     OpenRouter keys for the extension (a key pasted in its
+                                                     popup wins)
   fw.py setup --language NAME [--lexicon FILE]       learn another language from a word list (columns word,en,hint;
                                                      default data/lexicons/<name>.csv); the old language's state and
                                                      word list are kept and come back when you switch back
@@ -236,19 +237,22 @@ def setup_codex(dry_run):
 
 KEY_SHAPE = re.compile(r'^(?:[A-Za-z0-9]{1,8}\.)?[A-Za-z0-9_-]{30,64}$')  # AIza… keys, and newer ones like AQ.…
 OPENROUTER_SHAPE = re.compile(r'^sk-or-[A-Za-z0-9_-]{20,120}$')
+ANTHROPIC_SHAPE = re.compile(r'^sk-ant-[A-Za-z0-9_-]{20,200}$')
 # Setup option -> (file in the state folder, what it is, its shape, what it starts with). The native host hands each
 # stored key to the extension's background worker; a key pasted in the popup still wins over the stored one.
 KEY_FILES = {
     'gemini_key_file': ('gemini_key', 'Gemini key', KEY_SHAPE, 'AIza… or AQ.…'),
     'backup_key_file': ('gemini_backup_key', 'backup Gemini key', KEY_SHAPE, 'AIza… or AQ.…'),
     'openrouter_key_file': ('openrouter_key', 'OpenRouter key', OPENROUTER_SHAPE, 'sk-or-…'),
+    'anthropic_key_file': ('anthropic_key', 'Anthropic key', ANTHROPIC_SHAPE, 'sk-ant-…'),
 }
 
 
 def read_key_file(arg, what='Gemini key', shape=KEY_SHAPE, starts='AIza… or AQ.…'):
     """The key from a file. Never echoes the argument, the path or the contents, since any of them may be the key."""
     path = Path(arg).expanduser()
-    if not path.is_file() and (arg.startswith(('AIza', 'sk-or-')) or KEY_SHAPE.match(arg) or OPENROUTER_SHAPE.match(arg)):
+    if not path.is_file() and (arg.startswith(('AIza', 'sk-or-', 'sk-ant-')) or KEY_SHAPE.match(arg) or OPENROUTER_SHAPE.match(arg)
+                               or ANTHROPIC_SHAPE.match(arg)):
         sys.exit('That looks like a key, not a file path; paste the key into the extension popup instead.')
     try:
         key = path.read_text().strip()
@@ -368,7 +372,7 @@ def setup(args):
     print(f'  extension:   {"every site; turn any off from the toolbar" if sites == "all" else "only sites you turn on"}')
     print(f'  native host: {", ".join(info["host_manifests"])}')
     print(f'  Gemini key:  {"stored for the extension" if key or (home / "gemini_key").exists() else "not stored; the extension swaps a few fixed words until you paste one in its popup"}')
-    for name, label in (('gemini_backup_key', 'backup key: '), ('openrouter_key', 'OpenRouter: ')):
+    for name, label in (('gemini_backup_key', 'backup key: '), ('anthropic_key', 'Anthropic:  '), ('openrouter_key', 'OpenRouter: ')):
         if (home / name).exists():
             print(f'  {label} stored for the extension')
     if updates:
@@ -429,7 +433,7 @@ def check(_args):
                         '(Codex asks you to trust it on first start)')
     has_key = (home / 'gemini_key').exists()
     print(f'{"ok  " if has_key else "note"} Gemini key {"stored by setup" if has_key else "not stored; the extension swaps a few fixed words until you paste one in its popup"}')
-    for name, what in (('gemini_backup_key', 'backup Gemini key'), ('openrouter_key', 'OpenRouter key')):
+    for name, what in (('gemini_backup_key', 'backup Gemini key'), ('anthropic_key', 'Anthropic key'), ('openrouter_key', 'OpenRouter key')):
         if (home / name).exists():
             print(f'ok   {what} stored by setup')
     if not ok:
@@ -592,7 +596,9 @@ def main(argv=None):
     p = sub.add_parser('setup')
     p.add_argument('--gemini-key-file')
     p.add_argument('--backup-key-file', help='a second Gemini key, tried when the main one is out for the day')
-    p.add_argument('--openrouter-key-file', help='paid last step, only when every Gemini step fails')
+    p.add_argument('--anthropic-key-file', help='paid: Claude Haiku 5.5 first at Levels 1-2, direct to Anthropic')
+    p.add_argument('--openrouter-key-file', help='paid: Claude Haiku 5.5 first at Levels 1-2 without an Anthropic key, '
+                   'else only when every Gemini step fails')
     p.add_argument('--user-data-dir', action='append', default=[])
     p.add_argument('--codex', action='store_true')
     p.add_argument('--known-top', type=int, default=0, metavar='N')

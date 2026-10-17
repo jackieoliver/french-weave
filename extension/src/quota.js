@@ -44,29 +44,43 @@ export async function countCall(storage, day = localDay(), which = 'main') {
   await storage.set({ [callsKey(which)]: { day, count: (await callsToday(storage, day, which)) + 1 } });
 }
 
-// OpenRouter spend today in USD, as OpenRouter reports it per request ({ day, usd, stopped }). stopped: 'credits'
-// after a 402 (the account's credits are used up), 'key' after a 401 or 403 (key refused): no more OpenRouter calls
-// until tomorrow or a new key.
-const OPENROUTER_KEY = 'openRouterDay';
-export async function openRouterToday(storage, day = localDay()) {
-  const { [OPENROUTER_KEY]: saved } = await storage.get([OPENROUTER_KEY]);
+// Paid spend today in USD, per provider, as each reports it per request ({ day, usd, stopped }): OpenRouter's own
+// figure, and Anthropic's computed from usage at the published price (anthropic.js). stopped: 'credits' after the
+// account can't pay (OpenRouter's 402; Anthropic's 402 or "credit balance is too low"), 'key' after a 401 or 403 (key
+// refused): no more calls to that provider until tomorrow or a new key.
+const PAID_KEYS = { openrouter: 'openRouterDay', anthropic: 'anthropicDay' };
+export async function paidToday(storage, provider, day = localDay()) {
+  const key = PAID_KEYS[provider];
+  const { [key]: saved } = await storage.get([key]);
   return saved?.day === day ? { usd: 0, stopped: '', ...saved } : { day, usd: 0, stopped: '' };
 }
 
-export async function countOpenRouter(storage, { costUsd = 0, status = 200 } = {}, day = localDay()) {
-  const today = await openRouterToday(storage, day);
+export async function countPaid(storage, provider, { costUsd = 0, status = 200, credits = false } = {}, day = localDay()) {
+  const today = await paidToday(storage, provider, day);
   today.usd = Math.round((today.usd + (Number(costUsd) > 0 ? Number(costUsd) : 0)) * 1e6) / 1e6;
-  if (status === 402) today.stopped = 'credits';
+  if (status === 402 || credits) today.stopped = 'credits';
   if (status === 401 || status === 403) today.stopped = 'key';
-  await storage.set({ [OPENROUTER_KEY]: today });
+  await storage.set({ [PAID_KEYS[provider]]: today });
   return today;
 }
 
-// Why OpenRouter is off for the rest of today, or '' while it may be called.
-export function openRouterBlocked(today, capUsd) {
+// A new key for the provider: a stop from the old key no longer applies (today's spend stays).
+export async function clearPaidStop(storage, provider) {
+  const today = await paidToday(storage, provider);
+  if (today.stopped) await storage.set({ [PAID_KEYS[provider]]: { ...today, stopped: '' } });
+}
+
+export const openRouterToday = (storage, day) => paidToday(storage, 'openrouter', day);
+export const countOpenRouter = (storage, r, day) => countPaid(storage, 'openrouter', r, day);
+export const anthropicToday = (storage, day) => paidToday(storage, 'anthropic', day);
+export const countAnthropic = (storage, r, day) => countPaid(storage, 'anthropic', r, day);
+
+// Why a paid provider is off for the rest of today, or '' while it may be called.
+export function paidBlocked(today, capUsd) {
   if (today?.stopped) return today.stopped;
   return today?.usd >= capUsd ? 'cap' : '';
 }
+export const openRouterBlocked = paidBlocked;
 
 // Batches each model served today ({ day, counts: { model: n } }), for the popup: how often the chain falls through.
 const SERVED_KEY = 'servedToday';
