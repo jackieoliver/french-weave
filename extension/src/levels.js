@@ -1,6 +1,8 @@
 // Level schedule, word lists, and guards. Pure: no DOM, no chrome APIs.
 import { profileFor, articlePatterns } from './profile.js';
 import { GENERIC } from './profile-data.js';
+import { locate } from './text.js';
+import { quotedRanges, inQuotes } from './quotes.js';
 
 // Levels 3-4 need the plugin's word state; with the bundled lists the prompt stays at Level 2 rules.
 export const MAX_BUILT_LEVEL = 4;
@@ -391,10 +393,23 @@ export const malformed = (s) => MALFORMED.test(s);
 const tokenize = (s) => [...String(s).replace(/[’‘`]/g, "'").toLowerCase()
   .matchAll(/[\p{L}\p{N}]+(?:'[\p{L}\p{N}]+)*|[^\s\p{L}\p{N}]/gu)].map((m) => m[0]);
 
+// "+ing" in a pattern is an -ing verb form ("is improving", "is being built"): a word ending in "ing" other than these
+// nouns, pronouns, prepositions and adjectives, after which "is" stays the plain copula ("is something", "is amazing").
+const NOT_ING_VERBS = new Set(('thing nothing something anything everything king ring spring string wing sting swing '
+  + 'bring sing during morning evening ceiling wedding pudding sibling darling inkling offspring awning herring '
+  + 'interesting amazing exciting boring confusing surprising annoying fascinating charming stunning promising '
+  + 'compelling overwhelming appealing tempting disappointing encouraging frustrating embarrassing shocking terrifying '
+  + 'satisfying refreshing relaxing entertaining convincing misleading outstanding striking alarming astonishing '
+  + 'intriguing puzzling depressing exhausting demanding challenging rewarding inspiring thrilling touching daunting '
+  + 'humbling troubling revealing upcoming ongoing willing loving caring fitting matching existing lasting amusing '
+  + 'pleasing soothing unsettling disturbing devastating staggering breathtaking heartbreaking insulting irritating '
+  + 'humiliating intimidating understanding outgoing easygoing worrying boring baffling glaring sobering').split(' '));
+
 function tokenTest(src) {
   const optional = src.length > 1 && src.endsWith('?');
   const alts = (optional ? src.slice(0, -1) : src).split('|');
   const test = (tok) => tok !== undefined && alts.some((a) => (a === '#' ? /^\p{N}/u.test(tok)
+    : a === '+ing' ? /^\p{L}+ing$/u.test(tok) && tok.length > 4 && !NOT_ING_VERBS.has(tok)
     : a.length > 1 && a.startsWith('*') ? /^\p{L}/u.test(tok) && tok.length > a.length + 1 && tok.endsWith(a.slice(1))
       : a === tok));
   return { optional, test };
@@ -447,9 +462,9 @@ function splitAt(toks, s, e, f, rules) {
   return '';
 }
 
-// The swap's place in the passage (text; ctx narrows it, as text.js locate does), checked against the rules. With no
-// text, ctx stands in. A swap that can't be found is left to the page, which won't place it.
-export function breaksEnglish(o, f, ctx = '', text = '', rules = ENGLISH) {
+// The swap's places in the passage as token positions (text; ctx narrows it, as text.js locate does). With no text,
+// ctx stands in. A swap that can't be found is left to the page, which won't place it.
+function placesOf(o, ctx, text) {
   const toks = tokenize(text || ctx);
   const ot = tokenize(o);
   let starts = find(toks, ot);
@@ -459,11 +474,76 @@ export function breaksEnglish(o, f, ctx = '', text = '', rules = ENGLISH) {
     const inside = find(toks, ot, around[0], around[0] + ct.length);
     if (inside.length) starts = inside;
   }
+  return { toks, starts, len: ot.length };
+}
+
+// The swap's place checked against the rules.
+export function breaksEnglish(o, f, ctx = '', text = '', rules = ENGLISH) {
+  const { toks, starts, len } = placesOf(o, ctx, text);
   for (const s of starts) {
-    const why = splitAt(toks, s, s + ot.length, f, rules);
+    const why = splitAt(toks, s, s + len, f, rules);
     if (why) return why;
   }
   return '';
+}
+
+// Per-language sense rules from the profile (data/profiles/README.md). extension.contexts, {word: [patterns]} in the
+// english.contexts syntax, keeps swaps into that word out of the English that matches: Portuguese é and Italian è are
+// never the "is" of "is improving" (está, sta). extension.question_words lists words that only ask (Portuguese qual,
+// quem; Italian chi, quale, cosa): they replace the English only where it asks a question, never a relative ("the
+// deception which is", "a person who", "some of what they said"), which needs que or che.
+const senseCache = new Map();
+function senseRules(lang, prof) {
+  if (senseCache.has(lang)) return senseCache.get(lang);
+  const ext = prof?.extension || {};
+  const contexts = new Map(Object.entries(ext.contexts || {})
+    .map(([word, patterns]) => [exactFr(word), { phrases: [], contexts: compileEnglish({ contexts: patterns }).contexts }]));
+  const questions = new Set((ext.question_words || []).map(exactFr));
+  const rules = contexts.size || questions.size ? { contexts, questions } : null;
+  senseCache.set(lang, rules);
+  return rules;
+}
+
+// A question word asks at the start of a sentence ("Which one ...?", "Who decides?"), before "one" ("which one"), or
+// after a verb of knowing, asking or choosing ("find out which", "tell me who", "know what"). Anywhere else (after a
+// noun, a comma, a dash or a preposition) it is a relative.
+const OPENING_MARKS = new Set(['"', "'", '“', '(', '[', '«', '„', '「', '『']);
+const SENTENCE_ENDS = new Set(['.', '!', '?', ':', ';', '…']);
+const OBJECT_PRONOUNS = new Set(['me', 'us', 'you', 'him', 'her', 'them']);
+const ASKING = new Set(('know knew knows known knowing ask asks asked asking wonder wonders wondered wondering tell tells '
+  + 'told telling see sees saw seen seeing decide decides decided deciding choose chooses chose chosen choosing pick '
+  + 'picks picked guess guessed sure unsure idea clue matter matters mattered regardless out understand understood '
+  + 'remember forget forgot learn learned show shows showed explain explains explained determine determines determined '
+  + 'check checks checked predict figure').split(' '));
+function asksQuestion(toks, s, e) {
+  let p = s - 1;
+  while (p >= 0 && OPENING_MARKS.has(toks[p])) p--;
+  if (p < 0 || SENTENCE_ENDS.has(toks[p])) return true;
+  if (toks[e] === 'one' || toks[e] === 'ones') return true;
+  if (OBJECT_PRONOUNS.has(toks[p]) && ASKING.has(toks[p - 1])) return true;
+  if (toks[p] === 'on' && /^depend/.test(toks[p - 1] || '')) return true;
+  return ASKING.has(toks[p]);
+}
+
+// Why a swap of English o into the listed word breaks a sense rule of its language, or ''.
+function wrongSense(rules, word, o, ctx, text) {
+  const own = rules.contexts.get(word);
+  const asks = rules.questions.has(word);
+  if (!own && !asks) return '';
+  const { toks, starts, len } = placesOf(o, ctx, text);
+  for (const s of starts) {
+    if (own && splitAt(toks, s, s + len, '', own)) return 'context';
+    if (asks && !asksQuestion(toks, s, s + len)) return 'relative';
+  }
+  return '';
+}
+
+// Whether the swap's place (as the page finds it: text.js locate) is inside quoted text. With no text, or a place the
+// page can't find (and so never swaps), there is nothing to check.
+function quotedAt(o, ctx, text) {
+  if (!text) return false;
+  const at = locate({ text }, o, ctx);
+  return !!at && inQuotes(text, at.start, at.end, quotedRanges(text));
 }
 
 // The same check for the English at characters [from, to) of text, for code that knows the exact place (candidates.js).
@@ -486,8 +566,9 @@ function sharedIndex(words, lang, build) {
 // and whose English matches that word's gloss.
 // Canonicalizes accents, fills gloss and hint from the list, matches capitalization of the original.
 // language: the word state's language (its profile gives the articles and extra synonyms); bundled lists are French.
-// stats: an optional object that counts dropped swaps by reason (malformed, allCaps, notListed, gloss, plural, idiom).
-// text: the passage, for the English never-split rules (ctx stands in without it).
+// stats: an optional object that counts dropped swaps by reason (malformed, allCaps, notListed, gloss, plural, idiom,
+// quoted, sense).
+// text: the passage, for the English never-split rules (ctx stands in without it), quoted text and the sense rules.
 export function validateSwaps(level, swaps, sharedWords, language = 'French', { stats = null, text = '' } = {}) {
   if (!Array.isArray(swaps)) return [];
   const lang = sharedWords ? language || 'French' : 'French';
@@ -496,6 +577,7 @@ export function validateSwaps(level, swaps, sharedWords, language = 'French', { 
   const extra = prof ? prof.extension.synonyms : null;
   const fold = prof ? foldFor(prof) : normalizeFr;
   const synonyms = extra && Object.keys(extra).length ? mergeSynonyms(SYNONYMS, extra) : SYNONYMS;
+  const sense = senseRules(lang, prof || FRENCH_PROFILE);
   const idx = sharedWords ? sharedIndex(sharedWords, lang, () => indexFor(level, sharedWords, articles, fold)) : indexFor(level, sharedWords, articles, fold);
   const out = [];
   const drop = (reason) => { if (stats) stats[reason] = (stats[reason] || 0) + 1; };
@@ -520,6 +602,8 @@ export function validateSwaps(level, swaps, sharedWords, language = 'French', { 
     if (bare !== exactFr(hit.canon) && !/^the\s/i.test(o) && idx.exact.has(bare)) hit = idx.exact.get(bare);
     const ctx = typeof s.ctx === 'string' ? decodeEntities(s.ctx).trim() : '';
     if (breaksEnglish(o, hit.canon, ctx, text)) { drop('idiom'); continue; }
+    if (quotedAt(o, ctx, text)) { drop('quoted'); continue; }
+    if (sense && wrongSense(sense, exactFr(hit.canon), o, ctx, text)) { drop('sense'); continue; }
     out.push({
       o,
       f: matchCase(hit.canon, o),
