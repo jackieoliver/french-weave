@@ -167,7 +167,7 @@ export async function requestSwaps({ apiKey, keys: given, model, chain: givenCha
         if (!byId.has(id)) throw new Error('Incomplete model response');
         results[id] = capSwaps(level, validateSwaps(level, plan.swaps(id, byId.get(id)), words, language, { stats: dropped, text }), text, words);
       }
-      return { results, model: a.step.model, provider: a.step.provider, keyName: a.keyName, step: a.index + 1, errors, dropped, costUsd,
+      return { results, model: a.step.model, provider: a.step.provider, keyName: a.keyName, step: a.index + 1, thinking: a.step.thinking, errors, failures, dropped, costUsd,
         ms: now() - started, requests, ...(usage ? { usage } : {}) };
     } catch (e) {
       const timeout = e?.name === 'TimeoutError';
@@ -203,7 +203,7 @@ export async function requestSwaps({ apiKey, keys: given, model, chain: givenCha
   // otherwise the last Gemini failure. keyName says which key it was.
   const failure = geminiFailures.find((f) => errorKind(f) === 'key') || geminiFailures.at(-1) || failures.at(-1) || {};
   Object.assign(error, { kind: errorKind({ ...failure, daily: false }), status: failure.status, googleStatus: failure.googleStatus,
-    keyName: failure.keyName });
+    keyName: failure.keyName, failures });
   const until = all.map((a) => cooldown.get(a.slot) || 0).filter((t) => t > now());
   if (until.length === all.length) error.retryAfterMs = Math.max(1000, Math.min(...until) - now());
   throw error;

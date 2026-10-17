@@ -4,6 +4,7 @@ import { flatten, applySwaps, revert, toggle, isSwap, swapWord, SWAP_CLASS } fro
 import { hashKey } from './hash.js';
 import { siteEnabled, hasSiteAccess } from './settings.js';
 import { selector, readable } from './page.js';
+import * as usage from './usage-page.js';
 
 let config = null;
 let observer = null;
@@ -173,6 +174,7 @@ async function flush() {
       // A failed model call (usually the free tier's rate limit) is retried instead of leaving the passage English.
       const tries = (failures.get(i.key) || 0) + 1;
       failures.set(i.key, tries);
+      usage.retry(tries, MAX_RETRIES, result);
       if (p && tries <= MAX_RETRIES) {
         const wait = Math.max(result?.retryAfterMs || 0, 5000 * tries);
         setTimeout(() => { if (gen === generation) for (const el of p.els) if (keys.get(el) === i.key) { keys.delete(el); consider(el); } }, wait);
@@ -211,6 +213,7 @@ function mutations(records) {
   }
   observer?.takeRecords();
   for (const el of tracked) if (!el.isConnected) { tracked.delete(el); near.unobserve(el); }
+  usage.unmounted(pending);
   for (const span of visibleWords) if (!span.isConnected) { visibleWords.delete(span); visible.unobserve(span); }
 }
 function start() {
@@ -230,6 +233,7 @@ function start() {
   track(document.documentElement);
 }
 function stop() {
+  usage.cancelled(inflight.size, pending.size - inflight.size);
   generation++;
   observer?.disconnect(); observer = null;
   near?.disconnect(); visible?.disconnect();
@@ -270,4 +274,5 @@ let page = location.href;
 const navTimer = setInterval(() => {
   if (page !== location.href) { page = location.href; if (config) update(config, true); }
 }, 1000);
-void send({ type: 'config' }).then(update).catch(() => {});
+usage.init(() => config, send);
+void send({ type: 'config', load: true }).then(update).catch(() => {});
