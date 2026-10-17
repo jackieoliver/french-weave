@@ -26,6 +26,7 @@
   fw.py export [--claude-ai | --chatgpt] [--log-day] paste-ready block for claude.ai preferences or ChatGPT
   fw.py log-chat-day                                 opt-in: count today as exposure for your learning words
   fw.py check                                        verify the state, extension folder and native host
+  fw.py usage [--days N] [--json]                    dev build: what the extension did, from its local usage log
   fw.py uninstall [--codex] [--dry-run]              remove the native host manifests (and the Codex hook)
 """
 import argparse
@@ -43,6 +44,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fwlib  # noqa: E402
 import export  # noqa: E402
+import fwusage  # noqa: E402
 
 try:
     import tomllib
@@ -624,6 +626,14 @@ def refresh(_args):
     fwlib.refresh_exposure()
 
 
+def usage_cmd(args):
+    summary = fwusage.summarize(fwusage.load(args.days), args.days)
+    if args.json:
+        print(json.dumps(summary, ensure_ascii=False, indent=1))
+    else:
+        print(fwusage.render(summary))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='French Weave', formatter_class=argparse.RawDescriptionHelpFormatter,
                                      epilog=__doc__)
@@ -668,6 +678,10 @@ def main(argv=None):
     p.add_argument('--copy', action='store_true', help='also copy the claude.ai block to the clipboard')
     p.set_defaults(run=export_cmd)
     sub.add_parser('log-chat-day').set_defaults(run=log_chat_day)
+    p = sub.add_parser('usage', help="dev build: the extension's local usage log")
+    p.add_argument('--days', type=int, default=7, metavar='N')
+    p.add_argument('--json', action='store_true')
+    p.set_defaults(run=usage_cmd)
     args = parser.parse_args(argv)
     args.run(args)
 

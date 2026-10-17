@@ -89,6 +89,11 @@
   <section>
     <details id="wordList"><summary>Your words <span data-counts class="small"></span></summary><div data-rows></div></details>
   </section>
+  <section id="usageSection" hidden>
+    <label class="row"><span>Usage log (dev build)</span><input type="checkbox" id="usageOn"
+      title="Keeps a log of what French Weave does on this computer only (~/.french-weave/usage). Read it with: python3 scripts/fw.py usage"></label>
+    <p class="small" id="usageToday" role="status"></p>
+  </section>
   <p class="small" id="privacyNote"></p>
   <div id="notice" class="small error" role="alert"></div>
   <script type="module" src="popup.js"></script>

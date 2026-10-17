@@ -350,6 +350,28 @@ python3 tests/model_eval.py --paste level-01 --stages 1 --out /tmp/fw-eval   # s
 node tests/extension_e2e.mjs                      # after setup: Playwright Chromium + fake X and article pages + real Gemini
 ```
 
+### Usage log (dev build only)
+
+The dev build (plugin installed from the french-weave-dev marketplace, so `~/.french-weave/app/CHANNEL` says `dev`)
+keeps a log of what the extension does, so you can see how you actually use it. The public build records nothing,
+and neither build records anything without the native host.
+
+- **What**: page views (the site's hostname only, on or off and why, level); each batch of passages (site, level,
+  passages, cache hits, provider, model, reasoning, chunks, time in ms, tokens, cost, outcome such as ok, 429, 5xx,
+  timeout, parse error, cap reached, provider stopped, stale, and each fallback to the next step); queue retries
+  and give-ups, passages whose element left the page, batches cancelled by a page change or a closed tab; swaps
+  shown by word status; words seen, gloss peeks and "Show English" flips (words from your list); popup opens;
+  setting changes (old and new value; a key only as "set" or "cleared"); extension installs, updates and reloads;
+  worker starts (Chrome stops an idle worker, so each start notes how long none ran); native-host errors; daily
+  cap hits.
+- **Never**: page text, URLs beyond the hostname, keys, anything you type.
+- **Where**: `~/.french-weave/usage/YYYY-MM-DD.jsonl`, one JSON event per line, kept 60 days. It never leaves your
+  computer: the extension hands events to the native host, which only appends to that folder.
+- **Read it**: `python3 scripts/fw.py usage [--days N] [--json]`. The popup shows "Today: N batches, X% cached,
+  p90 Y s, $Z".
+- **Turn it off**: untick "Usage log (dev build)" in the popup (on by default in the dev build). What was
+  recorded stays until you delete the folder.
+
 ## License
 
 MIT

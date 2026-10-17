@@ -13,6 +13,7 @@ import { modelErrorText, replaceLegacyStatus } from './modelerror.js';
 import { API_BASE } from './gemini.js';
 import { configFor, reasoningLevels } from './model-config.js';
 import { localSwaps, localOff } from './local.js';
+import { createUsage } from './usage.js';
 import { createLimiter, createSpendGate } from './limits.js';
 
 const store = chrome.storage.local;
@@ -46,6 +47,9 @@ const serial = () => {
   return (fn) => { const p = chain.then(fn); chain = p.catch(() => {}); return p; };
 };
 const locked = serial(); // storage read-modify-writes one at a time, or concurrent ones drop data
+// The dev build's local usage log (usage.js); records nothing in the public build or without the native host.
+const usage = createUsage({ storage: chromeStorage, sendNative: send, version: runningVersion(), context: () => context(),
+  onInstalled: chrome.runtime.onInstalled, onTabRemoved: chrome.tabs?.onRemoved });
 // Model calls: up to MODEL_BATCHES batches at once, so a page that scrolls (an infinite timeline) doesn't wait behind
 // every batch queued before it. Within them, Gemini requests still go one at a time across all batches (geminiTurn):
 // free keys allow a few requests a minute and the 429 cooldown and local daily cap were built for one at a time.
@@ -186,7 +190,7 @@ async function context() {
   // The word list's version is left out, so a list change keeps cached swaps (cache.js CACHE_MAX_AGE_MS); its
   // language stays in, since swaps in another language are no use.
   const revision = hashKey(JSON.stringify([data.epoch || '', affecting, level, state?.language || '', paused, hasKey, origins]));
-  return { settings, level, revision, hasKey, tier: tierFor(hasKey, state), paused, origins, stage: state?.stage || 0 };
+  return { settings, level, revision, hasKey, tier: tierFor(hasKey, state), paused, origins, stage: state?.stage || 0, ...(await usage.flag()) };
 }
 
 // The model APIs' own host permissions (manifest) are not sites the reader granted: openrouter.ai is also a website,
@@ -268,6 +272,7 @@ async function swaps(msg, sender) {
         await locked(() => saveSpent(chromeStorage, daily, Date.now(), loaded));
       }
     });
+    usage.note(msg, { fresh });
     return await locked(async () => {
       if (!fresh || (await context()).revision !== ctx.revision) return { results: {}, stale: true };
       await cache.setMany(fresh.results);
@@ -280,6 +285,7 @@ async function swaps(msg, sender) {
       return { results: { ...results, ...fresh.results } };
     }).finally(() => void showBadge());
   } catch (e) {
+    usage.note(msg, { error: e });
     const error = await failed(e, usedKey);
     return { results, error, retryAfterMs: e?.retryAfterMs };
   }
@@ -348,6 +354,7 @@ async function record(msg, sender) {
   const word = (await readCached(chromeStorage))?.words.find((w) => exactFr(w.fr) === exactFr(msg.word));
   if (!word) return { ok: false };
   await locked(() => queueEvents(chromeStorage, [{ word: word.fr, kind: msg.event }]));
+  usage.word(msg.event, word, sender);
   scheduleFlush();
   return { ok: true };
 }
@@ -360,6 +367,7 @@ async function syncWords() {
   // The running version goes along, so `fw.py check` can say which copy Chrome runs (a host before 0.2.9 ignores it).
   const version = runningVersion();
   const res = await refresh({ storage: chromeStorage, send, version });
+  await usage.host(res.error);
   if (!res.error && version) await store.set({ [REPORTED_KEY]: { version, at: Date.now() } });
   const after = await store.get(HOST_KEYS);
   const changed = (k) => (before[k] || '') !== (after[k] || '');
@@ -428,6 +436,7 @@ async function save(msg) {
       if (name === 'openRouterKey') await clearPaidStop(chromeStorage, 'openrouter');
       if (name === 'anthropicKey') await clearPaidStop(chromeStorage, 'anthropic');
     }
+    usage.settings(cleanSettings(saved.settings), patch.settings, msg);
     await store.set(patch);
   });
   await showBadge();
@@ -486,6 +495,7 @@ async function checkUpdate({ reload = true } = {}) {
     if (waiting && (await store.get(RELOADED_KEY))[RELOADED_KEY] !== waiting) {
       if (!reload) return { waiting, reloading: true };
       await store.set({ [RELOADED_KEY]: waiting });
+      await usage.reloading(waiting);
       try {
         // Model calls first: they take the storage lock to count their cost, so waiting for them inside it would never end.
         await allModelCalls(() => locked(() => chrome.runtime.reload()));
@@ -506,14 +516,15 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   const popup = sender.url === chrome.runtime.getURL('src/popup.html');
   const page = sender.tab && /^https?:\/\//.test(sender.url || '');
   const handlers = {
-    config: () => { if (page) void recheckHost(); return context(); }, // a page load also notices a pause or resume
-    swaps: () => swaps(msg, sender),
+    config: () => { if (page) void recheckHost(); return usage.pageView(msg, sender, context(), activeOn); }, // a page load also notices a pause or resume
+    swaps: () => usage.batch(msg, sender, () => swaps(msg, sender)),
+    usage: () => usage.pageEvents(msg, sender), usageToday: () => usage.today(msg.open !== false), usageToggle: () => usage.toggle(msg.on),
     event: () => record(msg, sender),
     status, syncWords, clearCache,
     applyUpdate: async () => ({ ok: true, ...(await checkUpdate()) }),
     save: () => save(msg),
   };
-  if (!handlers[msg.type] || (!popup && !(page && ['config', 'swaps', 'event'].includes(msg.type)))) return false;
+  if (!handlers[msg.type] || (!popup && !(page && ['config', 'swaps', 'event', 'usage'].includes(msg.type)))) return false;
   ready.then(handlers[msg.type]).then(reply, (e) => reply({ error: String(e?.message || e) }));
   return true;
 });
