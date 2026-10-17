@@ -9,7 +9,7 @@ release: the strip commit deletes it.
 One commit on the `public-release` branch, "Public release: leave out the dev build's usage log", which:
 
 - replaces `extension/src/usage.js` and `extension/src/usage-page.js` with no-op stubs that keep the API the worker
-  and content script call, so `background.js`, `content.js` and `engine.js` are the same as dev;
+  and content script call, so `background.js` and `content.js` are the same as dev;
 - deletes `scripts/fwusage.py`, `tests/test_usage.py`, `extension/test/usage.test.js`,
   `extension/test/usage-runtime.test.js` and this file;
 - removes `fw.py usage`, the native host's `usage` handler (`fw_host.py`), the popup's usage line and switch
