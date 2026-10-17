@@ -11,11 +11,16 @@
 // forms intact, seen/flip events flushed back to the word state, forged page events ignored, no swaps on webmail,
 // and the article reverting when its site is turned off. Expected for the tip: tipWithoutWait and hoverAfter show the gloss text,
 // peeksAfterQuickPass is 0 and peeksAfterDwell is 1 (on a profile that hasn't peeked at that word today).
-// With an Anthropic key too (setup's --anthropic-key-file), Levels 1-2 send each batch to Claude Haiku 5.5 first,
+// With an Anthropic key too (setup's --anthropic-key-file), every level sends each batch to Claude Haiku 5.5 first,
 // direct to Anthropic; with only an OpenRouter key (--openrouter-key-file), through OpenRouter. servedCounts names the
 // model behind each batch, lastProvider the provider of the last, anthropicUsd and openRouterUsd today's spend, and
 // batches lists each model request the worker made (provider, HTTP status, milliseconds, tokens; never the key).
 // E2E_LEVEL=1..4 forces that level from the popup before any page loads (level reports the one in effect).
+// E2E_MODEL=<choice> and E2E_REASONING=<level> pick that Model and Reasoning in the popup the same way.
+// The popup's Model and Reasoning menus (popupModelOptions, popupReasoningOptions; "!" marks one that can't be
+// picked), its header (popupVersion), Mode line (popupMode), Next batch line (popupNext) and
+// what the native host recorded as the running version (extensionSeen) are printed; E2E_SCREENSHOT=<file.png> also
+// saves the popup as an image.
 // CHROMIUM_PATH: a Chromium binary to use instead of the one this Playwright version expects.
 // Website access is granted only for the test sites (x.com, reading.example, safety.example, mail.google.com), as a
 // reader who allows sites one at a time has it, so a model API without a manifest host permission (api.anthropic.com)
@@ -26,9 +31,10 @@
 import { chromium } from 'playwright';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 
-const INSTALLED = join(process.env.FRENCH_WEAVE_HOME || join(homedir(), '.french-weave'), 'extension');
+const STATE_DIR = process.env.FRENCH_WEAVE_HOME || join(homedir(), '.french-weave');
+const INSTALLED = join(STATE_DIR, 'extension');
 const EXT = mkdtempSync(join(tmpdir(), 'fw-ext-'));
 cpSync(INSTALLED, EXT, { recursive: true });
 const manifest = JSON.parse(readFileSync(join(EXT, 'manifest.json'), 'utf8'));
@@ -82,6 +88,11 @@ try {
   if (process.env.E2E_LEVEL) {
     await sw.evaluate((level) => chrome.storage.local.get('settings')
       .then(({ settings }) => chrome.storage.local.set({ settings: { ...settings, levelOverride: level } })), Number(process.env.E2E_LEVEL));
+  }
+  for (const [env, field] of [['E2E_MODEL', 'modelChoice'], ['E2E_REASONING', 'reasoning']]) {
+    if (!process.env[env]) continue;
+    await sw.evaluate(([name, value]) => chrome.storage.local.get('settings')
+      .then(({ settings }) => chrome.storage.local.set({ settings: { ...settings, [name]: value } })), [field, process.env[env]]);
   }
   // Each model request the worker makes: provider, status, time to the reply, and tokens (Anthropic's usage). The
   // worker calls the global fetch, so wrapping it here sees every request; nothing of the request is kept.
@@ -202,7 +213,7 @@ try {
   out.popupTier = await popup.$eval('#tierInfo', (e) => e.textContent);
   out.modelCalls = await calls(); // Gemini requests this profile made today
   // Which models served today's batches, and today's OpenRouter spend: with an OpenRouter key (setup's
-  // --openrouter-key-file) at Levels 1-2, Claude Haiku 5.5 serves first.
+  // --openrouter-key-file), Claude Haiku 5.5 serves first.
   const served = await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'status' })
     .then((s) => ({ last: s.lastServed?.model || '', lastProvider: s.lastServed?.provider || '', counts: s.served?.counts || {},
       openRouterUsd: s.openRouter?.usd || 0, anthropicUsd: s.anthropic?.usd || 0, anthropicBlocked: s.anthropic?.blocked || '',
@@ -212,6 +223,21 @@ try {
     modelError: served.modelError });
   out.batches = await sw.evaluate(() => globalThis.__fwBatches || null);
   out.popupAnthropicInfo = await popup.$eval('#anthropicInfo', (e) => e.textContent);
+  out.popupModel = await popup.$eval('#model', (e) => e.value);
+  out.popupModelOptions = await popup.$$eval('#model option', (os) => os.map((o) => `${o.disabled ? '!' : ''}${o.textContent}`));
+  out.popupNext = await popup.$eval('#nextInfo', (e) => e.textContent);
+  out.popupModelNote = await popup.$eval('#modelNote', (e) => e.textContent);
+  out.popupReasoning = await popup.$eval('#reasoning', (e) => e.value);
+  out.popupReasoningOptions = await popup.$$eval('#reasoning option', (os) => os.map((o) => `${o.disabled ? '!' : ''}${o.textContent}`));
+  out.popupMode = await popup.$eval('#modeInfo', (e) => e.textContent);
+  out.popupVersion = await popup.$eval('h1', (e) => e.textContent);
+  out.popupVersionInfo = await popup.$eval('#versionInfo', (e) => e.textContent);
+  if (process.env.E2E_SCREENSHOT) {
+    await popup.setViewportSize({ width: 300, height: 900 });
+    await popup.screenshot({ path: process.env.E2E_SCREENSHOT, fullPage: true });
+  }
+  const seenFile = join(STATE_DIR, 'extension-seen.json');
+  out.extensionSeen = existsSync(seenFile) ? JSON.parse(readFileSync(seenFile, 'utf8')) : null;
   // Your words: collapsed at first; opened, it lists the synced learning and shaky words.
   const wordList = () => popup.$eval('#wordList', (d) => ({ open: d.open, counts: d.querySelector('[data-counts]').textContent,
     rows: [...d.querySelectorAll('.word')].map((r) => `${r.dataset.status}: ${r.innerText.replace(/\s+/g, ' ')}`) }));

@@ -30,6 +30,7 @@
 """
 import argparse
 import csv
+import datetime as dt
 import json
 import os
 from pathlib import Path
@@ -395,6 +396,36 @@ def setup(args):
           '/reload-plugins first.')
 
 
+def ago(at, now=None):
+    """'5m ago' for an ISO 8601 time, '' when it can't be read."""
+    try:
+        then = dt.datetime.fromisoformat(at)
+        now = now or dt.datetime.now(then.tzinfo)
+        minutes = max(0, round((now - then).total_seconds() / 60))
+    except (TypeError, ValueError):
+        return ''
+    if minutes < 1:
+        return 'just now'
+    if minutes < 60:
+        return f'{minutes}m ago'
+    return f'{round(minutes / 60)}h ago' if minutes < 24 * 60 else f'{round(minutes / 1440)}d ago'
+
+
+def extension_running(seen, disk, now=None):
+    """check's line on the version Chrome runs: (prefix, text). seen: fwlib.extension_seen(); disk: the version in
+    <state dir>/extension/manifest.json ('' when missing). A difference is a warning, not a failure: Chrome may simply
+    not have run the extension since the update."""
+    if not seen:
+        return 'note', ('extension running version not reported yet (0.2.9 and later report it each time they sync with '
+                        'the native host: open the toolbar popup, or wait up to 30 minutes with Chrome open)')
+    when = seen['at'] + (f' ({ago(seen["at"], now)})' if ago(seen['at'], now) else '')
+    if disk and seen['version'] != disk:
+        return 'warn', (f'extension running {seen["version"]} (seen {when}), but the copy on disk is {disk}: Chrome has not '
+                        'reloaded it yet. It reloads itself within about 5 minutes while Chrome is open, or right away '
+                        'when you open its toolbar popup; else click the reload arrow on French Weave in chrome://extensions')
+    return 'ok  ', f'extension running {seen["version"]}, seen {when}' + ('' if disk else ' (no copy on disk to compare)')
+
+
 def check(_args):
     """Prints one line per check; exits 1 if any failed."""
     import struct
@@ -409,6 +440,10 @@ def check(_args):
     state = fwlib.load_state(create=False)
     report(state is not None, f'word state at {home / "state.json"}' + (f' (Stage {fwlib.stage_for(state)})' if state else ''))
     report((home / 'extension' / 'manifest.json').exists(), f'extension folder for Load unpacked: {home / "extension"}')
+    disk = str((fwlib.read_json(home / 'extension' / 'manifest.json', {}) or {}).get('version') or '')
+    print('{} {}'.format(*extension_running(fwlib.extension_seen(), disk)))
+    if fwlib.installed_channel():
+        print(f'ok   channel: {fwlib.installed_channel()} build (the popup says so)')
     for directory in host_dirs():
         path = directory / f'{HOST_NAME}.json'
         manifest = fwlib.read_json(path)
@@ -596,8 +631,8 @@ def main(argv=None):
     p = sub.add_parser('setup')
     p.add_argument('--gemini-key-file')
     p.add_argument('--backup-key-file', help='a second Gemini key, tried when the main one is out for the day')
-    p.add_argument('--anthropic-key-file', help='paid: Claude Haiku 5.5 first at Levels 1-2, direct to Anthropic')
-    p.add_argument('--openrouter-key-file', help='paid: Claude Haiku 5.5 first at Levels 1-2 without an Anthropic key, '
+    p.add_argument('--anthropic-key-file', help='paid: Claude Haiku 5.5 first at every level, direct to Anthropic')
+    p.add_argument('--openrouter-key-file', help='paid: Claude Haiku 5.5 first at every level without an Anthropic key, '
                    'else only when every Gemini step fails')
     p.add_argument('--user-data-dir', action='append', default=[])
     p.add_argument('--codex', action='store_true')

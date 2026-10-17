@@ -142,7 +142,8 @@ python3 "$FW" check
 python3 "$FW" status
 ```
 
-Every `check` line must say `ok` (a `note` about the Gemini key is fine if the person will paste it in the popup).
+Every `check` line must say `ok` (a `note` about the Gemini key is fine if the person will paste it in the popup,
+and one about the extension's running version until they load the extension in Chrome).
 If one says `FAIL`, fix it before going on; rerunning setup fixes most.
 
 ## 5. Hand over

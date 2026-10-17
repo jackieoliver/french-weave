@@ -480,6 +480,49 @@ class Host(Home):
         reply, = self.converse({'type': 'state'})
         self.assertEqual(reply['prefs'], {'extension_sites': 'ask'})
 
+    def test_state_records_the_running_extension_version(self):
+        self.assertIsNone(fwlib.extension_seen())
+        old, = self.converse({'type': 'state'})  # an extension before 0.2.9 sends no version: nothing recorded
+        self.assertTrue(old['ok'])
+        self.assertFalse((fwlib.home() / fwlib.EXTENSION_SEEN).exists())
+        bad, = self.converse({'type': 'state', 'extension': '../../etc'})  # not a version: ignored, still answered
+        self.assertTrue(bad['ok'])
+        self.assertIsNone(fwlib.extension_seen())
+        reply, = self.converse({'type': 'state', 'extension': '0.2.9'})
+        self.assertTrue(reply['ok'])
+        self.assertEqual(set(reply), set(old))  # the reply is the same as before
+        seen = fwlib.extension_seen()
+        self.assertEqual(seen['version'], '0.2.9')
+        self.assertLess(abs((fw.dt.datetime.now().astimezone() - fw.dt.datetime.fromisoformat(seen['at'])).total_seconds()), 60)
+        self.converse({'type': 'state', 'extension': '0.3.0'})
+        self.assertEqual(fwlib.extension_seen()['version'], '0.3.0')
+
+    def test_channel_dev_from_the_dev_marketplace(self):
+        plugins = self.home / 'claude' / 'plugins'
+        dev = plugins / 'cache' / 'french-weave' / 'french-weave' / '0.2.9'
+        public = plugins / 'cache' / 'fw-public' / 'french-weave' / '0.2.9'
+        fwlib.write_json(plugins / 'known_marketplaces.json', {
+            'french-weave': {'source': {'source': 'github', 'repo': 'jackieoliver/french-weave-dev'}},
+            'fw-public': {'source': {'source': 'github', 'repo': 'jackieoliver/french-weave'}},
+            'fw-git': {'source': {'source': 'git', 'url': 'https://github.com/jackieoliver/french-weave-dev.git'}}})
+        self.assertEqual(fwlib.plugin_channel(dev), 'dev')
+        self.assertEqual(fwlib.plugin_channel(public), '')
+        self.assertEqual(fwlib.plugin_channel(plugins / 'cache' / 'fw-git' / 'french-weave' / '0.2.9'), 'dev')
+        self.assertEqual(fwlib.plugin_channel(plugins / 'cache' / 'unknown' / 'french-weave' / '0.2.9'), '')
+        self.assertEqual(fwlib.plugin_channel(ROOT), '')  # a repo checkout is not a marketplace install
+        # Setup's copies record it; the host sends it with the state; a public install removes it again.
+        for name in ('extension', 'scripts', 'data', '.claude-plugin'):
+            (dev / name).parent.mkdir(parents=True, exist_ok=True)
+            (dev / name).symlink_to(ROOT / name)
+        fwlib.install_copies(dev)
+        self.assertEqual(fwlib.installed_channel(), 'dev')
+        reply, = self.converse({'type': 'state'})
+        self.assertEqual(reply['channel'], 'dev')
+        fwlib.install_copies(ROOT)
+        self.assertEqual(fwlib.installed_channel(), '')
+        reply, = self.converse({'type': 'state'})
+        self.assertNotIn('channel', reply)
+
     def test_message_framing(self):
         stream = io.BytesIO()
         fw_host.write_message(stream, {'a': 'é'})
@@ -549,6 +592,45 @@ class Setup(Home):
                 pass
         self.assertIn('ok   Anthropic key stored by setup', checked.getvalue())
         self.assertNotIn(FAKE_ANTHROPIC_KEY, checked.getvalue())
+
+    def test_check_reports_the_running_extension_version(self):
+        now = fw.dt.datetime(2026, 10, 17, 12, 0, tzinfo=fw.dt.timezone.utc)
+        prefix, text = fw.extension_running(None, '0.2.9', now)
+        self.assertEqual(prefix, 'note')
+        self.assertIn('not reported yet', text)
+        seen = {'version': '0.2.9', 'at': '2026-10-17T11:55:00+00:00'}
+        self.assertEqual(fw.extension_running(seen, '0.2.9', now),
+                         ('ok  ', 'extension running 0.2.9, seen 2026-10-17T11:55:00+00:00 (5m ago)'))
+        prefix, text = fw.extension_running({'version': '0.2.8', 'at': '2026-10-16T12:00:00+00:00'}, '0.2.9', now)
+        self.assertEqual(prefix, 'warn')
+        self.assertIn('extension running 0.2.8 (seen 2026-10-16T12:00:00+00:00 (1d ago)), but the copy on disk is 0.2.9', text)
+        self.assertIn('within about 5 minutes', text)
+        self.assertEqual(fw.extension_running(seen, '', now)[0], 'ok  ')
+        self.assertEqual(fw.ago('not a time'), '')
+        # In a full check: a mismatch warns without failing the check.
+        with mock.patch.object(Path, 'home', return_value=self.home), \
+                mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': ''}), mock.patch('sys.stdout', new=io.StringIO()):
+            fw.main(['setup'])
+        disk = json.loads((self.home / 'fw' / 'extension' / 'manifest.json').read_text())['version']
+        fwlib.record_extension_seen('0.0.1')
+        with mock.patch.object(Path, 'home', return_value=self.home), \
+                mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': ''}), mock.patch('sys.stdout', new=io.StringIO()) as out:
+            try:
+                fw.main(['check'])
+                code = 0
+            except SystemExit as exit_:
+                code = exit_.code
+        self.assertIn(f'warn extension running 0.0.1 (seen ', out.getvalue())
+        self.assertIn(f'but the copy on disk is {disk}', out.getvalue())
+        self.assertNotIn('FAIL extension running', out.getvalue())
+        fwlib.record_extension_seen(disk)
+        with mock.patch.object(Path, 'home', return_value=self.home), \
+                mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': ''}), mock.patch('sys.stdout', new=io.StringIO()) as out:
+            try:
+                fw.main(['check'])
+            except SystemExit as exit_:
+                self.assertEqual(exit_.code, code)  # the version line never changes the exit code
+        self.assertIn(f'ok   extension running {disk}, seen ', out.getvalue())
 
     def test_setup_takes_the_newer_dotted_key_format(self):
         key = self.home / 'key.txt'

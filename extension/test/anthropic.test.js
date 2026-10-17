@@ -143,7 +143,7 @@ describe('Anthropic spend', () => {
     expect(await anthropicToday(storage)).toMatchObject({ day: realDay, stopped: '' });
   });
   test('the popup line', () => {
-    expect(anthropicText({}, 5)).toContain('Optional, paid: Claude Haiku 5.5 goes first at Levels 1-2, straight to Anthropic');
+    expect(anthropicText({}, 5)).toContain('Optional, paid: Claude Haiku 5.5 goes first, straight to Anthropic');
     expect(anthropicText({ hostAnthropicKey: true, anthropic: { usd: 0.0123, blocked: '' } }, 5)).toBe('Anthropic today: $0.0123 of $5.00');
     expect(anthropicText({ anthropicKey: true, anthropic: { usd: 5.01, blocked: 'cap' } }, 5)).toContain('Daily cap reached: stopped until tomorrow.');
     expect(anthropicText({ anthropicKey: true, anthropic: { usd: 0, blocked: 'credits' } }, 5)).toContain('Credit balance too low');
