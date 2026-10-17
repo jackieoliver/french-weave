@@ -27,7 +27,8 @@ jobs:
   checks:
     name: Ubuntu checks
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest becomes Ubuntu 26.04 on 2026-10-19, and setup-python has no Python 3.9 build for it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
