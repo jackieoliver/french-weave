@@ -81,14 +81,14 @@ const languageOf = (wordState) => (wordState?.words?.length ? wordState.language
 // steps out. main and backup are the Gemini keys as set, capped or not. Used by swaps() and the popup's "Next" line.
 // The Haiku step's provider follows which keys are set (model-config.js levelFirst): a capped or stopped Anthropic key
 // means no Haiku step, not OpenRouter's.
-async function planFor(ctx, wordState) {
+async function planFor(ctx, wordState, choice = ctx.settings.modelChoice) {
   const { main, backup } = await geminiKeys();
   const paid = await paidKeys();
   const mainOut = !main || await keyCapped('main');
   const backupOut = !backup || await keyCapped('backup');
   const openRouterOn = !!paid.openrouter && !paidBlocked(await openRouterToday(chromeStorage), ctx.settings.openRouterDailyUsd);
   const anthropicOn = !!paid.anthropic && !paidBlocked(await anthropicToday(chromeStorage), ctx.settings.anthropicDailyUsd);
-  const { design, chain } = configFor(languageOf(wordState), ctx.settings.modelChoice, undefined, ctx.level,
+  const { design, chain } = configFor(languageOf(wordState), choice, undefined, ctx.level,
     { anthropic: !!paid.anthropic, openrouter: !!paid.openrouter });
   return { design, chain, main, backup, keys: { main: mainOut ? '' : main, backup: backupOut ? '' : backup,
     openrouter: openRouterOn ? paid.openrouter : '', anthropic: anthropicOn ? paid.anthropic : '' } };
@@ -96,11 +96,12 @@ async function planFor(ctx, wordState) {
 
 // What the popup's "Next" line names: the first request the next batch would make at the current level, skipping
 // steps that are cooling down or out of today's quota (the first one anyway when every step is). null without a
-// Gemini key (no model runs) or when no step has a key it may use.
-async function nextModel(ctx) {
+// Gemini key (no model runs) or when no step has a key it may use. choice: the popup's model, or another to ask what
+// that one would run (the Auto entry's label).
+async function nextModel(ctx, choice) {
   if (ctx.tier !== 'gemini') return null;
   const { wordState } = await store.get('wordState');
-  const { chain, keys } = await planFor(ctx, wordState);
+  const { chain, keys } = await planFor(ctx, wordState, choice);
   const open = attemptsFor(chain, keys);
   const now = Date.now();
   const daily = await spentToday(chromeStorage, now);
@@ -381,6 +382,17 @@ async function save(msg) {
   return { ok: true };
 }
 
+// "Updated to X", once: the first popup open after the running version changed. Before 0.2.9 nothing recorded the
+// version a popup showed; an update this worker reloaded into (RELOADED_KEY) counts then.
+const POPUP_VERSION_KEY = 'popupVersion';
+async function updatedOnce() {
+  const running = runningVersion();
+  const { [POPUP_VERSION_KEY]: shown, [RELOADED_KEY]: reloadedFor } = await store.get([POPUP_VERSION_KEY, RELOADED_KEY]);
+  if (!running || shown === running) return '';
+  await store.set({ [POPUP_VERSION_KEY]: running });
+  return (shown ? shown !== running : reloadedFor === running) ? running : '';
+}
+
 async function status() {
   const config = await context();
   const data = await store.get(['wordState', 'apiKey', 'hostKey', 'backupKey', 'hostBackupKey', 'openRouterKey', 'hostOpenRouterKey',
@@ -394,31 +406,43 @@ async function status() {
     modelStatus: data.modelStatus || null, lastServed: data.lastServed || null, served: await servedToday(chromeStorage),
     openRouter: { ...openRouter, blocked: paidBlocked(openRouter, config.settings.openRouterDailyUsd) },
     anthropic: { ...anthropic, blocked: paidBlocked(anthropic, config.settings.anthropicDailyUsd) },
-    dropped: await droppedToday(chromeStorage), next: await nextModel(config),
-    update: await checkUpdate() };
+    dropped: await droppedToday(chromeStorage),
+    next: await nextModel(config), autoNext: await nextModel(config, 'auto'),
+    version: runningVersion(), updated: await updatedOnce(),
+    // updating: a newer copy on disk the popup announces before it asks for the reload (applyUpdate); update: one
+    // that a reload already failed to load, for the popup's "reload by hand" line.
+    ...await popupUpdate() };
+}
+
+async function popupUpdate() {
+  const { waiting, reloading } = await checkUpdate({ reload: false });
+  return { update: reloading ? '' : waiting, updating: reloading ? waiting : '' };
 }
 
 // An update replaces this folder on disk (setup, or the Claude Code hook after a plugin update), but Chrome keeps
 // running the loaded copy. Compare the manifest on disk with the running one and reload from disk by ourselves,
 // once per disk version, after any model call in flight and pending storage writes. If the running copy still
 // differs after that (or reload fails), mark the toolbar icon so the user can reload by hand.
+// reload false (the popup): only say whether a reload is due ({ waiting, reloading: true }), so the popup can show
+// "Updating to X…" before it asks for one; the reload closes it.
 export const RELOADED_KEY = 'reloadedFor';
-async function checkUpdate() {
+async function checkUpdate({ reload = true } = {}) {
   try {
     const disk = await (await fetch(chrome.runtime.getURL('manifest.json'), { cache: 'no-store' })).json();
     const waiting = disk.version && disk.version !== chrome.runtime.getManifest().version ? String(disk.version) : '';
     if (waiting && (await store.get(RELOADED_KEY))[RELOADED_KEY] !== waiting) {
+      if (!reload) return { waiting, reloading: true };
       await store.set({ [RELOADED_KEY]: waiting });
       try {
         await locked(() => modelCall(() => chrome.runtime.reload()));
-        return waiting; // normally not reached: the worker is gone
+        return { waiting, reloading: true }; // normally not reached: the worker is gone
       } catch { /* fall back to the badge */ }
     }
     updateWaiting = waiting;
     await showBadge();
-    return waiting;
+    return { waiting, reloading: false };
   } catch {
-    return '';
+    return { waiting: '', reloading: false };
   }
 }
 
@@ -432,6 +456,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     swaps: () => swaps(msg, sender),
     event: () => record(msg, sender),
     status, syncWords, clearCache,
+    applyUpdate: async () => ({ ok: true, ...(await checkUpdate()) }),
     save: () => save(msg),
   };
   if (!handlers[msg.type] || (!popup && !(page && ['config', 'swaps', 'event'].includes(msg.type)))) return false;
