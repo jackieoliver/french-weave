@@ -29,8 +29,12 @@ export async function droppedToday(storage, day = localDay()) {
   return saved?.day === day ? saved : { day };
 }
 
-export async function saveSpent(storage, daily, now = Date.now()) {
-  await storage.set({ [DAILY_KEY]: Object.fromEntries([...daily].filter(([, until]) => until > now)) });
+// loaded: the map as this batch read it. With it, only the entries this batch added or moved are written, over what is
+// stored now, so batches running at once keep each other's entries and a key change's reset made meanwhile stands.
+export async function saveSpent(storage, daily, now = Date.now(), loaded = null) {
+  const base = loaded ? await spentToday(storage, now) : new Map();
+  for (const [slot, until] of daily) if (!loaded || loaded.get(slot) !== until) base.set(slot, until);
+  await storage.set({ [DAILY_KEY]: Object.fromEntries([...base].filter(([, until]) => until > now)) });
 }
 
 // which: 'main' or 'backup'; each Gemini key has its own count and cap.
