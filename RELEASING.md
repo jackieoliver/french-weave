@@ -53,5 +53,13 @@ One commit on the `public-release` branch, "Public release: leave out the dev bu
 - Same version, two builds: `claude plugin update` and `refresh_copies` (scripts/fwlib.py) only act when the version
   changes, so switching one install from the dev marketplace to the public one at the same version keeps the dev
   copies. Reinstall (or run setup again) after switching.
-- History: the public repo receives dev's full history as it is (commit messages included); it is never squashed or
-  rewritten, so each release stays a plain merge on top of the last.
+- History: the public repo receives dev's full history as it is (commit messages included); it is never squashed, so
+  each release stays a plain merge on top of the last. One exception, 2026-10-17, at the owner's request: both repos
+  were rewritten once with git filter-repo (a mailmap for a personal address on GitHub's merge commits, and a
+  replace-text pass over page titles, quotes and private-repo notes found by a security pass); trees are otherwise
+  unchanged, and installed plugins updated fine (Claude Code re-clones a marketplace on update).
+- Merge commits made on GitHub (a PR's merge button, `gh pr merge`, `gw land`) carry the account's primary email
+  unless GitHub's "Keep my email addresses private" is on. Until it is, land on dev main as a fast-forward push and
+  make release merges locally.
+- Before each public push, check the range for personal details: `git log --format='%ae %ce' <public main>..HEAD`
+  must show only the noreply address, and gitleaks must be clean.
