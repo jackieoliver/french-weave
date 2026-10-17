@@ -52,25 +52,36 @@ export const MODELS = {
 export const THINKING = { 'gemini-3.1-flash-lite': 'medium', 'gemini-3.5-flash-lite': 'low', 'gemini-3.8-flash': 'low' };
 export const STEP_TIMEOUT_MS = { 'gemini-3.1-flash-lite': 30000, 'gemini-3.5-flash-lite': 8000, 'gemini-3.8-flash': 20000 };
 
-// The popup's choice that puts the levelFirst step (Claude Haiku 5.5 at low effort) first at every level, by the
-// same provider preference as Auto. Without an Anthropic or OpenRouter key it has no step, so the chain is Auto's.
-export const HAIKU_CHOICE = 'claude-haiku-low';
-export const HAIKU_LABEL = 'Claude Haiku 5.5 (low)';
-
-// Every choice the popup's Model menu offers, in order: id -> label. The popup adds what Auto runs right now
-// (popup-model.js).
+// The popup's Model menu, modelled on its Level menu: 'auto' is Recommended (the language's chain: Claude Haiku first
+// with a Claude key, else Gemini), then each model by name. HAIKU_CHOICE puts the levelFirst step (Claude Haiku 5.5)
+// first at every level, by the same provider preference; without an Anthropic or OpenRouter key it has no step, so
+// the chain is Recommended's. The popup adds what Recommended resolves to (popup-model.js).
+export const HAIKU_CHOICE = 'claude-haiku-5-5';
 export const CHOICES = {
-  auto: 'Auto',
-  [HAIKU_CHOICE]: HAIKU_LABEL,
+  auto: 'Recommended',
+  [HAIKU_CHOICE]: 'Claude Haiku 5.5',
   ...MODELS,
 };
 
-// The design and chain for a language; choice: the popup's model ('auto', HAIKU_CHOICE, or a key of MODELS), which
-// goes first, followed by the rest of the language's chain. level: the extension's level (1-4); on Auto, a level
-// listed in levelFirst puts its step first, by the first provider in levelFirst.via the reader has a key for (has:
-// { anthropic, openrouter }, whether each key is set, capped or not). HAIKU_CHOICE puts that same step first at every
-// level. A Gemini model picked in the popup goes first instead, with no Haiku step.
-export function configFor(language, choice = 'auto', config = MODEL_CONFIG, level = 0, has = {}) {
+// The popup's Reasoning menu: 'auto' (Recommended) keeps each step's measured setting (the thinking in the chain and
+// THINKING); a level sets the first step's instead. Claude Haiku: 'off' is thinking disabled, the others adaptive
+// thinking at that effort (anthropic.js; reasoning effort through OpenRouter). Gemini: its thinkingLevel; 3.1
+// Flash-Lite was measured at minimal and medium, 3.5 Flash-Lite at low and high (internal evaluation).
+export const REASONING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high'];
+export function reasoningLevels(step) {
+  if (!step) return [];
+  if (/claude-haiku/.test(step.model)) return ['off', 'low', 'medium', 'high'];
+  if (step.provider === 'gemini' && !/^gemma/.test(step.model)) return ['minimal', 'low', 'medium', 'high'];
+  return [];
+}
+
+// The design and chain for a language; choice: the popup's model ('auto' for Recommended, HAIKU_CHOICE, or a key of
+// MODELS), which goes first, followed by the rest of the language's chain. level: the extension's level (1-4); on
+// Recommended, a level listed in levelFirst puts its step first, by the first provider in levelFirst.via the reader
+// has a key for (has: { anthropic, openrouter }, whether each key is set, capped or not). HAIKU_CHOICE puts that same
+// step first at every level. A Gemini model picked in the popup goes first instead, with no Haiku step. reasoning: the
+// popup's Reasoning ('auto' or a level), applied to the first step when that step accepts it, else Recommended.
+export function configFor(language, choice = 'auto', config = MODEL_CONFIG, level = 0, has = {}, reasoning = 'auto') {
   const own = config.languages?.[language] || {};
   const design = own.design || config.default.design;
   let chain = own.chain || config.default.chain;
@@ -83,13 +94,14 @@ export function configFor(language, choice = 'auto', config = MODEL_CONFIG, leve
     const atLevel = choice === HAIKU_CHOICE || levelFirst?.levels?.includes(Number(level));
     if (via && atLevel) chain = [levelFirst.via[via], ...chain];
   }
+  if (reasoning !== 'auto' && reasoningLevels(chain[0]).includes(reasoning)) chain = [{ ...chain[0], thinking: reasoning }, ...chain.slice(1)];
   return { design, chain };
 }
 
 // Names the popup shows for the models in a chain; anything else shows its id without the provider prefix.
 const LABELS = {
   ...MODELS,
-  'claude-haiku-5-5': 'Claude Haiku 5.5 low',
-  'anthropic/claude-haiku-5.5': 'Claude Haiku 5.5 low',
+  'claude-haiku-5-5': 'Claude Haiku 5.5',
+  'anthropic/claude-haiku-5.5': 'Claude Haiku 5.5',
 };
 export const modelLabel = (model) => LABELS[model] || String(model || '').replace(/^.*\//, '');
