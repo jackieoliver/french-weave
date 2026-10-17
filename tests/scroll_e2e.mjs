@@ -208,8 +208,10 @@ try {
   const mountToSwap = swapped.map((m) => m.swapAt - m.at);
   const viewToSwap = swapped.filter((m) => fw.inView[m.id] !== undefined).map((m) => Math.max(0, m.swapAt - fw.inView[m.id]));
   // Remounted posts that had a swap before and are now within the extension's 600 px look-ahead of the window.
-  const near = await page.evaluate((cell) => [...document.querySelectorAll('.cell')].map((c) => Number(c.dataset.i))
-    .filter((i) => i * cell - scrollY < innerHeight + 600 && i * cell + cell - scrollY > -600), CELL_PX);
+  const near = await page.evaluate(() => [...document.querySelectorAll('.cell')].filter((c) => {
+    const r = c.querySelector('[data-testid="tweetText"]').getBoundingClientRect();
+    return r.top < innerHeight + 600 && r.bottom > -600;
+  }).map((c) => Number(c.dataset.i)));
   const remounts = fw.mounts.filter((m) => m.remount && m.at >= upAt && near.includes(m.id));
   const remountsSwappedBefore = remounts.filter((m) => first.some((f) => f.id === m.id && f.swapAt !== undefined));
   out.posts = { mounted: first.length, withSwap: swapped.length, withoutSwap: first.length - swapped.length,
