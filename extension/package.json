@@ -1,9 +1,9 @@
 {
   "name": "french-weave",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "private": true,
   "type": "module",
-  "description": "French Weave Chrome extension: swaps a few English words for French on any website.",
+  "description": "French Weave browser extension (Chrome and Firefox): swaps a few English words for French on any website.",
   "scripts": {
     "test": "bun test"
   },
