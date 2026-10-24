@@ -68,7 +68,7 @@ How the answers map to setup (step 3) and the hand-over (step 5):
 | 2. Browser extension | pass answers 3 and 4; give the browser steps at the end |
 | 2. Preferences block | run `export` at the end |
 | 3. Every site / only sites I turn on | `--sites all` / `--sites ask` |
-| 3. A Firefox option | also `--browser firefox` |
+| 3. A Chrome option / a Firefox option | also `--browser chrome` / `--browser firefox` (left out if skipped) |
 | 4. A file path | `--gemini-key-file <path>` |
 | 4. No key for now | no `--gemini-key-file`; leave out hand-over item 2 |
 
@@ -140,7 +140,7 @@ It always installs the extension folder and native host, even if the person didn
 - Chrome and Chromium native messaging host manifests (user level, no sudo):
   - Linux: `~/.config/google-chrome/NativeMessagingHosts/`, `~/.config/chromium/NativeMessagingHosts/`
   - macOS: `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/`, `.../Chromium/NativeMessagingHosts/`
-- With `--browser firefox` (and on later runs once it's there), the Firefox one too:
+- With `--browser firefox` (kept on later runs until `--browser chrome`), the Firefox one too:
   - Linux: `~/.mozilla/native-messaging-hosts/`
   - macOS: `~/Library/Application Support/Mozilla/NativeMessagingHosts/`
 
@@ -203,7 +203,8 @@ Then start a new Claude Code session and send any message: the hook sees the new
 `~/.french-weave/extension` and the copy the Codex hook runs from, keeping all progress (rerunning setup does the
 same). The Chrome extension reloads itself from that folder within about 30 minutes, or right away when the
 person opens its toolbar popup; if its icon still shows NEW after that, they click the reload arrow on French Weave in
-`chrome://extensions`. Without Claude Code: `git pull` in a clone, then `python3 <clone>/scripts/fw.py setup`.
+`chrome://extensions`. In Firefox, they click **Reload** on French Weave in `about:debugging#/runtime/this-firefox`
+(or load it again after a restart). Without Claude Code: `git pull` in a clone, then `python3 <clone>/scripts/fw.py setup`.
 
 ## Uninstall
 
@@ -213,5 +214,5 @@ claude plugin uninstall french-weave@french-weave
 claude plugin marketplace remove french-weave
 ```
 
-Then remove the extension in `chrome://extensions`, delete `~/.french-weave` to drop the word progress, and delete
+Then remove the extension in `chrome://extensions` (Firefox: `about:debugging` or `about:addons`), delete `~/.french-weave` to drop the word progress, and delete
 any pasted block from claude.ai or ChatGPT settings.
