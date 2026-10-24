@@ -239,6 +239,52 @@ class Cli(Home):
         self.assertIn('runs only on x.com', out)
         self.assertIn('/reload-plugins', out)  # f5556d1: an open session needs /reload-plugins to see the plugin
 
+    # Firefox: its own host folder, callers named by add-on ID (allowed_extensions), and its own steps.
+    def test_firefox_host_manifest_check_and_uninstall(self):
+        out = self.fw('setup', '--browser', 'firefox')
+        with mock.patch.object(Path, 'home', return_value=self.home):
+            path = fw.firefox_host_dirs()[0] / f'{fw.HOST_NAME}.json'
+        manifest = json.loads(path.read_text())
+        self.assertEqual(manifest['allowed_extensions'], [fw.FIREFOX_ID])
+        self.assertNotIn('allowed_origins', manifest)  # Firefox rejects a host manifest with Chrome's field
+        self.assertIn('about:debugging', out)
+        self.assertIn('Load Temporary Add-on', out)
+        self.assertNotIn('chrome://extensions', out)
+        self.assertIn('Firefox asks once; until then it runs only on x.com', out)
+        self.assertIn(f'ok   native host manifest {path}', self.fw_output_on_exit('check'))
+        self.assertIn('removed ' + str(path), self.fw('uninstall'))
+        self.assertFalse(path.exists())
+
+    def fw_output_on_exit(self, *argv):
+        """stdout of an fw.py command that exits non-zero (check fails on parts this test doesn't set up)."""
+        with mock.patch.object(Path, 'home', return_value=self.home), \
+                mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': '', 'CODEX_HOME': str(self.home / 'codex')}), \
+                mock.patch('sys.stdout', new=io.StringIO()) as out:
+            try:
+                fw.main(list(argv))
+            except SystemExit:
+                pass
+        return out.getvalue()
+
+    # ExpressVPN's installer leaves ~/Library/Application Support/Mozilla/NativeMessagingHosts owned by root.
+    def test_unwritable_host_folder_warns_instead_of_crashing(self):
+        with mock.patch.object(Path, 'home', return_value=self.home):
+            locked = fw.firefox_host_dirs()[0]
+        locked.mkdir(parents=True)
+        locked.chmod(0o555)
+        try:
+            out = self.fw('setup')
+        finally:
+            locked.chmod(0o755)
+        self.assertIn(f'no permission to write {locked / (fw.HOST_NAME + ".json")}', out)
+        self.assertIn('sudo chown -R', out)
+        self.assertIn('Load unpacked', out)  # the rest of setup still ran
+
+    def test_chrome_steps_stay_the_default(self):
+        out = self.fw('setup')
+        self.assertIn('chrome://extensions', out)
+        self.assertNotIn('about:debugging', out)
+
 
 class SetupCommand(unittest.TestCase):
     """The /french-weave:setup instructions (commands/setup.md) the model follows."""

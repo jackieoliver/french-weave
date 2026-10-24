@@ -2,12 +2,19 @@
   "manifest_version": 3,
   "name": "French Weave",
   "version": "0.2.13",
-  "description": "Swaps a few English words for French on any website in Chrome, at your French Weave level.",
+  "description": "Swaps a few English words for French on any website in Chrome or Firefox, at your French Weave level.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0V8r5wBOrv17b7QXfvtdZjQgrBTK9rLvN33V9OJWpXLKNZZjsW0oDCcbIho+MFMs/i1F5Ovn0IgWT4dmX2Kck7687p/Deet0R3gytQYVMvsMq7oq/9Q2H5o4pxpNC2EEG1cE/4V0s4JOuvItoWZTVo1uukDlpQMA2kN443XeC37gGY2+13wh933/73MyGHgiQTkIltkVj9OwScxcxabRW8nbt0QAZHYK8+pplwvG6HF/gMgY3XC4EPU+lbOSN4GZ+TFeKgsRqtuxGU/rDSw1OgaJsl23f02yU7gqtD54vk2bXxfrX/XsJUPbdCmS0BTubywJijTN7WX6GPi2Iyv7LQIDAQAB",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "french-weave@frenchweave",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": { "required": ["websiteContent"] }
+    }
+  },
   "permissions": ["storage", "alarms", "nativeMessaging", "scripting", "activeTab"],
   "host_permissions": ["https://generativelanguage.googleapis.com/*", "https://openrouter.ai/*"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
-  "background": { "service_worker": "src/background.js", "type": "module" },
+  "background": { "service_worker": "src/background.js", "scripts": ["src/background.js"], "type": "module" },
   "content_scripts": [
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
