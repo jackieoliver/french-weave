@@ -130,7 +130,7 @@ test('speaker in the gloss box says the word on a click or key press, and is nev
     p.over(et);
     const box = p.gloss();
     const button = box?.querySelector('fw-say');
-    expect([box?.parentNode, et.contains(box), box?.firstChild, box?.textContent]).toEqual([p.win.document.documentElement, false, button, 'and · "ay"']);
+    expect([box?.parentNode, et.contains(box), box?.firstChild, box?.textContent]).toEqual([p.win.document.documentElement, false, button, 'et = and, "ay"']);
     expect([button?.getAttribute('role'), button?.getAttribute('aria-label'), button?.title, button?.tabIndex]).toEqual(['button', 'Say et', 'Say "et"', -1]);
     // The gloss text stays hidden from screen readers (the word's aria-label carries it); the button does not.
     expect([box.getAttribute('aria-hidden'), box.querySelector('fw-text')?.getAttribute('aria-hidden')]).toEqual([null, 'true']);
@@ -209,7 +209,7 @@ test('no voice for the language: the gloss box has no speaker', async () => {
     p.over(et);
     const box = p.gloss();
     expect([et.classList.contains('fw-tip'), box?.textContent, box?.querySelector('fw-say'), box?.classList.contains('fw-gloss-say')])
-      .toEqual([true, 'and · "ay"', null, false]);
+      .toEqual([true, 'et = and, "ay"', null, false]);
     p.key(et, 'Tab'); // Tab is the page's own
     expect(p.key(et, 'Tab').defaultPrevented).toBe(false);
     expect(et.textContent).toBe('et');
