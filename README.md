@@ -20,8 +20,9 @@ Indonesian.
 | claude.ai | Yes, static | Paste a block into your preferences; refresh it about weekly |
 | ChatGPT | Yes, static | Paste a block into custom instructions (two boxes, 1,500 characters each) |
 | Chrome or Chromium, any website | Yes | Unpacked extension 0.2 (not in the Chrome Web Store); all your words with a Gemini API key, a few fixed words without one |
+| Firefox 140+, any website | Yes, temporary | Loads as a temporary add-on until a signed build is out, so load it again after each Firefox restart |
 | Brave, Edge, Arc | Not tested | |
-| Firefox, Safari | Not yet | |
+| Safari | Not yet | |
 | macOS, Linux | Yes | Python 3.9 or newer |
 | Windows | Not yet | Use the paste-in blocks, or Claude Code or Codex inside WSL (the extension can't sync with it) |
 | Other languages | Yes, unreviewed | Spanish, German, Italian, Portuguese, Japanese (Indonesian: starter list), or any word list you give setup; see [Other languages](#other-languages) |
@@ -45,6 +46,8 @@ four steps it can't do:
    free key lets Google use the page text it's sent to improve its products; see [What leaves your machine](#what-leaves-your-machine).
    Without a key the extension still works, with a few fixed words only; see [What it costs](#what-it-costs).
 2. Extension: open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, pick the folder it names.
+   In Firefox: open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on...**, pick the
+   `manifest.json` in that folder (again after each Firefox restart, until a signed build is out).
 3. Extension: click the French Weave toolbar icon, then **Allow all websites** (until then it only runs on x.com), and
    paste the key if you have one and didn't give setup a key file. If you chose only sites you turn on, tick the box next to
    the site's name in the same popup on each site you want.
@@ -190,6 +193,8 @@ open, or right away when you open its toolbar popup, which says "Updating to Xâ€
 time you open it, it says "Updated to X" (the reload arrow on French Weave in `chrome://extensions` also works). `python3 ~/.french-weave/app/scripts/fw.py check` shows the version Chrome last reported running and
 when, and warns if it differs from the copy on disk.
 Keep Developer mode on in `chrome://extensions`: with it off, Chrome turns the extension off when it reloads.
+In Firefox, click **Reload** on French Weave in `about:debugging#/runtime/this-firefox` to pick up a new version
+(a restart drops the temporary add-on anyway; load it again).
 Auto-update is a switch in `/plugin` (Marketplaces, french-weave); setup leaves it alone if you've set it, or with
 `--no-auto-update`.
 
@@ -217,7 +222,7 @@ claude plugin uninstall french-weave@french-weave
 claude plugin marketplace remove french-weave
 ```
 
-Then remove the extension in `chrome://extensions`, delete `~/.french-weave` to drop your progress, and delete any
+Then remove the extension in `chrome://extensions` (Firefox: `about:addons`), delete `~/.french-weave` to drop your progress, and delete any
 pasted block from claude.ai or ChatGPT settings.
 
 ## Commands (Claude Code)
