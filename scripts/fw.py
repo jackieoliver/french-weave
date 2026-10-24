@@ -2,7 +2,10 @@
 """French Weave command line: setup, status, word and stage changes. Python 3.9+, standard library only.
 
   fw.py setup [--gemini-key-file FILE] [--user-data-dir DIR]... [--known-top N] [--sites all|ask] [--dry-run]
-                                                     install the state dir, extension copy and native host;
+              [--browser chrome|firefox]             install the state dir, extension copy and native host;
+                                                     --browser: the extension runs in Chrome (the host is
+                                                     registered for Chrome and Chromium) or Firefox (for those
+                                                     and Firefox too); left out, an earlier choice stays;
                                                      --user-data-dir also registers the host for a browser run
                                                      with that --user-data-dir (Chromium looks there);
                                                      --known-top marks the top N lexicon words known unless
@@ -51,6 +54,9 @@ except ImportError:  # Python 3.9 and 3.10: no TOML parser in the standard libra
 
 HOST_NAME = 'com.frenchweave.host'
 EXTENSION_ID = 'ckihjnkijacemibkblmjfjgpffflbced'  # fixed by the "key" in extension/manifest.json
+FIREFOX_ID = 'french-weave@frenchweave'  # browser_specific_settings.gecko.id in extension/manifest.json
+CHROME_CALLERS = {'allowed_origins': [f'chrome-extension://{EXTENSION_ID}/']}
+FIREFOX_CALLERS = {'allowed_extensions': [FIREFOX_ID]}  # Firefox names callers by add-on ID, not origin
 
 
 def host_dirs(extra=()):
@@ -65,6 +71,27 @@ def host_dirs(extra=()):
     return [config / 'google-chrome' / 'NativeMessagingHosts', config / 'chromium' / 'NativeMessagingHosts'] + extra
 
 
+def firefox_host_dirs():
+    """The user-level native messaging host folder for Firefox on this OS (one for every profile)."""
+    home = Path.home()
+    if sys.platform == 'darwin':
+        return [home / 'Library' / 'Application Support' / 'Mozilla' / 'NativeMessagingHosts']
+    return [home / '.mozilla' / 'native-messaging-hosts']
+
+
+def chosen_browser(state):
+    """The browser setup was last told the extension runs in ('chrome' unless --browser firefox was given)."""
+    return ((state or {}).get('prefs') or {}).get('extension_browser', 'chrome')
+
+
+def host_targets(extra=(), firefox=False):
+    """(host manifest path, the field naming who may call the host) for every browser setup registers. Firefox only
+    when the person chose it: unlike Chrome's key-derived ID, a Firefox add-on ID is just a name any add-on can
+    declare, so the host that hands out the stored keys trusts it only where the person uses Firefox."""
+    return ([(d / f'{HOST_NAME}.json', CHROME_CALLERS) for d in host_dirs(extra)]
+            + ([(d / f'{HOST_NAME}.json', FIREFOX_CALLERS) for d in firefox_host_dirs()] if firefox else []))
+
+
 def plan(extra=()):
     root, home = fwlib.PLUGIN_ROOT, fwlib.home()
     return {
@@ -75,10 +102,20 @@ def plan(extra=()):
         'state_dir': str(home),
         'extension_dir': str(home / 'extension'),
         'host_launcher': str(home / 'app' / 'fw-host'),
-        'host_manifests': [str(d / f'{HOST_NAME}.json') for d in host_dirs(extra)],
+        'host_manifests': [str(path) for path, _ in host_targets(extra)],
         'extension_id': EXTENSION_ID,
+        'firefox_extension_id': FIREFOX_ID,
         'codex_cli': shutil.which('codex'),
+        'firefox': firefox_app(),
     }
+
+
+def firefox_app():
+    """Where Firefox is installed, or None (setup only offers the Firefox extension steps when it is)."""
+    if sys.platform == 'darwin':
+        found = [p for p in (Path('/Applications/Firefox.app'), Path.home() / 'Applications' / 'Firefox.app') if p.exists()]
+        return str(found[0]) if found else None
+    return shutil.which('firefox')
 
 
 CODEX_MARK = 'french-weave'  # our Codex hook command always contains this (the state dir path)
@@ -342,11 +379,20 @@ def setup(args):
     launcher = home / 'app' / 'fw-host'
     launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{home / "app" / "scripts" / "fw_host.py"}" "$@"\n')
     launcher.chmod(0o755)
-    manifest = {'name': HOST_NAME, 'description': 'French Weave word state', 'path': str(launcher), 'type': 'stdio',
-                'allowed_origins': [f'chrome-extension://{EXTENSION_ID}/']}
-    for directory in host_dirs(args.user_data_dir):
-        directory.mkdir(parents=True, exist_ok=True)
-        (directory / f'{HOST_NAME}.json').write_text(json.dumps(manifest, indent=1) + '\n')
+    manifest = {'name': HOST_NAME, 'description': 'French Weave word state', 'path': str(launcher), 'type': 'stdio'}
+    browser = args.browser or chosen_browser(fwlib.load_state(create=False))
+    if browser != 'firefox':  # chose Chrome (now or before): no Firefox add-on may call the host
+        for directory in firefox_host_dirs():
+            if (directory / f'{HOST_NAME}.json').exists():
+                (directory / f'{HOST_NAME}.json').unlink()
+    written, unwritable = [], []  # another installer can leave a host folder owned by root (ExpressVPN does, for Firefox)
+    for path, callers in host_targets(args.user_data_dir, firefox=browser == 'firefox'):
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(dict(manifest, **callers), indent=1) + '\n')
+            written.append(path)
+        except PermissionError:
+            unwritable.append(path)
     for opt, value in keys.items():
         path = home / KEY_FILES[opt][0]
         path.write_text(value + '\n')
@@ -361,6 +407,8 @@ def setup(args):
         fwlib.seed_known(state, args.known_top)
         if args.sites:
             state.setdefault('prefs', {})['extension_sites'] = args.sites
+        if args.browser:
+            state.setdefault('prefs', {})['extension_browser'] = args.browser
     if args.codex:
         setup_codex(False)
     updates = None if args.no_auto_update else enable_auto_update(False)
@@ -371,7 +419,10 @@ def setup(args):
           f'{sum(w["status"] == "active" for w in state["words"])} learning words)')
     sites = (state.get('prefs') or {}).get('extension_sites', 'all')
     print(f'  extension:   {"every site; turn any off from the toolbar" if sites == "all" else "only sites you turn on"}')
-    print(f'  native host: {", ".join(info["host_manifests"])}')
+    print(f'  native host: {", ".join(map(str, written))}')
+    for path in unwritable:
+        print(f'  WARNING:     no permission to write {path}; that browser won\'t see your words. Another installer made')
+        print(f'               the folder as root. Fix: sudo chown -R "$USER" "{path.parent}", then run setup again.')
     print(f'  Gemini key:  {"stored for the extension" if key or (home / "gemini_key").exists() else "not stored; the extension swaps a few fixed words until you paste one in its popup"}')
     for name, label in (('gemini_backup_key', 'backup key: '), ('anthropic_key', 'Anthropic:  '), ('openrouter_key', 'OpenRouter: ')):
         if (home / name).exists():
@@ -380,14 +431,21 @@ def setup(args):
         print(f'  updates:     {updates}')
     if narration:
         print(f'  narration:   {narration}')
-    print('Human steps left (Chrome blocks scripts from doing these):')
-    print('  1. Open chrome://extensions and switch on Developer mode (top right).')
-    print(f'  2. Click "Load unpacked" and pick: {home / "extension"}')
+    browser = 'Firefox' if browser == 'firefox' else 'Chrome'
+    print(f'Human steps left ({browser} blocks scripts from doing these):')
+    if browser == 'Firefox':
+        print('  1. Open about:debugging#/runtime/this-firefox and click "Load Temporary Add-on...".')
+        print(f'  2. Pick: {home / "extension" / "manifest.json"}')
+        print('     Firefox drops a temporary add-on when it quits: load it again after each restart, until a signed')
+        print('     build is out.')
+    else:
+        print('  1. Open chrome://extensions and switch on Developer mode (top right).')
+        print(f'  2. Click "Load unpacked" and pick: {home / "extension"}')
     print('  3. Pin the French Weave toolbar icon (puzzle piece menu) and click it:')
     if sites == 'all':
-        print('     click "Allow all websites" (Chrome asks once; until then it runs only on x.com).')
+        print(f'     click "Allow all websites" ({browser} asks once; until then it runs only on x.com).')
     else:
-        print("     on each site you want, tick the box next to the site's name (Chrome asks for that site).")
+        print(f"     on each site you want, tick the box next to the site's name ({browser} asks for that site).")
     if not key and not (home / 'gemini_key').exists():
         print('     Optional: paste a Gemini API key (https://aistudio.google.com/apikey). Without one, the extension swaps')
         print('     only a few fixed words and sends no page text anywhere.')
@@ -444,11 +502,9 @@ def check(_args):
     print('{} {}'.format(*extension_running(fwlib.extension_seen(), disk)))
     if fwlib.installed_channel():
         print(f'ok   channel: {fwlib.installed_channel()} build (the popup says so)')
-    for directory in host_dirs():
-        path = directory / f'{HOST_NAME}.json'
+    for path, callers in host_targets(firefox=chosen_browser(state) == 'firefox'):
         manifest = fwlib.read_json(path)
-        report(bool(manifest) and manifest.get('allowed_origins') == [f'chrome-extension://{EXTENSION_ID}/'],
-               f'native host manifest {path}')
+        report(bool(manifest) and all(manifest.get(k) == v for k, v in callers.items()), f'native host manifest {path}')
     launcher = home / 'app' / 'fw-host'
     try:
         message = json.dumps({'type': 'ping'}).encode()
@@ -486,13 +542,13 @@ def uninstall(args):
             if not args.dry_run:
                 data['hooks']['UserPromptSubmit'] = kept
                 fwlib.write_json(path, data)
-    for directory in host_dirs():
-        path = directory / f'{HOST_NAME}.json'
+    for path, _ in host_targets(firefox=True):
+        directory = path.parent
         if path.exists():
             print(('would remove ' if args.dry_run else 'removed ') + str(path))
             if not args.dry_run:
                 path.unlink()
-        if not args.dry_run:  # setup made these folders even with no Chrome installed; drop them if now empty
+        if not args.dry_run:  # setup made these folders even with no Chrome or Firefox installed; drop them if now empty
             for folder in (directory, directory.parent):
                 try:
                     folder.rmdir()
@@ -638,6 +694,8 @@ def main(argv=None):
     p.add_argument('--codex', action='store_true')
     p.add_argument('--known-top', type=int, default=0, metavar='N')
     p.add_argument('--sites', choices=['all', 'ask'])
+    p.add_argument('--browser', choices=['chrome', 'firefox'],
+                   help='where the extension runs (default chrome; left out, an earlier choice stays)')
     p.add_argument('--language', metavar='NAME')
     p.add_argument('--lexicon', metavar='FILE')
     p.add_argument('--no-auto-update', action='store_true', help="leave Claude Code's plugin auto-update setting alone")

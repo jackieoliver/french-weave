@@ -11,14 +11,17 @@ arguments or in their message, ask question 1 about that language and make sure 
 `--language <name>`, plus `--lexicon <file>` if they have a word list (README "Other languages").
 
 Ask these four questions in ONE AskUserQuestion call, the default option first with "(default)" in its label.
-Leave Codex CLI out of question 2 if `codex_cli` above is null.
+Leave Codex CLI out of question 2 if `codex_cli` above is null, and the Firefox options out of question 3 if
+`firefox` above is null.
 
 1. "How much French do you know already?" None (default) / A few basic words / I can read simple French.
 2. "Where should French show up?" (multi-select) Claude Code (always on with the plugin) / Codex CLI (default when
-   installed) / The Chrome extension on websites (default) / A claude.ai or ChatGPT preferences block to paste.
-3. "If you picked the Chrome extension, which websites?" Every site; turn any off from the toolbar (default) /
-   Only sites I turn on.
-4. "If you picked the Chrome extension, your Gemini API key (free at https://aistudio.google.com/apikey; with a free
+   installed) / The browser extension on websites (default) / A claude.ai or ChatGPT preferences block to paste.
+3. "If you picked the browser extension, which browser and which websites?" Chrome, every site; turn any off from
+   the toolbar (default) / Chrome, only sites I turn on / Firefox, every site / Firefox, only sites I turn on. (In
+   Firefox it loads as a temporary add-on, so it has to be loaded again after each Firefox restart until a signed
+   build is out; say so in the Firefox option descriptions.)
+4. "If you picked the browser extension, your Gemini API key (free at https://aistudio.google.com/apikey; with a free
    key Google may use the page text it's sent to improve its products, a paid key avoids that)?" Paste it into the
    extension's popup at the end (default) / A file that contains it: type its path as your own answer ("Type
    something"). Never paste the key itself here.
@@ -32,12 +35,13 @@ above:
 `python3 <source>/scripts/fw.py setup $ARGUMENTS` plus:
 - question 1: `--known-top 0`, `--known-top 40` or `--known-top 150`
 - Codex CLI picked: `--codex`
-- Chrome extension picked: `--sites all` or `--sites ask` (leave `--sites` out if they skipped question 3, so a
-  rerun keeps their earlier choice), and `--gemini-key-file <path>` if they gave a file (likewise
-  `--backup-key-file`, `--anthropic-key-file` and `--openrouter-key-file` for a backup Gemini key, a paid Anthropic
-  key and a paid OpenRouter key; with an Anthropic key, Claude Haiku 5.5 goes direct to Anthropic first at every level)
+- Browser extension picked: `--sites all` or `--sites ask` (leave `--sites` out if they skipped question 3, so a
+  rerun keeps their earlier choice), `--browser chrome` or `--browser firefox` to match (likewise left out if
+  skipped), and `--gemini-key-file <path>` if they gave a file (likewise `--backup-key-file`,
+  `--anthropic-key-file` and `--openrouter-key-file` for a backup Gemini key, a paid Anthropic key and a paid
+  OpenRouter key; with an Anthropic key, Claude Haiku 5.5 goes direct to Anthropic first at every level)
 
 Relay the human steps from the output to the user as a short numbered list, in plain English, leaving out the
-Chrome steps if they didn't pick the extension. If they picked the preferences block, run
+browser steps if they didn't pick the extension. Relay any WARNING line too, with its fix. If they picked the preferences block, run
 `python3 <source>/scripts/fw.py export` and `... export --chatgpt` and show each block exactly as printed, in its own
 code block, with where to paste it. If setup failed, say why and how to fix it.
