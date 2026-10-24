@@ -37,10 +37,9 @@ above:
 - Codex CLI picked: `--codex`
 - Browser extension picked: `--sites all` or `--sites ask` (leave `--sites` out if they skipped question 3, so a
   rerun keeps their earlier choice), `--browser chrome` or `--browser firefox` to match (likewise left out if
-  skipped), and
-  `--gemini-key-file <path>` if they gave a file (likewise `--backup-key-file`, `--anthropic-key-file` and
-  `--openrouter-key-file` for a backup Gemini key, a paid Anthropic key and a paid OpenRouter key; with an Anthropic
-  key, Claude Haiku 5.5 goes direct to Anthropic first at every level)
+  skipped), and `--gemini-key-file <path>` if they gave a file (likewise `--backup-key-file`,
+  `--anthropic-key-file` and `--openrouter-key-file` for a backup Gemini key, a paid Anthropic key and a paid
+  OpenRouter key; with an Anthropic key, Claude Haiku 5.5 goes direct to Anthropic first at every level)
 
 Relay the human steps from the output to the user as a short numbered list, in plain English, leaving out the
 browser steps if they didn't pick the extension. Relay any WARNING line too, with its fix. If they picked the preferences block, run
