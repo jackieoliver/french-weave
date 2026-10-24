@@ -63,7 +63,7 @@ async function refresh() {
   $('siteName').textContent = host || 'This page (not a website)';
   $('grantSites').hidden = all || !s.newSitesEnabled;
   $('accessNote').textContent = s.newSitesEnabled
-    ? (all ? 'On for every site except the ones you turn off. Webmail, messaging, AI chat, banking, health, government and local addresses start off.' : 'Chrome needs your OK before it can run on other sites.')
+    ? (all ? 'On for every site except the ones you turn off. Webmail, messaging, AI chat, banking, health, government and local addresses start off.' : 'Your browser needs your OK before it can run on other sites.')
     : 'Off on sites until you turn them on here.';
   const { stage, chosen } = resolveLevel(s, c.stage);
   $('levelInfo').textContent = `L${chosen}${stage && chosen !== stage ? ` (Claude Code stage ${stage})` : ''}${chosen > MAX_BUILT_LEVEL ? ` · L${MAX_BUILT_LEVEL} rules for now` : ''}`;
@@ -139,7 +139,7 @@ async function inject() {
   try {
     await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['src/content.css'] });
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['src/content-loader.js'] });
-  } catch { $('notice').textContent = 'Reload this page to start. Chrome blocks extensions on some pages.'; }
+  } catch { $('notice').textContent = 'Reload this page to start. Browsers block extensions on some pages.'; }
 }
 
 $('enabled').addEventListener('change', (e) => run(() => save({ settings: { enabled: e.target.checked } })));
