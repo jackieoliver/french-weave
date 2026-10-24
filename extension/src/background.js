@@ -1,24 +1,33 @@
 // Service worker: word state and the Gemini key from the Claude Code plugin (native host), site access,
-// one model call at a time, results back to pages, seen/flip/peek events back to the plugin.
+// a few model calls at once (one Gemini request at a time), results back to pages, seen/flip/peek events back to the plugin.
 // Keys stay here; pages only get a config without them. Without a key, swaps come from local.js, with no model.
 import { createCache, chromeStorage } from './cache.js';
-import { requestSwaps } from './engine.js';
+import { requestSwaps, attemptsFor } from './engine.js';
 import { cleanSettings, newSitesDefault, siteEnabled, hasSiteAccess } from './settings.js';
 import { resolveLevel, exactFr, isZeroFrench, wordCount } from './levels.js';
 import { hashKey } from './hash.js';
 import { HOST, refresh, readCached, queueEvents, flushEvents, shownToday } from './hostsource.js';
 import { DAILY_MODEL_CALLS, callsToday, countCall, spentToday, saveSpent, countDropped, droppedToday, openRouterToday,
-  countOpenRouter, openRouterBlocked, servedToday, countServed } from './quota.js';
+  countOpenRouter, anthropicToday, countAnthropic, paidToday, paidBlocked, clearPaidStop, servedToday, countServed } from './quota.js';
 import { modelErrorText, replaceLegacyStatus } from './modelerror.js';
 import { API_BASE } from './gemini.js';
-import { configFor } from './model-config.js';
+import { configFor, reasoningLevels } from './model-config.js';
 import { localSwaps, localOff } from './local.js';
+import { createUsage } from './usage.js';
+import { createLimiter, createSpendGate } from './limits.js';
 
 const store = chrome.storage.local;
 const cache = createCache(chromeStorage);
 const send = (message) => chrome.runtime.sendNativeMessage(HOST, message);
 const ALARM = 'sync';
 const SYNC_MINUTES = 30; // word statuses change at most a few times a day
+// An update on disk is picked up within this many minutes while Chrome runs: checkUpdate only fetches the local
+// manifest, so it has its own, shorter alarm instead of waiting for the word sync.
+export const UPDATE_ALARM = 'update';
+export const UPDATE_MINUTES = 5;
+// The running version the native host last confirmed it recorded (scripts/fw_host.py, extension-seen.json).
+export const REPORTED_KEY = 'versionReported';
+const runningVersion = () => String(chrome.runtime.getManifest?.()?.version || '');
 const FLUSH_DELAY_MS = 10000;
 // A pause from Claude Code (fw.py pause) has to stop page text going to Gemini within minutes, not at the next
 // 30-minute sync: before a model call, the word state is re-read from the native host when the last read is older.
@@ -37,8 +46,38 @@ const serial = () => {
   let chain = Promise.resolve();
   return (fn) => { const p = chain.then(fn); chain = p.catch(() => {}); return p; };
 };
-const modelCall = serial(); // one model call at a time
 const locked = serial(); // storage read-modify-writes one at a time, or concurrent ones drop data
+// The dev build's local usage log (usage.js); records nothing in the public build or without the native host.
+const usage = createUsage({ storage: chromeStorage, sendNative: send, version: runningVersion(), context: () => context(),
+  onInstalled: chrome.runtime.onInstalled, onTabRemoved: chrome.tabs?.onRemoved });
+// Model calls: up to MODEL_BATCHES batches at once, so a page that scrolls (an infinite timeline) doesn't wait behind
+// every batch queued before it. Within them, Gemini requests still go one at a time across all batches (geminiTurn):
+// free keys allow a few requests a minute and the 429 cooldown and local daily cap were built for one at a time.
+// Paid requests (Anthropic, OpenRouter; thousands of requests a minute) run in parallel, each provider's daily cap
+// kept exact by the spend gate (limits.js). allModelCalls waits for every batch out and holds new ones (reload).
+export const MODEL_BATCHES = 4;
+const batches = createLimiter(MODEL_BATCHES);
+const modelCall = batches.run;
+const allModelCalls = batches.exclusive;
+const geminiTurn = createLimiter(1);
+const spendGate = createSpendGate({ locked, today: (provider) => paidToday(chromeStorage, provider) });
+// engine.js admit: before each request of a batch. A Gemini request waits its turn and then rechecks its key's local
+// cap (another batch may have spent it meanwhile); a paid request goes through the spend gate.
+function admitFor(ctx, backupKey) {
+  return async (a, boundUsd) => {
+    if (a.step.provider === 'gemini') {
+      const release = await geminiTurn.take();
+      if (!(await keyCapped(a.keyName))) return { release };
+      release();
+      return { error: Object.assign(new Error(localCapError(!!backupKey)), { kind: 'local' }) };
+    }
+    const cap = a.keyName === 'anthropic' ? ctx.settings.anthropicDailyUsd : ctx.settings.openRouterDailyUsd;
+    const turn = await spendGate.acquire(a.keyName, cap, boundUsd);
+    if (turn.release) return turn;
+    const name = a.keyName === 'anthropic' ? 'Anthropic' : 'OpenRouter';
+    return { error: new Error(turn.blocked === 'cap' ? `${name} daily cap reached` : `${name} stopped for today`) };
+  };
+}
 
 // The local cap is per Gemini key, each with its own count: a backup key brings its own quota, and a spent main key
 // is left out of the chain while the backup still has calls.
@@ -58,9 +97,65 @@ const localCapped = async () => {
   return (!!main || !!backup) && (!main || await keyCapped('main')) && (!backup || await keyCapped('backup'));
 };
 // Every key the worker holds, for scrubbing error text: none may reach a page, the popup or storage.
-const KEY_NAMES = ['apiKey', 'hostKey', 'backupKey', 'hostBackupKey', 'openRouterKey', 'hostOpenRouterKey'];
+const KEY_NAMES = ['apiKey', 'hostKey', 'backupKey', 'hostBackupKey', 'openRouterKey', 'hostOpenRouterKey', 'anthropicKey', 'hostAnthropicKey'];
 // Keys the native host hands over from setup; a change to any of them starts it with a clean slate.
-const HOST_KEYS = ['hostKey', 'hostBackupKey', 'hostOpenRouterKey'];
+const HOST_KEYS = ['hostKey', 'hostBackupKey', 'hostOpenRouterKey', 'hostAnthropicKey'];
+// The paid keys in use, each pasted in the popup, else from setup.
+async function paidKeys() {
+  const k = await store.get(['openRouterKey', 'hostOpenRouterKey', 'anthropicKey', 'hostAnthropicKey']);
+  return { openrouter: k.openRouterKey || k.hostOpenRouterKey || '', anthropic: k.anthropicKey || k.hostAnthropicKey || '' };
+}
+
+const languageOf = (wordState) => (wordState?.words?.length ? wordState.language || 'French' : 'French');
+
+// The chain the next batch goes through, and the key each provider may use: '' for a key that is missing, spent for
+// the day (Gemini's local cap) or stopped (a paid provider past its cap or after a refusal), so engine.js leaves its
+// steps out. main and backup are the Gemini keys as set, capped or not. Used by swaps() and the popup's "Next" line.
+// The Haiku step's provider follows which keys are set (model-config.js levelFirst): a capped or stopped Anthropic key
+// means no Haiku step, not OpenRouter's.
+async function planFor(ctx, wordState, choice = ctx.settings.modelChoice) {
+  const reasoning = choice === ctx.settings.modelChoice ? ctx.settings.reasoning : 'auto';
+  const { main, backup } = await geminiKeys();
+  const paid = await paidKeys();
+  const mainOut = !main || await keyCapped('main');
+  const backupOut = !backup || await keyCapped('backup');
+  const openRouterOn = !!paid.openrouter && !paidBlocked(await openRouterToday(chromeStorage), ctx.settings.openRouterDailyUsd);
+  const anthropicOn = !!paid.anthropic && !paidBlocked(await anthropicToday(chromeStorage), ctx.settings.anthropicDailyUsd);
+  const { design, chain } = configFor(languageOf(wordState), choice, undefined, ctx.level,
+    { anthropic: !!paid.anthropic, openrouter: !!paid.openrouter }, reasoning);
+  return { design, chain, main, backup, keys: { main: mainOut ? '' : main, backup: backupOut ? '' : backup,
+    openrouter: openRouterOn ? paid.openrouter : '', anthropic: anthropicOn ? paid.anthropic : '' } };
+}
+
+// The first step of a choice as configured (keys set, caps and cooldowns aside), for the popup's menus and Mode line:
+// first, with the reader's reasoning; firstDefault, with Recommended reasoning (the Reasoning menu's first entry);
+// recommended, what the Recommended model resolves to.
+async function modeInfo(settings, level) {
+  const { wordState } = await store.get('wordState');
+  const paid = await paidKeys();
+  const has = { anthropic: !!paid.anthropic, openrouter: !!paid.openrouter };
+  const first = (choice, reasoning) => {
+    const s = configFor(languageOf(wordState), choice, undefined, level, has, reasoning).chain[0];
+    return s ? { model: s.model, provider: s.provider, thinking: s.thinking } : null;
+  };
+  return { first: first(settings.modelChoice, settings.reasoning), firstDefault: first(settings.modelChoice),
+    recommended: first('auto') };
+}
+
+// What the popup's "Next" line names: the first request the next batch would make at the current level, skipping
+// steps that are cooling down or out of today's quota (the first one anyway when every step is). null without a
+// Gemini key (no model runs) or when no step has a key it may use. choice: the popup's model, or another to ask what
+// that one would run (the Auto entry's label).
+async function nextModel(ctx, choice) {
+  if (ctx.tier !== 'gemini') return null;
+  const { wordState } = await store.get('wordState');
+  const { chain, keys } = await planFor(ctx, wordState, choice);
+  const open = attemptsFor(chain, keys);
+  const now = Date.now();
+  const daily = await spentToday(chromeStorage, now);
+  const a = open.find((x) => !((cooldown.get(x.slot) || 0) > now) && !((daily.get(x.slot) || 0) > now)) || open[0];
+  return a ? { model: a.step.model, provider: a.step.provider, keyName: a.keyName, level: ctx.level } : null;
+}
 
 const ready = (async () => {
   // Content scripts run on every enabled site, so stored keys are kept out of their reach.
@@ -91,15 +186,17 @@ async function context() {
   const hasKey = !!(data.apiKey || data.hostKey || data.backupKey || data.hostBackupKey);
   const paused = !!state?.paused;
   const origins = await grantedOrigins();
-  const { openRouterDailyUsd, ...affecting } = settings; // the spend cap changes no swap, so cached ones stay
-  const revision = hashKey(JSON.stringify([data.epoch || '', affecting, level, state?.version || '', paused, hasKey, origins]));
-  // The language picks the tip's voice. Not in the revision: another language brings another word list, so a new version.
+  const { openRouterDailyUsd, anthropicDailyUsd, ...affecting } = settings; // spend caps change no swap, so cached ones stay
+  // The word list's version is left out, so a list change keeps cached swaps (cache.js CACHE_MAX_AGE_MS); its
+  // language stays in, since swaps in another language are no use.
+  const revision = hashKey(JSON.stringify([data.epoch || '', affecting, level, state?.language || '', paused, hasKey, origins]));
   return { settings, level, revision, hasKey, tier: tierFor(hasKey, state), paused, origins, stage: state?.stage || 0,
-    language: state?.language || 'French' };
+    language: state?.language || 'French', ...(await usage.flag()) }; // the language picks the tip's voice
 }
 
 // The model APIs' own host permissions (manifest) are not sites the reader granted: openrouter.ai is also a website,
-// which needs its own grant like any other.
+// which needs its own grant like any other. api.anthropic.com has no host permission: its fetches are CORS requests
+// the API allows (anthropic.js).
 const API_ORIGINS = ['https://generativelanguage.googleapis.com/*', 'https://openrouter.ai/*'];
 const grantedOrigins = async () => ((await chrome.permissions.getAll()).origins || []).filter((o) => !API_ORIGINS.includes(o));
 
@@ -151,13 +248,10 @@ async function swaps(msg, sender) {
   try {
     const fresh = await modelCall(async () => {
       if ((await context()).revision !== ctx.revision) return null;
-      const { main, backup: backupKey } = await geminiKeys();
+      const { wordState } = await store.get('wordState');
+      const { design, chain, keys, main, backup: backupKey } = await planFor(ctx, wordState);
       if (await localCapped()) throw Object.assign(new Error(localCapError(!!backupKey)), { kind: 'local' });
-      const { wordState, openRouterKey: pastedOpenRouterKey, hostOpenRouterKey } = await store.get(['wordState', 'openRouterKey', 'hostOpenRouterKey']);
-      const openRouterKey = pastedOpenRouterKey || hostOpenRouterKey || '';
       usedKey = main;
-      const mainOut = !main || await keyCapped('main');
-      const backupOut = !backupKey || await keyCapped('backup');
       // Only Gemini calls count toward the local cap, each toward its key's; OpenRouter has its own spend cap.
       const fetchImpl = async (url, init, ...rest) => {
         if (String(url).startsWith(API_BASE)) {
@@ -167,29 +261,32 @@ async function swaps(msg, sender) {
         return fetch(url, init, ...rest);
       };
       const daily = await spentToday(chromeStorage); // a spent daily quota outlives the worker, so it is kept in storage
-      const openRouterOn = !!openRouterKey && !openRouterBlocked(await openRouterToday(chromeStorage), ctx.settings.openRouterDailyUsd);
-      const { design, chain } = configFor(wordState?.words?.length ? wordState.language || 'French' : 'French', ctx.settings.modelChoice);
+      const loaded = new Map(daily);
+      // Claude Haiku 5.5 first with a Claude key unless a Gemini model is picked (planFor).
       try {
-        return await requestSwaps({ keys: { main: mainOut ? '' : usedKey, backup: backupOut ? '' : backupKey, openrouter: openRouterOn ? openRouterKey : '' },
-          chain, design, level: ctx.level, words: wordState?.words, language: wordState?.language, fetchImpl,
+        return await requestSwaps({ keys, chain, design, level: ctx.level, words: wordState?.words, language: wordState?.language, fetchImpl,
           onOpenRouter: (r) => locked(() => countOpenRouter(chromeStorage, r)),
-          shownToday: await shownToday(chromeStorage), cooldown, daily, page: pageLabel(sender), batch: misses.map((i) => ({ id: i.key, text: i.text })) });
+          onAnthropic: (r) => locked(() => countAnthropic(chromeStorage, r)),
+          shownToday: await shownToday(chromeStorage), cooldown, daily, page: pageLabel(sender), batch: misses.map((i) => ({ id: i.key, text: i.text })),
+          admit: admitFor(ctx, backupKey) });
       } finally {
-        await saveSpent(chromeStorage, daily);
+        await locked(() => saveSpent(chromeStorage, daily, Date.now(), loaded));
       }
     });
+    usage.note(msg, { fresh });
     return await locked(async () => {
       if (!fresh || (await context()).revision !== ctx.revision) return { results: {}, stale: true };
       await cache.setMany(fresh.results);
       await countDropped(chromeStorage, fresh.dropped);
       if (!fresh.skipped) { // a batch without candidates made no request: the last model's status stands
-        const served = { at: Date.now(), model: fresh.model, provider: fresh.provider, keyName: fresh.keyName };
+        const served = { at: Date.now(), model: fresh.model, provider: fresh.provider, keyName: fresh.keyName, ms: fresh.ms || 0 };
         await store.set({ modelStatus: { ...served, error: '' }, lastServed: served }); // lastServed outlives a later failure
         await countServed(chromeStorage, fresh.model);
       }
       return { results: { ...results, ...fresh.results } };
     }).finally(() => void showBadge());
   } catch (e) {
+    usage.note(msg, { error: e });
     const error = await failed(e, usedKey);
     return { results, error, retryAfterMs: e?.retryAfterMs };
   }
@@ -258,24 +355,26 @@ async function record(msg, sender) {
   const word = (await readCached(chromeStorage))?.words.find((w) => exactFr(w.fr) === exactFr(msg.word));
   if (!word) return { ok: false };
   await locked(() => queueEvents(chromeStorage, [{ word: word.fr, kind: msg.event }]));
+  usage.word(msg.event, word, sender);
   scheduleFlush();
   return { ok: true };
 }
 
-// A new word-state version clears the decision cache, because cached swaps were chosen against the old list.
+// A new word-state version keeps the decision cache: cached swaps are asked for again after 3 days (cache.js).
 async function syncWords() {
   hostChecked = Date.now();
   await flush();
   const before = await store.get(HOST_KEYS);
-  const res = await refresh({ storage: chromeStorage, send });
-  if (res.changed) await locked(() => cache.clear());
+  // The running version goes along, so `fw.py check` can say which copy Chrome runs (a host before 0.2.9 ignores it).
+  const version = runningVersion();
+  const res = await refresh({ storage: chromeStorage, send, version });
+  await usage.host(res.error);
+  if (!res.error && version) await store.set({ [REPORTED_KEY]: { version, at: Date.now() } });
   const after = await store.get(HOST_KEYS);
   const changed = (k) => (before[k] || '') !== (after[k] || '');
   if (HOST_KEYS.some(changed)) await keyChanged(); // setup stored, replaced or removed a key
-  if (changed('hostOpenRouterKey')) {
-    const today = await openRouterToday(chromeStorage);
-    if (today.stopped) await store.set({ openRouterDay: { ...today, stopped: '' } });
-  }
+  if (changed('hostOpenRouterKey')) await clearPaidStop(chromeStorage, 'openrouter');
+  if (changed('hostAnthropicKey')) await clearPaidStop(chromeStorage, 'anthropic');
   await broadcast();
   return { ok: !res.error, error: res.error, count: res.state?.words?.length || 0, stage: res.state?.stage || 0 };
 }
@@ -311,28 +410,34 @@ async function save(msg) {
       else merged.siteOverrides[msg.siteOverride.host] = msg.siteOverride.enabled;
     }
     const patch = { settings: cleanSettings(merged) };
+    // A new model that doesn't take the chosen reasoning level goes back to Recommended reasoning.
+    const next = patch.settings;
+    if (next.reasoning !== 'auto' && next.modelChoice !== cleanSettings(saved.settings).modelChoice) {
+      const { first } = await modeInfo(next, (await context()).level);
+      if (!reasoningLevels(first).includes(next.reasoning)) next.reasoning = 'auto';
+    }
     if (typeof msg.apiKey === 'string') {
       if (msg.apiKey.length > 500) throw new Error('Key is too long');
       patch.apiKey = msg.apiKey.trim();
       Object.assign(patch, await freshKeyPatch());
     }
-    // The backup Gemini key and the OpenRouter key: same rules as the main key; a new one starts with a clean slate.
-    for (const name of ['backupKey', 'openRouterKey']) {
+    // The backup Gemini key and the paid keys: same rules as the main key; a new one starts with a clean slate.
+    const prefixes = { backupKey: 'backup:', openRouterKey: 'openrouter:', anthropicKey: 'anthropic:' };
+    for (const name of Object.keys(prefixes)) {
       if (typeof msg[name] !== 'string') continue;
       if (msg[name].length > 500) throw new Error('Key is too long');
       patch[name] = msg[name].trim();
-      const prefix = name === 'backupKey' ? 'backup:' : 'openrouter:';
+      const prefix = prefixes[name];
       const { dailyQuota } = await store.get('dailyQuota');
       patch.dailyQuota = Object.fromEntries(Object.entries(patch.dailyQuota || dailyQuota || {}).filter(([slot]) => !slot.startsWith(prefix)));
       for (const slot of [...cooldown.keys()]) if (slot.startsWith(prefix)) cooldown.delete(slot);
       // A new backup key answers its own "rejected the backup key".
       const { modelStatus } = await store.get('modelStatus');
       if (name === 'backupKey' && modelStatus?.kind === 'key' && modelStatus.keyName === 'backup') patch.modelStatus = { at: Date.now(), error: '' };
-      if (name === 'openRouterKey') {
-        const today = await openRouterToday(chromeStorage);
-        if (today.stopped) await store.set({ openRouterDay: { ...today, stopped: '' } });
-      }
+      if (name === 'openRouterKey') await clearPaidStop(chromeStorage, 'openrouter');
+      if (name === 'anthropicKey') await clearPaidStop(chromeStorage, 'anthropic');
     }
+    usage.settings(cleanSettings(saved.settings), patch.settings, msg);
     await store.set(patch);
   });
   await showBadge();
@@ -340,41 +445,69 @@ async function save(msg) {
   return { ok: true };
 }
 
+// "Updated to X", once: the first popup open after the running version changed. Before 0.2.9 nothing recorded the
+// version a popup showed; an update this worker reloaded into (RELOADED_KEY) counts then.
+const POPUP_VERSION_KEY = 'popupVersion';
+async function updatedOnce() {
+  const running = runningVersion();
+  const { [POPUP_VERSION_KEY]: shown, [RELOADED_KEY]: reloadedFor } = await store.get([POPUP_VERSION_KEY, RELOADED_KEY]);
+  if (!running || shown === running) return '';
+  await store.set({ [POPUP_VERSION_KEY]: running });
+  return (shown ? shown !== running : reloadedFor === running) ? running : '';
+}
+
 async function status() {
   const config = await context();
   const data = await store.get(['wordState', 'apiKey', 'hostKey', 'backupKey', 'hostBackupKey', 'openRouterKey', 'hostOpenRouterKey',
-    'modelStatus', 'lastServed']);
+    'anthropicKey', 'hostAnthropicKey', 'modelStatus', 'lastServed', 'hostChannel']);
   const openRouter = await openRouterToday(chromeStorage);
+  const anthropic = await anthropicToday(chromeStorage);
   return { config, words: data.wordState?.words?.length || 0, fetchedAt: data.wordState?.fetchedAt || 0,
     pastedKey: !!data.apiKey, hostKey: !!data.hostKey, backupKey: !!data.backupKey, hostBackupKey: !!data.hostBackupKey,
     openRouterKey: !!data.openRouterKey, hostOpenRouterKey: !!data.hostOpenRouterKey,
+    anthropicKey: !!data.anthropicKey, hostAnthropicKey: !!data.hostAnthropicKey,
     modelStatus: data.modelStatus || null, lastServed: data.lastServed || null, served: await servedToday(chromeStorage),
-    openRouter: { ...openRouter, blocked: openRouterBlocked(openRouter, config.settings.openRouterDailyUsd) },
+    openRouter: { ...openRouter, blocked: paidBlocked(openRouter, config.settings.openRouterDailyUsd) },
+    anthropic: { ...anthropic, blocked: paidBlocked(anthropic, config.settings.anthropicDailyUsd) },
     dropped: await droppedToday(chromeStorage),
-    update: await checkUpdate() };
+    next: await nextModel(config), ...await modeInfo(config.settings, config.level),
+    version: runningVersion(), channel: data.hostChannel || '', updated: await updatedOnce(),
+    // updating: a newer copy on disk the popup announces before it asks for the reload (applyUpdate); update: one
+    // that a reload already failed to load, for the popup's "reload by hand" line.
+    ...await popupUpdate() };
+}
+
+async function popupUpdate() {
+  const { waiting, reloading } = await checkUpdate({ reload: false });
+  return { update: reloading ? '' : waiting, updating: reloading ? waiting : '' };
 }
 
 // An update replaces this folder on disk (setup, or the Claude Code hook after a plugin update), but Chrome keeps
 // running the loaded copy. Compare the manifest on disk with the running one and reload from disk by ourselves,
 // once per disk version, after any model call in flight and pending storage writes. If the running copy still
 // differs after that (or reload fails), mark the toolbar icon so the user can reload by hand.
+// reload false (the popup): only say whether a reload is due ({ waiting, reloading: true }), so the popup can show
+// "Updating to X…" before it asks for one; the reload closes it.
 export const RELOADED_KEY = 'reloadedFor';
-async function checkUpdate() {
+async function checkUpdate({ reload = true } = {}) {
   try {
     const disk = await (await fetch(chrome.runtime.getURL('manifest.json'), { cache: 'no-store' })).json();
     const waiting = disk.version && disk.version !== chrome.runtime.getManifest().version ? String(disk.version) : '';
     if (waiting && (await store.get(RELOADED_KEY))[RELOADED_KEY] !== waiting) {
+      if (!reload) return { waiting, reloading: true };
       await store.set({ [RELOADED_KEY]: waiting });
+      await usage.reloading(waiting);
       try {
-        await locked(() => modelCall(() => chrome.runtime.reload()));
-        return waiting; // normally not reached: the worker is gone
+        // Model calls first: they take the storage lock to count their cost, so waiting for them inside it would never end.
+        await allModelCalls(() => locked(() => chrome.runtime.reload()));
+        return { waiting, reloading: true }; // normally not reached: the worker is gone
       } catch { /* fall back to the badge */ }
     }
     updateWaiting = waiting;
     await showBadge();
-    return waiting;
+    return { waiting, reloading: false };
   } catch {
-    return '';
+    return { waiting: '', reloading: false };
   }
 }
 
@@ -384,13 +517,15 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   const popup = sender.url === chrome.runtime.getURL('src/popup.html');
   const page = sender.tab && /^https?:\/\//.test(sender.url || '');
   const handlers = {
-    config: () => { if (page) void recheckHost(); return context(); }, // a page load also notices a pause or resume
-    swaps: () => swaps(msg, sender),
+    config: () => { if (page) void recheckHost(); return usage.pageView(msg, sender, context(), activeOn); }, // a page load also notices a pause or resume
+    swaps: () => usage.batch(msg, sender, () => swaps(msg, sender)),
+    usage: () => usage.pageEvents(msg, sender), usageToday: () => usage.today(msg.open !== false), usageToggle: () => usage.toggle(msg.on),
     event: () => record(msg, sender),
     status, syncWords, clearCache,
+    applyUpdate: async () => ({ ok: true, ...(await checkUpdate()) }),
     save: () => save(msg),
   };
-  if (!handlers[msg.type] || (!popup && !(page && ['config', 'swaps', 'event'].includes(msg.type)))) return false;
+  if (!handlers[msg.type] || (!popup && !(page && ['config', 'swaps', 'event', 'usage'].includes(msg.type)))) return false;
   ready.then(handlers[msg.type]).then(reply, (e) => reply({ error: String(e?.message || e) }));
   return true;
 });
@@ -424,15 +559,23 @@ chrome.permissions.onRemoved.addListener(permissionsChanged);
 // because disabling and re-enabling the extension clears alarms without firing onInstalled.
 function arm() {
   chrome.alarms.create(ALARM, { periodInMinutes: SYNC_MINUTES });
+  chrome.alarms.create(UPDATE_ALARM, { periodInMinutes: UPDATE_MINUTES });
   void syncWords().catch(() => {});
   void checkUpdate();
 }
 chrome.runtime.onInstalled.addListener(arm);
 chrome.runtime.onStartup.addListener(arm);
 chrome.alarms.onAlarm.addListener((a) => {
-  if (a.name !== ALARM) return;
-  void syncWords().catch(() => {});
-  void checkUpdate();
+  if (a.name === ALARM) void syncWords().catch(() => {});
+  if (a.name === ALARM || a.name === UPDATE_ALARM) void checkUpdate();
+  if (a.name === UPDATE_ALARM) void usage.flush().catch(() => {}); // a buffer whose 20 s timer died with its worker
 });
+// Right after a reload into a new version, tell the native host at once, even if Chrome skipped onInstalled. Only
+// when an earlier version was reported: a first install syncs from onInstalled. recheckHost skips this when arm()'s
+// sync already ran.
+void ready.then(async () => {
+  const { [REPORTED_KEY]: reported } = await store.get(REPORTED_KEY);
+  if (reported?.version && reported.version !== runningVersion()) await recheckHost();
+}).catch(() => {});
 void ready.then(registerSites).catch(() => {});
 void ready.then(() => showBadge(false)); // a stored failure shows from the start, without an update check

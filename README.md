@@ -67,7 +67,8 @@ and paste the block it prints. It carries your real progress; re-export about on
   hook adds about 2.5 KB of instructions to each message you send.
 - Extension with a key: your own Gemini API key. A free AI Studio key works (Google's free tier allowed 500 Gemini 3.5
   Flash-Lite requests a day when tested in October 2026); the extension stops itself at 500 Gemini calls a day per
-  key (see [Models and keys](#models-and-keys-extension) for the backup key and the paid OpenRouter step), and
+  key (see [Models and keys](#models-and-keys-extension) for the backup key and the paid Anthropic and OpenRouter
+  steps), and
   when Google says the key's daily limit is reached it waits until just after midnight Pacific time, when Google
   resets it, showing "Daily Gemini limit reached (429); resumes about ..." (in your own time) in its popup. Whenever Gemini calls fail (limit, rejected key, Gemini busy, no
   connection), the toolbar icon shows a small muted dot and the popup says why, with the HTTP code, until a call works again.
@@ -92,8 +93,13 @@ and paste the block it prints. It carries your real progress; re-export about on
 - With a Gemini key, the extension sends readable text from the sites where it's on to Google's Gemini API with
   your key. Links and inline code go with their sentence but are never changed; code blocks, forms and editable text
   are skipped. Without a key, no page text leaves your computer: swaps come from a list inside the extension.
-- With an OpenRouter key (optional), the same text goes to OpenRouter and the model's provider (OpenAI for the
-  default, gpt-6-luna) for any batch both Gemini steps failed to answer. Without that key nothing goes there.
+- With an Anthropic key (optional), the same text goes straight to Anthropic (Claude Haiku 5.5) first for every batch,
+  unless you pick a Gemini model in the popup. Without that key nothing goes there directly.
+- With an OpenRouter key (optional), the same text goes to OpenRouter and the model's provider: Anthropic (Claude
+  Haiku 5.5) first for every batch if you have no Anthropic key (unless you pick a Gemini model), and OpenAI
+  (gpt-6-luna) for any batch both Gemini steps failed to answer. Without that key nothing goes there.
+- Each batch sent to a model also carries the page's title and site name (up to 200 characters), so the model can
+  leave sensitive pages alone.
 - With a free Gemini key, Google may use that text to improve its products, and human reviewers may read it. If you
   don't want that, use a paid key (turn on billing for the key's Google Cloud project): Google doesn't use paid-key
   prompts that way. In the EEA, UK and Switzerland the paid terms cover free keys too.
@@ -107,7 +113,7 @@ and paste the block it prints. It carries your real progress; re-export about on
   `--enable-speech-dispatcher` and speech-dispatcher is installed. The button's tooltip says when its voice is online.
 - The extension reads your word list through a Chrome native messaging host that only this extension's ID may call.
   Key files you gave setup are copied to `~/.french-weave/` (`gemini_key`, `gemini_backup_key`, `openrouter_key`,
-  mode 600) and handed only to the extension's background worker, never to the pages it runs on.
+  `anthropic_key`, mode 600) and handed only to the extension's background worker, never to the pages it runs on.
 
 ## Models and keys (extension)
 
@@ -116,22 +122,55 @@ per language in `extension/src/model-config.js` (today the same for every langua
 
 | Step | Model | Key | Cost | Waits |
 |---|---|---|---|---|
+| first | Claude Haiku 5.5 direct from Anthropic, low effort, 4 passages a request | Anthropic key, optional | paid, about $0.0006 a batch | 35 s |
+| or, without an Anthropic key | Claude Haiku 5.5 through OpenRouter, low reasoning | OpenRouter key, optional | paid, about $0.0015-0.002 a batch | 35 s |
 | 1 | Gemini 3.1 Flash-Lite, medium thinking | your Gemini key, then the backup key | free tier | 30 s |
 | 2 | Gemini 3.5 Flash-Lite, low thinking | your Gemini key, then the backup key | free tier (a separate daily quota) | 8 s |
 | 3 | gpt-6-luna through OpenRouter, reasoning off | OpenRouter key, optional | paid, about $0.0006 a batch | 20 s |
 
+- Claude Haiku 5.5 goes first at every level (Levels 1-2 only before 0.2.9): direct to Anthropic with an Anthropic
+  key, else through OpenRouter with an OpenRouter key, never both for one batch. Graded by Opus on 24 real passages
+  in six languages at Levels 1-2, 2.3% of its swaps were bad, against 15.3% for Gemini 3.1 Flash-Lite and 8.1% for
+  the best Gemini setting; for French at Levels 3-4, 4.7% and 4.0%. Through OpenRouter
+  it's slower (about 12 s a batch). Direct, a batch of more than 4 passages goes as requests of 4 at once (median
+  5.6 s against 9.5 s for 8 in one request, about 22% more cost); a real-browser run took 4-5 s a batch. Without
+  either key, past that provider's daily cap, after it refused the key or ran out of credit, or with a Gemini model
+  picked in the popup, the chain starts at step 1 (or the picked model).
+- Up to 4 batches run at once, so a page you keep scrolling (X's timeline) doesn't wait behind every batch asked
+  for before; each page has at most 2 out, and the next one carries the passages on screen or nearest to it (posts
+  that scrolled away and were unmounted are dropped, and asked for again if they come back). Gemini requests still go
+  one at a time (free keys allow a few a minute). The daily caps hold as with one call at a time: a paid batch starts
+  alongside others only while today's spend plus the most each batch out could cost stays under the cap.
+- A passage's swaps are cached for 3 days and reused on any page, even after your word list changes, so a newly
+  learned word reaches a passage you've already seen within 3 days rather than at once. A new level, a setting that
+  changes swaps, a pause or **Clear cache** in the popup re-swaps at once.
 - A per-day 429 (the key's daily quota) moves on to the next key or step until Google resets it; a per-minute 429
   waits a minute; a busy model (503) or one that doesn't answer in time moves straight to the next step.
 - The model only picks which of the places the extension found to swap (the "candidates" design), so it can't
   invent English that isn't on the page. `"design": "freeform"` in the config lets the model write the swaps itself.
 - Add the keys in the toolbar popup under **Backup and paid keys**: a second Gemini key from another Google account
-  (its own daily quota), and an OpenRouter key from [openrouter.ai/keys](https://openrouter.ai/keys) with a few
-  dollars of credit. They're stored like the Gemini key, only in the extension's background worker. Setup can hand
-  them over instead: `--backup-key-file <path>` and `--openrouter-key-file <path>`; a key pasted in the popup wins.
-- OpenRouter stops for the day once its reported spend reaches the cap (default $0.25, set in the popup), or when
-  OpenRouter answers 402 (credits used up). The popup shows which model served the last batch, today's count per
-  model, and today's OpenRouter spend.
-- **Model** in the popup: **Auto** follows the chain; picking a Gemini model puts it first (3.8 Flash needs a paid key).
+  (its own daily quota), an Anthropic key from [platform.claude.com](https://platform.claude.com/settings/keys) and
+  an OpenRouter key from [openrouter.ai/keys](https://openrouter.ai/keys), each with a few dollars of credit. They're
+  stored like the Gemini key, only in the extension's background worker. Setup can hand them over instead:
+  `--backup-key-file <path>`, `--anthropic-key-file <path>` and `--openrouter-key-file <path>`; a key pasted in the
+  popup wins.
+- Anthropic stops for the day once today's spend (worked out from each reply's token counts at Anthropic's published
+  Claude Haiku 5.5 price) reaches its cap (default $5.00, set in the popup), or when Anthropic refuses the key (401,
+  403) or says the credit balance is too low.
+- OpenRouter stops for the day once its reported spend reaches the cap (default $0.25, about 125-165 Claude Haiku
+  batches; set in the popup), or when OpenRouter answers 402 (credits used up). The popup shows which model served
+  the last batch and through which provider, today's count per model, and today's Anthropic and OpenRouter spend.
+- **Model** in the popup: **Recommended** (the default) follows the chain and says what it resolves to: Claude Haiku
+  5.5 with an Anthropic or OpenRouter key, else Gemini 3.1 Flash-Lite. Below it each model is listed by name: Claude
+  Haiku 5.5 (only with one of those keys; without one it says a Claude key is needed), Gemini 3.1 Flash-Lite, Gemini
+  3.5 Flash-Lite and Gemini 3.8 Flash (paid key). The picked model goes first; the rest of the chain stays behind it.
+- **Reasoning**: **Recommended** keeps each model's measured setting (Claude Haiku low, Gemini 3.1 Flash-Lite
+  medium, 3.5 Flash-Lite and 3.8 Flash low); a level applies to the first model only. Claude Haiku takes off (no
+  thinking), low, medium and high (adaptive thinking at that effort); Gemini takes minimal, low, medium and high. A
+  level the newly picked model doesn't take goes back to Recommended.
+- The **Mode** line says what that comes to, e.g. "Mode: Recommended → Claude Haiku 5.5 · low reasoning · Level 2
+  (Auto)"; **Next batch** names the model that will serve the next batch (after daily caps and busy models), and
+  **Last batch** the one that served the last. The header shows the running version.
 
 ## Turn it off
 
@@ -146,8 +185,10 @@ per language in `extension/src/model-config.js` (today the same for every langua
 
 Setup turns on Claude Code's auto-update for French Weave, so new versions install themselves: a few minutes into
 a session Claude Code shows "Plugin updated", and your next session runs the new version and says so, keeping your
-progress. If you use the extension, it reloads itself with the new version within about 30 minutes, or right
-away when you open its toolbar popup (the reload arrow on French Weave in `chrome://extensions` also works).
+progress. If you use the extension, it reloads itself with the new version within about 5 minutes while Chrome is
+open, or right away when you open its toolbar popup, which says "Updating to X…" and closes as it reloads; the next
+time you open it, it says "Updated to X" (the reload arrow on French Weave in `chrome://extensions` also works). `python3 ~/.french-weave/app/scripts/fw.py check` shows the version Chrome last reported running and
+when, and warns if it differs from the copy on disk.
 Keep Developer mode on in `chrome://extensions`: with it off, Chrome turns the extension off when it reloads.
 Auto-update is a switch in `/plugin` (Marketplaces, french-weave); setup leaves it alone if you've set it, or with
 `--no-auto-update`.
@@ -245,8 +286,9 @@ because it's a guess: it never makes a word known on its own.
 
 ## Other languages
 
-French is the default and the only full list (about 1,000 ranked words). For another language, give setup a word
-list; the hook, the commands, `export` and the extension then weave that language instead:
+French is the default. For another language, pick one of the lists below or give setup your own word list; the hook
+(Claude Code and Codex), the commands, `export` (claude.ai and ChatGPT blocks) and the extension then weave that
+language instead. The ready-made blocks in `blocks/` are French only; `export` makes them for the language you set up:
 
 ```sh
 python3 ~/.french-weave/app/scripts/fw.py setup --language Spanish --lexicon ~/spanish.csv
@@ -314,6 +356,28 @@ python3 tests/model_eval.py --out /tmp/fw-eval    # live check via claude -p, is
 python3 tests/model_eval.py --paste level-01 --stages 1 --out /tmp/fw-eval   # simulate claude.ai with a block
 node tests/extension_e2e.mjs                      # after setup: Playwright Chromium + fake X and article pages + real Gemini
 ```
+
+### Usage log (dev build only)
+
+The dev build (plugin installed from the french-weave-dev marketplace, so `~/.french-weave/app/CHANNEL` says `dev`)
+keeps a log of what the extension does, so you can see how you actually use it. The public build records nothing,
+and neither build records anything without the native host.
+
+- **What**: page views (the site's hostname only, on or off and why, level); each batch of passages (site, level,
+  passages, cache hits, provider, model, reasoning, chunks, time in ms, tokens, cost, outcome such as ok, 429, 5xx,
+  timeout, parse error, cap reached, provider stopped, stale, and each fallback to the next step); queue retries
+  and give-ups, passages whose element left the page, batches cancelled by a page change or a closed tab; swaps
+  shown by word status; words seen, gloss peeks and "Show English" flips (words from your list); popup opens;
+  setting changes (old and new value; a key only as "set" or "cleared"); extension installs, updates and reloads;
+  worker starts (Chrome stops an idle worker, so each start notes how long none ran); native-host errors; daily
+  cap hits.
+- **Never**: page text, URLs beyond the hostname, keys, anything you type.
+- **Where**: `~/.french-weave/usage/YYYY-MM-DD.jsonl`, one JSON event per line, kept 60 days. It never leaves your
+  computer: the extension hands events to the native host, which only appends to that folder.
+- **Read it**: `python3 scripts/fw.py usage [--days N] [--json]`. The popup shows "Today: N batches, X% cached,
+  p90 Y s, $Z".
+- **Turn it off**: untick "Usage log (dev build)" in the popup (on by default in the dev build). What was
+  recorded stays until you delete the folder.
 
 ## License
 

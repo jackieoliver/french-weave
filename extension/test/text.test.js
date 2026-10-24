@@ -74,7 +74,7 @@ describe('applySwaps', () => {
     const el = tweet('<span>cats and dogs and birds</span>');
     const n = applySwaps(el, [S({ o: 'and', f: 'et', ctx: 'dogs and birds' })]);
     expect(n).toBe(1);
-    expect(el.innerHTML).toBe('<span>cats and dogs <span class="fw-word" data-en="and" data-fr="et" data-tip="and · &quot;ay&quot;" data-fw-split="1" tabindex="0" role="button" aria-label="et: and. Show English">et</span> birds</span>');
+    expect(el.innerHTML).toBe('<span>cats and dogs <span class="fw-word" data-en="and" data-fr="et" data-tip="et = and, &quot;ay&quot;" data-fw-split="1" tabindex="0" role="button" aria-label="et: and. Show English">et</span> birds</span>');
     expect(el.textContent).toBe('cats and dogs et birds');
   });
   test('two swaps in one text node, applied in any order', () => {
@@ -157,9 +157,13 @@ describe('applySwaps', () => {
     expect(sentenceStart('so ', 3)).toBe(false);
     expect(sentenceStart('', 0)).toBe(true);
   });
-  test('tip without hint is just the gloss', () => {
-    expect(tipFor({ g: 'and', h: '' })).toBe('and');
-    expect(tipFor({ g: 'and', h: 'ay' })).toBe('and · "ay"');
+  test('tip: word = gloss, then the sound hint; the box stays visible', async () => {
+    expect(tipFor({ f: 'et', g: 'and', h: '' })).toBe('et = and');
+    expect(tipFor({ f: 'et', g: 'and', h: 'ay' })).toBe('et = and, "ay"');
+    // The page's rules can't hide the gloss box (Reddit post pages hide every undefined custom element).
+    const css = (await import('node:fs')).readFileSync(new URL('../src/content.css', import.meta.url), 'utf8');
+    const rule = css.slice(css.indexOf('fw-gloss.fw-gloss {'), css.indexOf('\n}', css.indexOf('fw-gloss.fw-gloss {')));
+    for (const pin of ['visibility: visible !important', 'opacity: 1 !important']) expect(rule).toContain(pin);
   });
 });
 

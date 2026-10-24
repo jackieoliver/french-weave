@@ -50,6 +50,8 @@ it reads (see `french.json`).
 | `extension.adjective_example` | `["a big win", "a grand win"]`: an adjective swap that keeps English word order |
 | `extension.level_examples` | `{"1": pairs, "2": pairs}`: typical swaps for the extension's built-in level lists (French only today) |
 | `extension.synonyms` | Extra English synonyms for the extension's gloss check, `{"gloss": ["variant", ...]}` |
+| `extension.contexts` | `{word: [pattern, ...]}`: English around a swap into that word where it never fits, in the `english.contexts` syntax below. Portuguese `{"é": ["[*] *ly\|not\|...? +ing"]}`: the "is" of "is improving" is está, never é |
+| `extension.question_words` | Words that only ask a question (Portuguese `qual`, `quem`; Italian `chi`, `quale`, `cosa`): the extension swaps them only where the English asks (at the start of a sentence, "which one", after know, ask, tell me, find out and the like), never for a relative ("the tool which runs", "a person who"), which needs que or che |
 
 ## English never-split rules
 
@@ -61,7 +63,7 @@ swaps wherever it matches.
 | Field | What it is |
 | --- | --- |
 | `english.phrases` | Fixed phrases a swap may cover whole or stay out of, never cut into: `right now` keeps "now" English, `might as well` keeps "as well" English |
-| `english.contexts` | Patterns of space-separated tokens around the swap. Exactly one token is the swap in brackets: `[*]` any swap, `[before\|after]` a swap whose English is one of those words. The other tokens are the words right before or after it: alternatives with `\|`, `*ing` any word ending in "ing", `#` a number, punctuation as itself (`,`, `"`), and a trailing `?` makes a token optional. `[*] of` keeps every swap away from a dangling "of" (a lot of, because of, instead of); `[before\|after\|since] i\|you\|...\|*ing` keeps them before a noun only; `[it's\|that's\|there's] ... been\|got\|...` skips "it's" meaning "it has"; the `[like]` ones skip filler "like"; `[in\|on] .\|,\|...` skips "in" and "on" with no object ("walked in with friends", "carried on.") |
+| `english.contexts` | Patterns of space-separated tokens around the swap. Exactly one token is the swap in brackets: `[*]` any swap, `[before\|after]` a swap whose English is one of those words. The other tokens are the words right before or after it: alternatives with `\|`, `*ing` any word ending in "ing", `+ing` an -ing verb form (a word ending in "ing" other than a short list of nouns and adjectives such as something, morning, amazing), `#` a number, punctuation as itself (`,`, `"`), and a trailing `?` makes a token optional. `[*] of` keeps every swap away from a dangling "of" (a lot of, because of, instead of); `[before\|after\|since] i\|you\|...\|*ing` keeps them before a noun only; `[it's\|that's\|there's] ... been\|got\|...` skips "it's" meaning "it has"; the `[like]` ones skip filler "like"; `[in\|on] .\|,\|...` skips "in" and "on" with no object ("walked in with friends", "carried on.") |
 
 Besides these, a swap is never kept when its last word repeats the next English word ("there is a" -> "il y a a").
 

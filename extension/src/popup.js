@@ -1,7 +1,8 @@
 import { resolveLevel, MAX_BUILT_LEVEL } from './levels.js';
-import { MODELS, modelLabel } from './model-config.js';
+import { modelLabel } from './model-config.js';
+import { modelOptions, reasoningOptions, modelNote, modeText, servedLabel, nextText, versionText, updateText } from './popup-model.js';
 import { siteEnabled, siteOn, hasSiteAccess } from './settings.js';
-import { modelErrorText, openRouterText } from './modelerror.js';
+import { modelErrorText, openRouterText, anthropicText } from './modelerror.js';
 import { readCached } from './hostsource.js';
 import { wordSummary, renderWordList } from './wordlist.js';
 import { tierText } from './tier.js';
@@ -27,8 +28,29 @@ function ago(t) {
   return h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
 }
 
+const fill = (menu, options) => menu.replaceChildren(...options.map(({ value, label, disabled }) => {
+  const opt = document.createElement('option');
+  opt.value = value;
+  opt.textContent = label;
+  opt.disabled = !!disabled;
+  return opt;
+}));
+
+// An update waiting on disk: say so, then ask the worker to reload into it (which closes this popup). "Updated to X"
+// comes once, on the first status after the new version runs; later refreshes keep showing it.
+const UPDATE_DELAY_MS = 1500;
+let updateLine = '';
+let updateAsked = false;
+
 async function refresh() {
   status = await send({ type: 'status' });
+  updateLine = updateText(status) || updateLine;
+  $('version').textContent = versionText(status);
+  $('versionInfo').textContent = updateLine;
+  if (status.updating && !updateAsked) {
+    updateAsked = true;
+    setTimeout(() => { void send({ type: 'applyUpdate' }).then(refresh).catch(() => {}); }, UPDATE_DELAY_MS);
+  }
   $('update').hidden = !status.update;
   $('updateVersion').textContent = status.update || '';
   const c = status.config;
@@ -46,11 +68,16 @@ async function refresh() {
   const { stage, chosen } = resolveLevel(s, c.stage);
   $('levelInfo').textContent = `L${chosen}${stage && chosen !== stage ? ` (Claude Code stage ${stage})` : ''}${chosen > MAX_BUILT_LEVEL ? ` · L${MAX_BUILT_LEVEL} rules for now` : ''}`;
   $('levelOverride').value = String(s.levelOverride || 0);
+  fill($('model'), modelOptions(status));
   $('model').value = s.modelChoice;
-  const last = status.lastServed;
+  const reasoning = reasoningOptions(status);
+  fill($('reasoning'), reasoning.options);
+  $('reasoning').value = reasoning.selected;
+  $('modelNote').textContent = modelNote(status);
+  $('modeInfo').textContent = modeText(status);
+  $('nextInfo').textContent = nextText(status);
   const served = Object.entries(status.served?.counts || {}).map(([m, n]) => `${modelLabel(m)} ${n}`).join(' · ');
-  $('modelInfo').textContent = [last?.model ? `${modelLabel(last.model)}${last.keyName === 'backup' ? ' (backup key)' : ''}` : 'none yet',
-    served && `today: ${served}`].filter(Boolean).join('; ');
+  $('modelInfo').textContent = [servedLabel(status.lastServed) || 'none yet', served && `today: ${served}`].filter(Boolean).join('; ');
   $('apiKey').value = '';
   $('backupKey').value = '';
   $('backupKey').placeholder = status.backupKey ? 'saved (paste to replace)' : status.hostBackupKey ? 'from setup (paste to override)' : 'optional';
@@ -59,6 +86,11 @@ async function refresh() {
     : status.hostOpenRouterKey ? 'from setup (paste to override)' : 'optional, paid';
   $('openRouterDailyUsd').value = String(s.openRouterDailyUsd);
   $('openRouterInfo').textContent = openRouterText(status, s.openRouterDailyUsd);
+  $('anthropicKey').value = '';
+  $('anthropicKey').placeholder = status.anthropicKey ? 'saved (paste to replace)'
+    : status.hostAnthropicKey ? 'from setup (paste to override)' : 'optional, paid';
+  $('anthropicDailyUsd').value = String(s.anthropicDailyUsd);
+  $('anthropicInfo').textContent = anthropicText(status, s.anthropicDailyUsd);
   $('apiKey').placeholder = status.pastedKey ? 'saved (paste to replace)' : status.hostKey ? 'from setup (paste to override)' : 'AIza…';
   $('wordInfo').textContent = status.words
     ? `${status.words} from Claude Code · ${ago(status.fetchedAt)}${c.paused ? ' · paused' : ''}`
@@ -110,23 +142,20 @@ async function inject() {
   } catch { $('notice').textContent = 'Reload this page to start. Chrome blocks extensions on some pages.'; }
 }
 
-for (const [id, label] of [['auto', 'Auto (recommended)'], ...Object.entries(MODELS)]) {
-  const opt = document.createElement('option');
-  opt.value = id;
-  opt.textContent = label;
-  $('model').appendChild(opt);
-}
-
 $('enabled').addEventListener('change', (e) => run(() => save({ settings: { enabled: e.target.checked } })));
 $('newSitesEnabled').addEventListener('change', (e) => run(() => save({ settings: { newSitesEnabled: e.target.value === 'true' } })));
 $('levelOverride').addEventListener('change', (e) => run(() => save({ settings: { levelOverride: Number(e.target.value) || 0 } })));
 $('model').addEventListener('change', (e) => run(() => save({ settings: { modelChoice: e.target.value } })));
+$('reasoning').addEventListener('change', (e) => run(() => save({ settings: { reasoning: e.target.value } })));
 $('apiKey').addEventListener('change', (e) => run(() => save({ apiKey: e.target.value })));
 $('backupKey').addEventListener('change', (e) => run(() => save({ backupKey: e.target.value })));
 $('openRouterKey').addEventListener('change', (e) => run(() => save({ openRouterKey: e.target.value })));
 // An emptied field keeps the saved cap (0 is a real choice: OpenRouter off).
 $('openRouterDailyUsd').addEventListener('change', (e) => run(() => (e.target.value.trim() === '' ? refresh()
   : save({ settings: { openRouterDailyUsd: Number(e.target.value) } }))));
+$('anthropicKey').addEventListener('change', (e) => run(() => save({ anthropicKey: e.target.value })));
+$('anthropicDailyUsd').addEventListener('change', (e) => run(() => (e.target.value.trim() === '' ? refresh()
+  : save({ settings: { anthropicDailyUsd: Number(e.target.value) } }))));
 $('siteEnabled').addEventListener('change', (e) => run(async () => {
   const enabled = e.target.checked;
   if (enabled && !hasSiteAccess(tab.url, status.config.origins)) {
@@ -152,10 +181,23 @@ $('clearCache').addEventListener('click', () => run(async () => {
   $('operation').textContent = `Cleared ${res.removed}`;
 }));
 
+// Dev build only: the local usage log's switch and today's line (usage.js). open: this popup opening, counted once.
+async function showUsage(open = true) {
+  const u = await send({ type: 'usageToday', open });
+  $('usageSection').hidden = !u?.dev;
+  $('usageOn').checked = !!u?.on;
+  $('usageToday').textContent = !u?.on ? 'Off: nothing is recorded.' : u.line || (u.error ? `Log not readable: ${u.error}` : 'Today: nothing recorded yet');
+}
+$('usageOn').addEventListener('change', (e) => run(async () => {
+  await send({ type: 'usageToggle', on: e.target.checked });
+  await showUsage(false);
+}));
+
 void run(async () => {
   [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   try { const u = new URL(tab?.url); if (/^https?:$/.test(u.protocol)) host = u.hostname.replace(/\.$/, ""); } catch { /* internal tab */ }
   await refresh();
+  if (status?.channel === 'dev') await showUsage();
 });
 
 $('openExtensions').addEventListener('click', () => {

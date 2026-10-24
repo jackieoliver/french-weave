@@ -128,7 +128,7 @@ export function toNode(flat, m, o) {
 }
 
 export function tipFor(swap) {
-  return swap.h ? `${swap.g} · "${swap.h}"` : swap.g;
+  return `${swap.f} = ${swap.g}` + (swap.h ? `, "${swap.h}"` : '');
 }
 
 function wrap(place, swap) {

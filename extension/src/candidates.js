@@ -8,6 +8,7 @@
 import { glossMatch, glossForms, matchKeys, SYNONYMS, validateSwaps, breaksEnglishAt, wordsForLevel, MAX_BUILT_LEVEL } from './levels.js';
 import { profileFor, articlePatterns } from './profile.js';
 import { wantFor } from './prompt.js';
+import { quotedRanges } from './quotes.js';
 
 const synonymCache = new Map();
 function synonymsFor(language) {
@@ -58,8 +59,8 @@ const FUNCTION_WORDS = new Set(['and', 'or', 'but', 'so', 'with', 'without', 'fo
   'during', 'despite', 'always', 'never', 'again', 'still', 'already', 'only', 'very', 'just', 'even', 'almost',
   'maybe', 'like', 'that', 'this', 'who', 'where', 'why', 'how', 'together', 'yes', 'no', 'well', 'sometimes',
   'especially', 'tomorrow', 'today', 'yesterday', 'tonight', 'all', 'everything', 'nothing', 'someone', "it's"]);
-// The English quote, URL, handle or hashtag spans that stay English.
-const HANDS_OFF = /"[^"]+"|“[^”]+”|https?:\/\/\S+|www\.\S+|[@#][\w.]+/g;
+// The URL, handle or hashtag spans that stay English (quoted text: quotes.js).
+const HANDS_OFF = /https?:\/\/\S+|www\.\S+|[@#][\w.]+/g;
 
 // A capitalized token not at the start of a sentence, other than "I": a name or title word.
 function nameWord(text, t) {
@@ -80,7 +81,7 @@ export function findCandidates(text, words, language = 'French', level = 1) {
   const index = glossIndex(entries, syn);
   const definite = articlePatterns(profileFor(lang)).definite;
   const toks = tokenize(text);
-  const quoted = [...text.matchAll(HANDS_OFF)].map((m) => [m.index, m.index + m[0].length]);
+  const quoted = [...quotedRanges(text), ...[...text.matchAll(HANDS_OFF)].map((m) => [m.index, m.index + m[0].length])];
   const inQuote = (a, b) => quoted.some(([s, e]) => a < e && s < b);
   const found = [];
   const taken = new Set();

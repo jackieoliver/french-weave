@@ -5,7 +5,7 @@
 <title>French Weave</title>
 <style>
   * { box-sizing: border-box; }
-  body { width: 300px; margin: 0; padding: 12px 14px; font: 13px/1.4 system-ui, sans-serif; color: #111; background: #fff; }
+  body { width: 320px; margin: 0; padding: 12px 14px; font: 13px/1.4 system-ui, sans-serif; color: #111; background: #fff; }
   h1 { font-size: 14px; margin: 0; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 7px 0; }
   .row > span:first-child { flex: 0 0 auto; }
@@ -18,7 +18,10 @@
   #siteName { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #siteList { max-height: 95px; overflow: auto; }
   #siteList .row { margin: 4px 0; }
-  #notice:empty, #modelError:empty, #tierNote:empty { display: none; }
+  #notice:empty, #modelError:empty, #tierNote:empty, #modelNote:empty, #versionInfo:empty { display: none; }
+  #version { font-weight: normal; }
+  #model, #reasoning { flex: 1 1 auto; width: auto; min-width: 0; }
+  #modelNote, #modeInfo { margin: 0 0 6px; }
   #tierNote { margin: 0 0 6px; }
   summary { cursor: pointer; margin: 6px 0; }
   /* Your words: collapsed by default, scrolls inside when long so the popup stays short. */
@@ -38,7 +41,8 @@
 </style>
 </head>
 <body>
-  <div class="row"><h1>French Weave</h1><label>On <input type="checkbox" id="enabled"></label></div>
+  <div class="row"><h1>French Weave <span id="version" class="small"></span></h1><label>On <input type="checkbox" id="enabled"></label></div>
+  <div id="versionInfo" class="small" role="status"></div>
   <div id="operation" class="small" role="status"></div>
   <div id="modelError" class="small error" role="status"></div>
   <div id="update" class="small" hidden>Update <span id="updateVersion"></span> didn't load by itself: click the
@@ -63,7 +67,11 @@
         <option value="4">4</option>
       </select>
     </label>
-    <label class="row"><span>Model</span><select id="model"></select></label>
+    <label class="row"><span>Model</span><select id="model" title="Recommended: Claude Haiku 5.5 first with an Anthropic or OpenRouter key, else Gemini. A model picked here goes first; the rest of the chain stays as the fallback."></select></label>
+    <label class="row"><span>Reasoning</span><select id="reasoning" title="Recommended: the measured setting for that model. A level here applies to the first model only."></select></label>
+    <p class="small" id="modelNote" role="status"></p>
+    <p class="small" id="modeInfo" role="status"></p>
+    <div class="row"><span>Next batch</span><span id="nextInfo" class="small"></span></div>
     <div class="row"><span>Last batch</span><span id="modelInfo" class="small"></span></div>
     <label class="row"><span>Gemini key</span><input type="password" id="apiKey" placeholder="AIza…" autocomplete="off"></label>
     <details id="moreKeys"><summary>Backup and paid keys</summary>
@@ -71,12 +79,20 @@
       <label class="row"><span>OpenRouter key</span><input type="password" id="openRouterKey" placeholder="optional, paid" autocomplete="off"></label>
       <label class="row"><span>OpenRouter cap ($/day)</span><input type="number" id="openRouterDailyUsd" min="0" max="100" step="0.05"></label>
       <p class="small" id="openRouterInfo"></p>
+      <label class="row"><span>Anthropic key</span><input type="password" id="anthropicKey" placeholder="optional, paid" autocomplete="off"></label>
+      <label class="row"><span>Anthropic cap ($/day)</span><input type="number" id="anthropicDailyUsd" min="0" max="100" step="0.05"></label>
+      <p class="small" id="anthropicInfo"></p>
     </details>
     <div class="row"><span>Words</span><span id="wordInfo" class="small"></span></div>
     <div class="row"><button id="syncWords">Sync words</button><button id="clearCache">Clear cache</button></div>
   </section>
   <section>
     <details id="wordList"><summary>Your words <span data-counts class="small"></span></summary><div data-rows></div></details>
+  </section>
+  <section id="usageSection" hidden>
+    <label class="row"><span>Usage log (dev build)</span><input type="checkbox" id="usageOn"
+      title="Keeps a log of what French Weave does on this computer only (~/.french-weave/usage). Read it with: python3 scripts/fw.py usage"></label>
+    <p class="small" id="usageToday" role="status"></p>
   </section>
   <p class="small" id="privacyNote"></p>
   <div id="notice" class="small error" role="alert"></div>

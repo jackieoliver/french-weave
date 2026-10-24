@@ -40,7 +40,7 @@ def problems(data, generic, path=()):
             out.append(f'{where}: unknown field')
             continue
         base = generic[key]
-        if isinstance(base, dict) and key not in ('not_followed_by', 'level_examples', 'synonyms', 'fold'):
+        if isinstance(base, dict) and key not in ('not_followed_by', 'level_examples', 'synonyms', 'fold', 'contexts'):
             out += problems(value, base, path + (key,)) if isinstance(value, dict) else [f'{where}: must be an object']
         elif base is not None and type(value) is not type(base):
             out.append(f'{where}: must be {type(base).__name__}, not {type(value).__name__}')
@@ -66,6 +66,13 @@ def problems(data, generic, path=()):
     for key, value in (extension.get('synonyms') or {}).items():
         if not (isinstance(value, list) and all(isinstance(v, str) for v in value)):
             out.append(f'extension.synonyms.{key}: must be a list of English words')
+    for key, value in (extension.get('contexts') or {}).items():
+        if not (isinstance(value, list) and value and all(isinstance(v, str) for v in value)):
+            out.append(f'extension.contexts.{key}: must be a list of context patterns')
+        else:
+            out += [p.replace('english.contexts', f'extension.contexts.{key}') for p in english_problems({'contexts': value})]
+    out += [f'extension.question_words: not a word: {w!r}' for w in extension.get('question_words') or []
+            if not (isinstance(w, str) and w.strip())]
     for key, value in ((data.get('script') or {}).get('fold') or {}).items():
         if not (isinstance(value, str) and key and key == key.lower()):
             out.append(f'script.fold.{key}: a lower-case letter mapped to its plain spelling, like "ä": "ae"')

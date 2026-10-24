@@ -9,9 +9,10 @@
                                                      already introduced (40: some basics, 150: simple French);
                                                      --sites: extension on every site (all) or only ones you
                                                      turn on (ask)
-  fw.py setup --backup-key-file FILE --openrouter-key-file FILE
-                                                     also store a backup Gemini key and a paid OpenRouter key
-                                                     for the extension (a key pasted in its popup wins)
+  fw.py setup --backup-key-file FILE --anthropic-key-file FILE --openrouter-key-file FILE
+                                                     also store a backup Gemini key and paid Anthropic and
+                                                     OpenRouter keys for the extension (a key pasted in its
+                                                     popup wins)
   fw.py setup --language NAME [--lexicon FILE]       learn another language from a word list (columns word,en,hint;
                                                      default data/lexicons/<name>.csv); the old language's state and
                                                      word list are kept and come back when you switch back
@@ -25,10 +26,12 @@
   fw.py export [--claude-ai | --chatgpt] [--log-day] paste-ready block for claude.ai preferences or ChatGPT
   fw.py log-chat-day                                 opt-in: count today as exposure for your learning words
   fw.py check                                        verify the state, extension folder and native host
+  fw.py usage [--days N] [--json]                    dev build: what the extension did, from its local usage log
   fw.py uninstall [--codex] [--dry-run]              remove the native host manifests (and the Codex hook)
 """
 import argparse
 import csv
+import datetime as dt
 import json
 import os
 from pathlib import Path
@@ -41,6 +44,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fwlib  # noqa: E402
 import export  # noqa: E402
+import fwusage  # noqa: E402
 
 try:
     import tomllib
@@ -236,19 +240,22 @@ def setup_codex(dry_run):
 
 KEY_SHAPE = re.compile(r'^(?:[A-Za-z0-9]{1,8}\.)?[A-Za-z0-9_-]{30,64}$')  # AIza… keys, and newer ones like AQ.…
 OPENROUTER_SHAPE = re.compile(r'^sk-or-[A-Za-z0-9_-]{20,120}$')
+ANTHROPIC_SHAPE = re.compile(r'^sk-ant-[A-Za-z0-9_-]{20,200}$')
 # Setup option -> (file in the state folder, what it is, its shape, what it starts with). The native host hands each
 # stored key to the extension's background worker; a key pasted in the popup still wins over the stored one.
 KEY_FILES = {
     'gemini_key_file': ('gemini_key', 'Gemini key', KEY_SHAPE, 'AIza… or AQ.…'),
     'backup_key_file': ('gemini_backup_key', 'backup Gemini key', KEY_SHAPE, 'AIza… or AQ.…'),
     'openrouter_key_file': ('openrouter_key', 'OpenRouter key', OPENROUTER_SHAPE, 'sk-or-…'),
+    'anthropic_key_file': ('anthropic_key', 'Anthropic key', ANTHROPIC_SHAPE, 'sk-ant-…'),
 }
 
 
 def read_key_file(arg, what='Gemini key', shape=KEY_SHAPE, starts='AIza… or AQ.…'):
     """The key from a file. Never echoes the argument, the path or the contents, since any of them may be the key."""
     path = Path(arg).expanduser()
-    if not path.is_file() and (arg.startswith(('AIza', 'sk-or-')) or KEY_SHAPE.match(arg) or OPENROUTER_SHAPE.match(arg)):
+    if not path.is_file() and (arg.startswith(('AIza', 'sk-or-', 'sk-ant-')) or KEY_SHAPE.match(arg) or OPENROUTER_SHAPE.match(arg)
+                               or ANTHROPIC_SHAPE.match(arg)):
         sys.exit('That looks like a key, not a file path; paste the key into the extension popup instead.')
     try:
         key = path.read_text().strip()
@@ -368,7 +375,7 @@ def setup(args):
     print(f'  extension:   {"every site; turn any off from the toolbar" if sites == "all" else "only sites you turn on"}')
     print(f'  native host: {", ".join(info["host_manifests"])}')
     print(f'  Gemini key:  {"stored for the extension" if key or (home / "gemini_key").exists() else "not stored; the extension swaps a few fixed words until you paste one in its popup"}')
-    for name, label in (('gemini_backup_key', 'backup key: '), ('openrouter_key', 'OpenRouter: ')):
+    for name, label in (('gemini_backup_key', 'backup key: '), ('anthropic_key', 'Anthropic:  '), ('openrouter_key', 'OpenRouter: ')):
         if (home / name).exists():
             print(f'  {label} stored for the extension')
     if updates:
@@ -391,6 +398,36 @@ def setup(args):
           '/reload-plugins first.')
 
 
+def ago(at, now=None):
+    """'5m ago' for an ISO 8601 time, '' when it can't be read."""
+    try:
+        then = dt.datetime.fromisoformat(at)
+        now = now or dt.datetime.now(then.tzinfo)
+        minutes = max(0, round((now - then).total_seconds() / 60))
+    except (TypeError, ValueError):
+        return ''
+    if minutes < 1:
+        return 'just now'
+    if minutes < 60:
+        return f'{minutes}m ago'
+    return f'{round(minutes / 60)}h ago' if minutes < 24 * 60 else f'{round(minutes / 1440)}d ago'
+
+
+def extension_running(seen, disk, now=None):
+    """check's line on the version Chrome runs: (prefix, text). seen: fwlib.extension_seen(); disk: the version in
+    <state dir>/extension/manifest.json ('' when missing). A difference is a warning, not a failure: Chrome may simply
+    not have run the extension since the update."""
+    if not seen:
+        return 'note', ('extension running version not reported yet (0.2.9 and later report it each time they sync with '
+                        'the native host: open the toolbar popup, or wait up to 30 minutes with Chrome open)')
+    when = seen['at'] + (f' ({ago(seen["at"], now)})' if ago(seen['at'], now) else '')
+    if disk and seen['version'] != disk:
+        return 'warn', (f'extension running {seen["version"]} (seen {when}), but the copy on disk is {disk}: Chrome has not '
+                        'reloaded it yet. It reloads itself within about 5 minutes while Chrome is open, or right away '
+                        'when you open its toolbar popup; else click the reload arrow on French Weave in chrome://extensions')
+    return 'ok  ', f'extension running {seen["version"]}, seen {when}' + ('' if disk else ' (no copy on disk to compare)')
+
+
 def check(_args):
     """Prints one line per check; exits 1 if any failed."""
     import struct
@@ -405,6 +442,10 @@ def check(_args):
     state = fwlib.load_state(create=False)
     report(state is not None, f'word state at {home / "state.json"}' + (f' (Stage {fwlib.stage_for(state)})' if state else ''))
     report((home / 'extension' / 'manifest.json').exists(), f'extension folder for Load unpacked: {home / "extension"}')
+    disk = str((fwlib.read_json(home / 'extension' / 'manifest.json', {}) or {}).get('version') or '')
+    print('{} {}'.format(*extension_running(fwlib.extension_seen(), disk)))
+    if fwlib.installed_channel():
+        print(f'ok   channel: {fwlib.installed_channel()} build (the popup says so)')
     for directory in host_dirs():
         path = directory / f'{HOST_NAME}.json'
         manifest = fwlib.read_json(path)
@@ -429,7 +470,7 @@ def check(_args):
                         '(Codex asks you to trust it on first start)')
     has_key = (home / 'gemini_key').exists()
     print(f'{"ok  " if has_key else "note"} Gemini key {"stored by setup" if has_key else "not stored; the extension swaps a few fixed words until you paste one in its popup"}')
-    for name, what in (('gemini_backup_key', 'backup Gemini key'), ('openrouter_key', 'OpenRouter key')):
+    for name, what in (('gemini_backup_key', 'backup Gemini key'), ('anthropic_key', 'Anthropic key'), ('openrouter_key', 'OpenRouter key')):
         if (home / name).exists():
             print(f'ok   {what} stored by setup')
     if not ok:
@@ -585,6 +626,14 @@ def refresh(_args):
     fwlib.refresh_exposure()
 
 
+def usage_cmd(args):
+    summary = fwusage.summarize(fwusage.load(args.days), args.days)
+    if args.json:
+        print(json.dumps(summary, ensure_ascii=False, indent=1))
+    else:
+        print(fwusage.render(summary))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='French Weave', formatter_class=argparse.RawDescriptionHelpFormatter,
                                      epilog=__doc__)
@@ -592,7 +641,9 @@ def main(argv=None):
     p = sub.add_parser('setup')
     p.add_argument('--gemini-key-file')
     p.add_argument('--backup-key-file', help='a second Gemini key, tried when the main one is out for the day')
-    p.add_argument('--openrouter-key-file', help='paid last step, only when every Gemini step fails')
+    p.add_argument('--anthropic-key-file', help='paid: Claude Haiku 5.5 first at every level, direct to Anthropic')
+    p.add_argument('--openrouter-key-file', help='paid: Claude Haiku 5.5 first at every level without an Anthropic key, '
+                   'else only when every Gemini step fails')
     p.add_argument('--user-data-dir', action='append', default=[])
     p.add_argument('--codex', action='store_true')
     p.add_argument('--known-top', type=int, default=0, metavar='N')
@@ -627,6 +678,10 @@ def main(argv=None):
     p.add_argument('--copy', action='store_true', help='also copy the claude.ai block to the clipboard')
     p.set_defaults(run=export_cmd)
     sub.add_parser('log-chat-day').set_defaults(run=log_chat_day)
+    p = sub.add_parser('usage', help="dev build: the extension's local usage log")
+    p.add_argument('--days', type=int, default=7, metavar='N')
+    p.add_argument('--json', action='store_true')
+    p.set_defaults(run=usage_cmd)
     args = parser.parse_args(argv)
     args.run(args)
 

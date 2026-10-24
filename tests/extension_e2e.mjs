@@ -17,19 +17,35 @@
 // going from the word to its speaker, Shift+Tab back, and Tab on from the word to the next stop; articleSpeaker names
 // the article's button and articleSpeakerKeepsFocus is true (pressing it left focus in the textarea).
 // SCREENSHOTS=<dir> saves the gloss on both pages.
+// With an Anthropic key too (setup's --anthropic-key-file), every level sends each batch to Claude Haiku 5.5 first,
+// direct to Anthropic; with only an OpenRouter key (--openrouter-key-file), through OpenRouter. servedCounts names the
+// model behind each batch, lastProvider the provider of the last, anthropicUsd and openRouterUsd today's spend, and
+// batches lists each model request the worker made (provider, HTTP status, milliseconds, tokens; never the key).
+// E2E_LEVEL=1..4 forces that level from the popup before any page loads (level reports the one in effect).
+// E2E_MODEL=<choice> and E2E_REASONING=<level> pick that Model and Reasoning in the popup the same way.
+// The popup's Model and Reasoning menus (popupModelOptions, popupReasoningOptions; "!" marks one that can't be
+// picked), its header (popupVersion), Mode line (popupMode), Next batch line (popupNext) and
+// what the native host recorded as the running version (extensionSeen) are printed; E2E_SCREENSHOT=<file.png> also
+// saves the popup as an image.
+// CHROMIUM_PATH: a Chromium binary to use instead of the one this Playwright version expects.
+// Website access is granted only for the test sites (x.com, reading.example, safety.example, mail.google.com), as a
+// reader who allows sites one at a time has it, so a model API without a manifest host permission (api.anthropic.com)
+// is reached the way it is for them, as a CORS request; E2E_ALL_SITES=1 grants every site instead.
 // Without a key (setup without --gemini-key-file, and none pasted), the same run checks the no-key mode: tier is
 // "local", the popup says "Built-in list, no key", swaps come only from the built-in list, modelCalls is 0, and a page
 // whose title names a sensitive topic gets no swaps (sensitiveTitleSwaps 0; with a key, Gemini judges each passage).
 import { chromium } from 'playwright';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 
-const INSTALLED = join(process.env.FRENCH_WEAVE_HOME || join(homedir(), '.french-weave'), 'extension');
+const STATE_DIR = process.env.FRENCH_WEAVE_HOME || join(homedir(), '.french-weave');
+const INSTALLED = join(STATE_DIR, 'extension');
 const EXT = mkdtempSync(join(tmpdir(), 'fw-ext-'));
 cpSync(INSTALLED, EXT, { recursive: true });
 const manifest = JSON.parse(readFileSync(join(EXT, 'manifest.json'), 'utf8'));
-manifest.host_permissions.push(...manifest.optional_host_permissions); // same key, so the same extension ID
+const TEST_SITES = ['https://x.com/*', 'https://reading.example/*', 'https://safety.example/*', 'https://mail.google.com/*'];
+manifest.host_permissions.push(...(process.env.E2E_ALL_SITES ? manifest.optional_host_permissions : TEST_SITES)); // same key, same ID
 writeFileSync(join(EXT, 'manifest.json'), JSON.stringify(manifest));
 const tweets = [
   ['t1', 'en', 'Finally shipped the new search page and it is very fast now, but the old filters still need work.'],
@@ -60,7 +76,8 @@ const SHOTS = process.env.SCREENSHOTS;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const userDataDir = process.env.PROFILE || mkdtempSync(join(tmpdir(), 'fw-profile-'));
 const ctx = await chromium.launchPersistentContext(userDataDir, {
-  channel: 'chromium', // the default headless shell cannot load extensions
+  ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH }
+    : { channel: 'chromium' }), // the default headless shell cannot load extensions
   headless: true,
   // Chromium on Linux lists no speech voices without --enable-speech-dispatcher (then espeak-ng's); elsewhere a no-op.
   args: ['--headless=new', '--enable-speech-dispatcher', `--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
@@ -79,6 +96,40 @@ try {
   }
   out.synced = state.wordState ? { stage: state.wordState.stage, words: state.wordState.words.map((w) => w.fr), version: state.wordState.version } : null;
   out.hostKeyFromSetup = !!state.hostKey;
+  if (process.env.E2E_LEVEL) {
+    await sw.evaluate((level) => chrome.storage.local.get('settings')
+      .then(({ settings }) => chrome.storage.local.set({ settings: { ...settings, levelOverride: level } })), Number(process.env.E2E_LEVEL));
+  }
+  for (const [env, field] of [['E2E_MODEL', 'modelChoice'], ['E2E_REASONING', 'reasoning']]) {
+    if (!process.env[env]) continue;
+    await sw.evaluate(([name, value]) => chrome.storage.local.get('settings')
+      .then(({ settings }) => chrome.storage.local.set({ settings: { ...settings, [name]: value } })), [field, process.env[env]]);
+  }
+  // Each model request the worker makes: provider, status, time to the reply, and tokens (Anthropic's usage). The
+  // worker calls the global fetch, so wrapping it here sees every request; nothing of the request is kept.
+  await sw.evaluate(() => {
+    const real = globalThis.fetch;
+    globalThis.__fwBatches = [];
+    globalThis.fetch = async (url, init, ...rest) => {
+      const host = (() => { try { return new URL(String(url)).hostname; } catch { return ''; } })();
+      const provider = { 'api.anthropic.com': 'anthropic', 'openrouter.ai': 'openrouter', 'generativelanguage.googleapis.com': 'gemini' }[host];
+      if (!provider) return real(url, init, ...rest);
+      const started = performance.now();
+      const entry = { provider, at: new Date().toISOString() };
+      globalThis.__fwBatches.push(entry);
+      try {
+        const res = await real(url, init, ...rest);
+        Object.assign(entry, { status: res.status, ms: Math.round(performance.now() - started) });
+        if (provider === 'anthropic' && res.ok) {
+          res.clone().json().then((d) => { entry.usage = d.usage; entry.model = d.model; entry.stop = d.stop_reason; }).catch(() => {});
+        }
+        return res;
+      } catch (e) {
+        Object.assign(entry, { error: String(e?.name || 'error'), ms: Math.round(performance.now() - started) });
+        throw e;
+      }
+    };
+  });
 
   await ctx.route('https://x.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: html }));
   const page = await ctx.newPage();
@@ -235,6 +286,32 @@ try {
   out.tier = await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'status' }).then((s) => s.config.tier));
   out.popupTier = await popup.$eval('#tierInfo', (e) => e.textContent);
   out.modelCalls = await calls(); // Gemini requests this profile made today
+  // Which models served today's batches, and today's OpenRouter spend: with an OpenRouter key (setup's
+  // --openrouter-key-file), Claude Haiku 5.5 serves first.
+  const served = await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'status' })
+    .then((s) => ({ last: s.lastServed?.model || '', lastProvider: s.lastServed?.provider || '', counts: s.served?.counts || {},
+      openRouterUsd: s.openRouter?.usd || 0, anthropicUsd: s.anthropic?.usd || 0, anthropicBlocked: s.anthropic?.blocked || '',
+      level: s.config?.level, modelError: s.modelStatus?.error || '' })));
+  Object.assign(out, { lastServed: served.last, lastProvider: served.lastProvider, servedCounts: served.counts,
+    openRouterUsd: served.openRouterUsd, anthropicUsd: served.anthropicUsd, anthropicBlocked: served.anthropicBlocked, level: served.level,
+    modelError: served.modelError });
+  out.batches = await sw.evaluate(() => globalThis.__fwBatches || null);
+  out.popupAnthropicInfo = await popup.$eval('#anthropicInfo', (e) => e.textContent);
+  out.popupModel = await popup.$eval('#model', (e) => e.value);
+  out.popupModelOptions = await popup.$$eval('#model option', (os) => os.map((o) => `${o.disabled ? '!' : ''}${o.textContent}`));
+  out.popupNext = await popup.$eval('#nextInfo', (e) => e.textContent);
+  out.popupModelNote = await popup.$eval('#modelNote', (e) => e.textContent);
+  out.popupReasoning = await popup.$eval('#reasoning', (e) => e.value);
+  out.popupReasoningOptions = await popup.$$eval('#reasoning option', (os) => os.map((o) => `${o.disabled ? '!' : ''}${o.textContent}`));
+  out.popupMode = await popup.$eval('#modeInfo', (e) => e.textContent);
+  out.popupVersion = await popup.$eval('h1', (e) => e.textContent);
+  out.popupVersionInfo = await popup.$eval('#versionInfo', (e) => e.textContent);
+  if (process.env.E2E_SCREENSHOT) {
+    await popup.setViewportSize({ width: 300, height: 900 });
+    await popup.screenshot({ path: process.env.E2E_SCREENSHOT, fullPage: true });
+  }
+  const seenFile = join(STATE_DIR, 'extension-seen.json');
+  out.extensionSeen = existsSync(seenFile) ? JSON.parse(readFileSync(seenFile, 'utf8')) : null;
   // Your words: collapsed at first; opened, it lists the synced learning and shaky words.
   const wordList = () => popup.$eval('#wordList', (d) => ({ open: d.open, counts: d.querySelector('[data-counts]').textContent,
     rows: [...d.querySelectorAll('.word')].map((r) => `${r.dataset.status}: ${r.innerText.replace(/\s+/g, ' ')}`) }));

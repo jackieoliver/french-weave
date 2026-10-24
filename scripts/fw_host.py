@@ -3,10 +3,19 @@
 
 Messages (JSON, 4-byte native-endian length prefix, one per line of conversation):
   {"type": "ping"}                      -> {"ok": true, "host": 1}
-  {"type": "state"}                     -> {"ok": true, "version", "stage", "paused", "language", "words": [{fr, en, hint, reading?, status}],
+  {"type": "state", "extension"?: "0.2.9"}
+                                        -> {"ok": true, "version", "stage", "paused", "language", "words": [{fr, en, hint, reading?, status}],
                                             "prefs": {"extension_sites"?: "all" | "ask"} (absent means "all"),
-                                            "geminiKey"?, "geminiBackupKey"?, "openRouterKey"?: keys setup stored}
+                                            "geminiKey"?, "geminiBackupKey"?, "openRouterKey"?, "anthropicKey"?: keys setup stored,
+                                            "channel"?: "dev" when the plugin came from the french-weave-dev marketplace}
   {"type": "events", "events": [{"word", "kind": "seen"|"flip"|"peek", "day"?}]} -> {"ok": true, "applied": n}
+  {"type": "usage", "events": [{"at", "k", ...}], "today"?: true}
+                                        -> {"ok": true, "appended": n, "today"?: {batches, passages, cached, p90Ms, usd}}
+                                           dev build only (app/CHANNEL "dev"); otherwise {"ok": true, "appended": 0,
+                                           "off": true} and nothing is written (fwusage.py, extension/src/usage.js)
+
+"extension" (0.2.9 on) is the version Chrome is running; it is recorded in <state dir>/extension-seen.json as
+{"version", "at"} for `fw.py check`. Extensions before 0.2.9 leave it out, and hosts before 0.2.9 ignore it.
 """
 import json
 from pathlib import Path
@@ -16,9 +25,11 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fwlib  # noqa: E402
+import fwusage  # noqa: E402
 
 MAX_EVENTS = 500
 DAY = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+VERSION = re.compile(r'^[0-9][0-9A-Za-z.+-]{0,39}$')
 
 
 def read_message(stream):
@@ -43,11 +54,15 @@ def handle(message):
     if kind == 'ping':
         return {'ok': True, 'host': 1}
     if kind == 'state':
+        if isinstance(message.get('extension'), str) and VERSION.match(message['extension']):
+            fwlib.record_extension_seen(message['extension'])
         with fwlib.editing() as state:
             pass  # applies today's promotion before answering
         reply = dict(fwlib.public_state(state), ok=True, prefs=state.get('prefs') or {})
+        if fwlib.installed_channel():
+            reply['channel'] = fwlib.installed_channel()
         for name, field in (('gemini_key', 'geminiKey'), ('gemini_backup_key', 'geminiBackupKey'),
-                            ('openrouter_key', 'openRouterKey')):
+                            ('openrouter_key', 'openRouterKey'), ('anthropic_key', 'anthropicKey')):
             key = fwlib.home() / name
             if key.exists():
                 reply[field] = key.read_text().strip()
@@ -68,6 +83,16 @@ def handle(message):
                 if isinstance(event.get('word'), str) and fwlib.apply_event(state, event['word'], event['kind'], day):
                     applied += 1
         return {'ok': True, 'applied': applied}
+    if kind == 'usage':
+        if fwlib.installed_channel() != 'dev':
+            return {'ok': True, 'appended': 0, 'off': True}
+        events = message.get('events')
+        if not isinstance(events, list):
+            return {'ok': False, 'error': 'events must be a list'}
+        reply = {'ok': True, 'appended': fwusage.append(events)}
+        if message.get('today') is True:
+            reply['today'] = fwusage.today_numbers()
+        return reply
     return {'ok': False, 'error': 'unknown message type'}
 
 

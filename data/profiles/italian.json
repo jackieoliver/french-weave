@@ -72,8 +72,8 @@
     ]
   },
   "sense_notes": {
-    "brief": "per never after ask, wait, look or pay, or for a span still going on; quindi only for therefore, the intensifier so is così; ecco for here's, qui only for a place; a filler well is beh or allora, bene only for fine or done properly; anche only for as well, too meaning excessively is troppo; come only for how or like in a comparison, never the verb like; prima, dopo and durante only alone or before a noun; tutto is everything, tutti everyone; cosa only for what in a question; e is and, è is is, so keep the accents",
-    "export": "per never follows ask, wait, look or pay (chiedere, aspettare, cercare and pagare take none), and never marks a span still going on (\"for years\" is da anni); quindi only for \"so\" meaning therefore, while \"so\" as an intensifier is così and \"so far\" is finora; \"here's\" or \"here is\" introducing something is ecco, never qui (qui is a place); a filler \"well\" is beh or allora, never bene; anche is \"too\" only as \"as well\", and \"too\" meaning excessively is troppo; come is \"how\" or \"like\" in a comparison, never the verb \"like\" (mi piace); prima, dopo and durante only alone or before a noun, never before a clause; tutto is everything, tutti is everyone; cosa only for \"what\" in a question; accents change the word: e is \"and\", è is \"is\", si is \"oneself\", sì is \"yes\"",
+    "brief": "per never after ask, wait, look or pay, or for a span still going on; quindi only for therefore, the intensifier so is così; ecco for here's, qui only for a place; a filler well is beh or allora, bene only for fine or done properly; anche only for as well, too meaning excessively is troppo; come only for how or like in a comparison, never the verb like; prima, dopo and durante only alone or before a noun; tutto is everything, tutti everyone; cosa only for what in a question; chi and quale only ask too, and a relative who or which is che; è never for the is of is + -ing, which is sta; e is and, è is is, so keep the accents",
+    "export": "per never follows ask, wait, look or pay (chiedere, aspettare, cercare and pagare take none), and never marks a span still going on (\"for years\" is da anni); quindi only for \"so\" meaning therefore, while \"so\" as an intensifier is così and \"so far\" is finora; \"here's\" or \"here is\" introducing something is ecco, never qui (qui is a place); a filler \"well\" is beh or allora, never bene; anche is \"too\" only as \"as well\", and \"too\" meaning excessively is troppo; come is \"how\" or \"like\" in a comparison, never the verb \"like\" (mi piace); prima, dopo and durante only alone or before a noun, never before a clause; tutto is everything, tutti is everyone; cosa only for \"what\" in a question, and chi and quale only ask too: a relative \"who\" or \"which\" is che, and \"what\" meaning \"the thing that\" is quello che; è is never the \"is\" of \"is improving\" (that is sta); accents change the word: e is \"and\", è is \"is\", si is \"oneself\", sì is \"yes\"",
     "export_short": "per not after ask/wait or for durations; ecco = here's; e = and, è = is"
   },
   "drift_words": [
@@ -283,7 +283,7 @@
       "and",
       "e"
     ],
-    "sense_note": "\"so\" meaning therefore -> quindi; \"so\" as an intensifier, as in \"so slow\", is NOT quindi; \"here's\" or \"here is\" introducing something is ecco, NOT qui; \"well\" as a filler is NOT bene; \"too\" meaning excessively is NOT anche; e is \"and\" and è is \"is\": keep the accent",
+    "sense_note": "\"so\" meaning therefore -> quindi; \"so\" as an intensifier, as in \"so slow\", is NOT quindi; \"here's\" or \"here is\" introducing something is ecco, NOT qui; \"well\" as a filler is NOT bene; \"too\" meaning excessively is NOT anche; e is \"and\" and è is \"is\": keep the accent; \"is\" or \"it's\" before an -ing verb, as in \"is improving\", is sta, NOT è; a relative \"who\", \"which\" or \"what\", as in \"people who\", \"the tool which runs\" or \"some of what they said\", is che or quello che, NOT chi, quale or cosa (those only ask)",
     "adjective_example": [
       "a new feature",
       "a nuovo feature"
@@ -294,6 +294,16 @@
         "here's",
         "here is"
       ]
-    }
+    },
+    "contexts": {
+      "è": [
+        "[*] *ly|not|still|also|now|just|already|always|never|even? +ing"
+      ]
+    },
+    "question_words": [
+      "chi",
+      "quale",
+      "cosa"
+    ]
   }
 }

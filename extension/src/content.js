@@ -6,6 +6,8 @@ import { hashKey } from './hash.js';
 import { siteEnabled, hasSiteAccess } from './settings.js';
 import { selector, readable } from './page.js';
 import { voiceFor } from './speech.js';
+import * as usage from './usage-page.js';
+import { pickBatch } from './pick.js';
 
 let config = null;
 let observer = null;
@@ -22,6 +24,10 @@ const visibleWords = new Set();
 const seen = new Set();
 const failures = new Map(); // text key -> failed model attempts; retried with backoff
 const MAX_RETRIES = 3;
+// Batches this page has out at once. The rest wait here rather than in the worker's queue, so each new batch is made
+// of the passages on screen or nearest to it at that moment (pick.js), not of ones that scrolled away meanwhile.
+const MAX_BATCHES_OUT = 2;
+let batchesOut = 0;
 // Live text (countdowns, tickers, "updated 5s ago") would cost a model call per change, and a page that undoes
 // swaps would be repainted forever. Such an element stays English until the next page view.
 const CHURN = { asks: 3, paints: 6 }; // new texts needing a model call / repaints, per element per window
@@ -48,7 +54,7 @@ function orphan() {
   observer?.disconnect(); observer = null;
   near?.disconnect(); visible?.disconnect();
   clearTimeout(timer); timer = null; clearInterval(navTimer); hideTip();
-  pending.clear(); inflight.clear();
+  pending.clear(); inflight.clear(); batchesOut = 0;
 }
 const send = (msg) => {
   if (!alive()) { orphan(); return Promise.reject(new Error('French Weave was reloaded')); }
@@ -250,15 +256,18 @@ function consider(el) {
 }
 async function flush() {
   timer = null;
-  if (!on()) return;
+  if (!on() || batchesOut >= MAX_BATCHES_OUT) return; // the reply to one out schedules the next
   const gen = generation;
-  const items = [...pending].filter(([key]) => !inflight.has(key)).slice(0, 8).map(([key, p]) => ({ key, text: p.text }));
+  const items = pickBatch(pending, inflight, (el) => keys.get(el), window.innerHeight || document.documentElement.clientHeight || 0);
   if (!items.length) return;
   for (const i of items) inflight.add(i.key);
+  batchesOut++;
   let result;
   try { result = await send({ type: 'swaps', revision: config.revision, items, title: document.title }); }
   catch { result = { error: 'Extension unavailable' }; }
-  if (gen !== generation || !on()) return;
+  if (gen !== generation) return; // stop() reset the count
+  batchesOut--;
+  if (!on()) return;
   for (const i of items) {
     inflight.delete(i.key);
     const p = pending.get(i.key);
@@ -268,6 +277,7 @@ async function flush() {
       // A failed model call (usually the free tier's rate limit) is retried instead of leaving the passage English.
       const tries = (failures.get(i.key) || 0) + 1;
       failures.set(i.key, tries);
+      usage.retry(tries, MAX_RETRIES, result);
       if (p && tries <= MAX_RETRIES) {
         const wait = Math.max(result?.retryAfterMs || 0, 5000 * tries);
         setTimeout(() => { if (gen === generation) for (const el of p.els) if (keys.get(el) === i.key) { keys.delete(el); consider(el); } }, wait);
@@ -306,6 +316,7 @@ function mutations(records) {
   }
   observer?.takeRecords();
   for (const el of tracked) if (!el.isConnected) { tracked.delete(el); near.unobserve(el); }
+  usage.unmounted(pending);
   for (const span of visibleWords) if (!span.isConnected) { visibleWords.delete(span); visible.unobserve(span); }
 }
 function start() {
@@ -326,11 +337,13 @@ function start() {
   track(document.documentElement);
 }
 function stop() {
+  usage.cancelled(inflight.size, pending.size - inflight.size);
   generation++;
   observer?.disconnect(); observer = null;
   near?.disconnect(); visible?.disconnect();
   clearTimeout(timer); timer = null;
   pending.clear(); inflight.clear(); memo.clear(); failures.clear(); hideTip();
+  batchesOut = 0;
   churn = new WeakMap();
   for (const el of tracked) { revert(el); keys.delete(el); }
   tracked.clear(); visibleWords.clear();
@@ -400,4 +413,5 @@ let page = location.href;
 const navTimer = setInterval(() => {
   if (page !== location.href) { page = location.href; if (config) update(config, true); }
 }, 1000);
-void send({ type: 'config' }).then(update).catch(() => {});
+usage.init(() => config, send);
+void send({ type: 'config', load: true }).then(update).catch(() => {});

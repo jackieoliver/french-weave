@@ -44,17 +44,20 @@ export async function readCached(storage) {
 
 // Asks the host for the word state and stores it. Never throws: a missing host leaves the cached (or bundled)
 // list in place and reports the reason. The keys the plugin's setup stored come along, kept separately.
-export async function refresh({ storage, send, now = () => Date.now() }) {
+// version: the extension's running version, which the host records for `fw.py check` (hosts before 0.2.9 ignore it).
+export async function refresh({ storage, send, now = () => Date.now(), version = '' }) {
   const cached = await readCached(storage);
   try {
-    const reply = await send({ type: 'state' });
+    const reply = await send(version ? { type: 'state', extension: version } : { type: 'state' });
     if (!reply?.ok) throw new Error(reply?.error || 'no reply from the French Weave host');
     const state = parseState(reply);
     const changed = !cached || cached.version !== state.version;
     const stored = { ...state, fetchedAt: now() };
     const text = (v) => (typeof v === 'string' ? v : '');
     await storage.set({ [STATE_KEY]: stored, hostKey: text(reply.geminiKey), hostBackupKey: text(reply.geminiBackupKey),
-      hostOpenRouterKey: text(reply.openRouterKey) });
+      hostOpenRouterKey: text(reply.openRouterKey), hostAnthropicKey: text(reply.anthropicKey),
+      // 'dev' when the plugin came from the french-weave-dev marketplace (fw_host.py), for the popup's header.
+      hostChannel: /^[a-z]{1,12}$/.test(text(reply.channel)) ? reply.channel : '' });
     return { state: stored, changed, error: null };
   } catch (e) {
     return { state: cached, changed: false, error: String(e?.message || e) };

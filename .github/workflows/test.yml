@@ -1,71 +1,84 @@
 name: test
 
+# Actions minutes on private repos are limited, so this file keeps the per-change cost low:
+# - Feature-branch pushes do not run (branches are pushed often); a branch is tested once it has a pull request, and
+#   main is tested on every push.
+# - Every Ubuntu check runs in one job: each job bills at least a whole minute, and these checks take seconds.
+# - macOS bills at 10x on private repos. The public release repo (free minutes) runs it on every push and pull
+#   request; a private copy runs it weekly and on demand (Actions tab > test > Run workflow).
 on:
   push:
+    branches: [main]
+    paths-ignore: ['README.md', 'INSTALL-FOR-AGENTS.md', 'LICENSE']
   pull_request:
+    paths-ignore: ['README.md', 'INSTALL-FOR-AGENTS.md', 'LICENSE']
+  schedule:
+    - cron: '23 9 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  python:
-    name: Python ${{ matrix.python }} on ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        python: ['3.9', '3.12']
-    runs-on: ${{ matrix.os }}
+  checks:
+    name: Ubuntu checks
+    if: github.event_name != 'schedule'
+    # Pinned: ubuntu-latest becomes Ubuntu 26.04 on 2026-10-19, and setup-python has no Python 3.9 build for it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0  # the version check needs the base commit
           persist-credentials: false
       - uses: actions/setup-python@v5
+        id: py39
         with:
-          python-version: ${{ matrix.python }}
-      - name: Unit and regression tests
-        run: python -m unittest discover -s tests -v
-      - name: Ready-made blocks are current and fit
-        run: python scripts/make_blocks.py --check
-
-  extension:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: extension
-    steps:
-      - uses: actions/checkout@v4
+          python-version: '3.9'
+      - uses: actions/setup-python@v5
+        id: py312
         with:
-          persist-credentials: false
+          python-version: '3.12'
       - uses: oven-sh/setup-bun@v2
-      - name: Install
+
+      # Each check runs even when an earlier one failed, so one run reports every failure.
+      - name: Python 3.9 unit and regression tests
+        run: '"${{ steps.py39.outputs.python-path }}" -m unittest discover -s tests -v'
+      - name: Python 3.12 unit and regression tests
+        if: ${{ !cancelled() }}
+        run: '"${{ steps.py312.outputs.python-path }}" -m unittest discover -s tests -v'
+      - name: Ready-made blocks are current and fit (3.9)
+        if: ${{ !cancelled() }}
+        run: '"${{ steps.py39.outputs.python-path }}" scripts/make_blocks.py --check'
+      - name: Ready-made blocks are current and fit (3.12)
+        if: ${{ !cancelled() }}
+        run: '"${{ steps.py312.outputs.python-path }}" scripts/make_blocks.py --check'
+
+      - name: Extension install
+        if: ${{ !cancelled() }}
+        working-directory: extension
         run: |
           if [ -f bun.lock ] || [ -f bun.lockb ]; then
             bun install --frozen-lockfile
           else
             bun install
           fi
-      - name: Test
+      - name: Extension tests
+        if: ${{ !cancelled() }}
+        working-directory: extension
         run: bun test
 
-  version:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # the base commit must be in the clone
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
       # Versions must agree everywhere and never go down. A pull request, or a push to main, that changes a file the
       # plugin ships without bumping .claude-plugin/plugin.json gets a warning, not a failure: features land under the
       # old version and the release PR bumps it once (`claude plugin update` only delivers when that version changes).
       - name: Versions agree, and unreleased shipped changes are flagged
+        if: ${{ !cancelled() }}
         env:
+          PYTHON: ${{ steps.py312.outputs.python-path }}
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
@@ -78,7 +91,31 @@ jobs:
             base="$BEFORE"
           fi
           if [ -n "$base" ]; then
-            python tests/check_version_bump.py --base "$base" --head HEAD
+            "$PYTHON" tests/check_version_bump.py --base "$base" --head HEAD
           else
-            python tests/check_version_bump.py --head HEAD
+            "$PYTHON" tests/check_version_bump.py --head HEAD
           fi
+
+  macos:
+    name: Python ${{ matrix.python }} on macOS
+    if: >-
+      github.repository == 'jackieoliver/french-weave'
+      || github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.9', '3.12']
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit and regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Ready-made blocks are current and fit
+        run: python scripts/make_blocks.py --check
