@@ -189,6 +189,8 @@ open, or right away when you open its toolbar popup, which says "Updating to Xâ€
 time you open it, it says "Updated to X" (the reload arrow on French Weave in `chrome://extensions` also works). `python3 ~/.french-weave/app/scripts/fw.py check` shows the version Chrome last reported running and
 when, and warns if it differs from the copy on disk.
 Keep Developer mode on in `chrome://extensions`: with it off, Chrome turns the extension off when it reloads.
+In Firefox, click **Reload** on French Weave in `about:debugging#/runtime/this-firefox` to pick up a new version
+(a restart drops the temporary add-on anyway; load it again).
 Auto-update is a switch in `/plugin` (Marketplaces, french-weave); setup leaves it alone if you've set it, or with
 `--no-auto-update`.
 

@@ -36,7 +36,8 @@ above:
 - question 1: `--known-top 0`, `--known-top 40` or `--known-top 150`
 - Codex CLI picked: `--codex`
 - Browser extension picked: `--sites all` or `--sites ask` (leave `--sites` out if they skipped question 3, so a
-  rerun keeps their earlier choice), `--browser firefox` if they picked a Firefox option, and
+  rerun keeps their earlier choice), `--browser chrome` or `--browser firefox` to match (likewise left out if
+  skipped), and
   `--gemini-key-file <path>` if they gave a file (likewise `--backup-key-file`, `--anthropic-key-file` and
   `--openrouter-key-file` for a backup Gemini key, a paid Anthropic key and a paid OpenRouter key; with an Anthropic
   key, Claude Haiku 5.5 goes direct to Anthropic first at every level)

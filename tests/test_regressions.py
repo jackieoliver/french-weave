@@ -253,15 +253,22 @@ class Cli(Home):
         self.assertIn('Firefox asks once; until then it runs only on x.com', out)
         self.assertIn(f'ok   native host manifest {path}', self.fw_output_on_exit('check'))
         self.assertIn(str(path), out)  # named on the native host line
-        self.assertIn(str(path), self.fw('setup'))  # a rerun without --browser keeps it registered
+        self.assertIn(str(path), self.fw('setup'))  # a rerun without --browser keeps the choice
         self.assertIn('removed ' + str(path), self.fw('uninstall'))
         self.assertFalse(path.exists())
+        self.assertIn(f'FAIL native host manifest {path}', self.fw_output_on_exit('check'))  # chose Firefox, gone
+        self.fw('setup', '--browser', 'chrome')  # switching back unregisters Firefox
+        self.assertFalse(path.exists())
+        self.assertNotIn(str(path), self.fw_output_on_exit('check'))
 
     # A Firefox add-on ID is only a name: the host (which hands out stored keys) trusts it only for Firefox users.
     def test_firefox_host_manifest_only_when_picked(self):
+        stale = self.home / 'Library/Application Support/Mozilla/NativeMessagingHosts' if sys.platform == 'darwin' \
+            else self.home / '.mozilla/native-messaging-hosts'
+        stale.mkdir(parents=True)
+        (stale / f'{fw.HOST_NAME}.json').write_text('{}')  # left over, or planted: a manifest's presence is no choice
         self.fw('setup')
-        with mock.patch.object(Path, 'home', return_value=self.home):
-            self.assertFalse(fw.firefox_registered())
+        self.assertFalse((stale / f'{fw.HOST_NAME}.json').exists())
 
     def fw_output_on_exit(self, *argv):
         """stdout of an fw.py command that exits non-zero (check fails on parts this test doesn't set up)."""

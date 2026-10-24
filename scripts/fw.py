@@ -2,9 +2,10 @@
 """French Weave command line: setup, status, word and stage changes. Python 3.9+, standard library only.
 
   fw.py setup [--gemini-key-file FILE] [--user-data-dir DIR]... [--known-top N] [--sites all|ask] [--dry-run]
-              [--browser chrome|firefox]             install the state dir, extension copy and native host (for
-                                                     Chrome, Chromium and Firefox); --browser picks which
-                                                     browser's steps to print at the end (default chrome);
+              [--browser chrome|firefox]             install the state dir, extension copy and native host;
+                                                     --browser: the extension runs in Chrome (the host is
+                                                     registered for Chrome and Chromium) or Firefox (for those
+                                                     and Firefox too); left out, an earlier choice stays;
                                                      --user-data-dir also registers the host for a browser run
                                                      with that --user-data-dir (Chromium looks there);
                                                      --known-top marks the top N lexicon words known unless
@@ -80,15 +81,15 @@ def firefox_host_dirs():
     return [home / '.mozilla' / 'native-messaging-hosts']
 
 
-def firefox_registered():
-    return any((d / f'{HOST_NAME}.json').exists() for d in firefox_host_dirs())
+def chosen_browser(state):
+    """The browser setup was last told the extension runs in ('chrome' unless --browser firefox was given)."""
+    return ((state or {}).get('prefs') or {}).get('extension_browser', 'chrome')
 
 
-def host_targets(extra=(), firefox=None):
+def host_targets(extra=(), firefox=False):
     """(host manifest path, the field naming who may call the host) for every browser setup registers. Firefox only
-    when asked for or already registered (None): unlike Chrome's key-derived ID, a Firefox add-on ID is just a name
-    any add-on can declare, so the host that hands out the stored keys trusts it only where the person uses Firefox."""
-    firefox = firefox_registered() if firefox is None else firefox
+    when the person chose it: unlike Chrome's key-derived ID, a Firefox add-on ID is just a name any add-on can
+    declare, so the host that hands out the stored keys trusts it only where the person uses Firefox."""
     return ([(d / f'{HOST_NAME}.json', CHROME_CALLERS) for d in host_dirs(extra)]
             + ([(d / f'{HOST_NAME}.json', FIREFOX_CALLERS) for d in firefox_host_dirs()] if firefox else []))
 
@@ -381,8 +382,13 @@ def setup(args):
     launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{home / "app" / "scripts" / "fw_host.py"}" "$@"\n')
     launcher.chmod(0o755)
     manifest = {'name': HOST_NAME, 'description': 'French Weave word state', 'path': str(launcher), 'type': 'stdio'}
+    browser = args.browser or chosen_browser(fwlib.load_state(create=False))
+    if browser != 'firefox':  # chose Chrome (now or before): no Firefox add-on may call the host
+        for directory in firefox_host_dirs():
+            if (directory / f'{HOST_NAME}.json').exists():
+                (directory / f'{HOST_NAME}.json').unlink()
     written, unwritable = [], []  # another installer can leave a host folder owned by root (ExpressVPN does, for Firefox)
-    for path, callers in host_targets(args.user_data_dir, firefox=args.browser == 'firefox' or None):
+    for path, callers in host_targets(args.user_data_dir, firefox=browser == 'firefox'):
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(dict(manifest, **callers), indent=1) + '\n')
@@ -403,6 +409,8 @@ def setup(args):
         fwlib.seed_known(state, args.known_top)
         if args.sites:
             state.setdefault('prefs', {})['extension_sites'] = args.sites
+        if args.browser:
+            state.setdefault('prefs', {})['extension_browser'] = args.browser
     if args.codex:
         setup_codex(False)
     updates = None if args.no_auto_update else enable_auto_update(False)
@@ -425,7 +433,7 @@ def setup(args):
         print(f'  updates:     {updates}')
     if narration:
         print(f'  narration:   {narration}')
-    browser = 'Firefox' if args.browser == 'firefox' else 'Chrome'
+    browser = 'Firefox' if browser == 'firefox' else 'Chrome'
     print(f'Human steps left ({browser} blocks scripts from doing these):')
     if browser == 'Firefox':
         print('  1. Open about:debugging#/runtime/this-firefox and click "Load Temporary Add-on...".')
@@ -496,7 +504,7 @@ def check(_args):
     print('{} {}'.format(*extension_running(fwlib.extension_seen(), disk)))
     if fwlib.installed_channel():
         print(f'ok   channel: {fwlib.installed_channel()} build (the popup says so)')
-    for path, callers in host_targets():
+    for path, callers in host_targets(firefox=chosen_browser(state) == 'firefox'):
         manifest = fwlib.read_json(path)
         report(bool(manifest) and all(manifest.get(k) == v for k, v in callers.items()), f'native host manifest {path}')
     launcher = home / 'app' / 'fw-host'
@@ -696,8 +704,8 @@ def main(argv=None):
     p.add_argument('--codex', action='store_true')
     p.add_argument('--known-top', type=int, default=0, metavar='N')
     p.add_argument('--sites', choices=['all', 'ask'])
-    p.add_argument('--browser', choices=['chrome', 'firefox'], default='chrome',
-                   help='whose extension steps to print at the end (the host is registered for both)')
+    p.add_argument('--browser', choices=['chrome', 'firefox'],
+                   help='where the extension runs (default chrome; left out, an earlier choice stays)')
     p.add_argument('--language', metavar='NAME')
     p.add_argument('--lexicon', metavar='FILE')
     p.add_argument('--no-auto-update', action='store_true', help="leave Claude Code's plugin auto-update setting alone")
