@@ -749,6 +749,10 @@ class Setup(Home):
         digest = hashlib.sha256(base64.b64decode(key)).hexdigest()[:32]
         self.assertEqual(''.join(chr(ord('a') + int(c, 16)) for c in digest), fw.EXTENSION_ID)
 
+    def test_firefox_id_matches_manifest(self):
+        gecko = json.loads((ROOT / 'extension' / 'manifest.json').read_text())['browser_specific_settings']['gecko']
+        self.assertEqual(gecko['id'], fw.FIREFOX_ID)
+
 
 SPANISH = 'word,en,hint,scan\ny,and,ee,\npero,but,PEH-roh,\nentonces,so,en-TON-ses,\nahora,now,ah-OH-rah,\nsolo,only,SOH-loh,no\n'
 SPANISH += ''.join(f'palabra{i},word {i},pah-LAH-brah,\n' for i in range(200))
