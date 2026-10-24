@@ -78,10 +78,17 @@ def firefox_host_dirs():
     return [home / '.mozilla' / 'native-messaging-hosts']
 
 
-def host_targets(extra=()):
-    """(host manifest path, the field naming who may call the host) for every browser setup registers."""
+def firefox_registered():
+    return any((d / f'{HOST_NAME}.json').exists() for d in firefox_host_dirs())
+
+
+def host_targets(extra=(), firefox=None):
+    """(host manifest path, the field naming who may call the host) for every browser setup registers. Firefox only
+    when asked for or already registered (None): unlike Chrome's key-derived ID, a Firefox add-on ID is just a name
+    any add-on can declare, so the host that hands out the stored keys trusts it only where the person uses Firefox."""
+    firefox = firefox_registered() if firefox is None else firefox
     return ([(d / f'{HOST_NAME}.json', CHROME_CALLERS) for d in host_dirs(extra)]
-            + [(d / f'{HOST_NAME}.json', FIREFOX_CALLERS) for d in firefox_host_dirs()])
+            + ([(d / f'{HOST_NAME}.json', FIREFOX_CALLERS) for d in firefox_host_dirs()] if firefox else []))
 
 
 def plan(extra=()):
@@ -98,7 +105,16 @@ def plan(extra=()):
         'extension_id': EXTENSION_ID,
         'firefox_extension_id': FIREFOX_ID,
         'codex_cli': shutil.which('codex'),
+        'firefox': firefox_app(),
     }
+
+
+def firefox_app():
+    """Where Firefox is installed, or None (setup only offers the Firefox extension steps when it is)."""
+    if sys.platform == 'darwin':
+        found = [p for p in (Path('/Applications/Firefox.app'), Path.home() / 'Applications' / 'Firefox.app') if p.exists()]
+        return str(found[0]) if found else None
+    return shutil.which('firefox')
 
 
 CODEX_MARK = 'french-weave'  # our Codex hook command always contains this (the state dir path)
@@ -363,11 +379,12 @@ def setup(args):
     launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{home / "app" / "scripts" / "fw_host.py"}" "$@"\n')
     launcher.chmod(0o755)
     manifest = {'name': HOST_NAME, 'description': 'French Weave word state', 'path': str(launcher), 'type': 'stdio'}
-    unwritable = []  # another installer can leave a host folder owned by root (ExpressVPN does, for Firefox)
-    for path, callers in host_targets(args.user_data_dir):
+    written, unwritable = [], []  # another installer can leave a host folder owned by root (ExpressVPN does, for Firefox)
+    for path, callers in host_targets(args.user_data_dir, firefox=args.browser == 'firefox' or None):
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(dict(manifest, **callers), indent=1) + '\n')
+            written.append(path)
         except PermissionError:
             unwritable.append(path)
     for opt, value in keys.items():
@@ -394,7 +411,7 @@ def setup(args):
           f'{sum(w["status"] == "active" for w in state["words"])} learning words)')
     sites = (state.get('prefs') or {}).get('extension_sites', 'all')
     print(f'  extension:   {"every site; turn any off from the toolbar" if sites == "all" else "only sites you turn on"}')
-    print(f'  native host: {", ".join(p for p in info["host_manifests"] if Path(p) not in unwritable)}')
+    print(f'  native host: {", ".join(map(str, written))}')
     for path in unwritable:
         print(f'  WARNING:     no permission to write {path}; that browser won\'t see your words. Another installer made')
         print(f'               the folder as root. Fix: sudo chown -R "$USER" "{path.parent}", then run setup again.')
@@ -517,7 +534,7 @@ def uninstall(args):
             if not args.dry_run:
                 data['hooks']['UserPromptSubmit'] = kept
                 fwlib.write_json(path, data)
-    for path, _ in host_targets():
+    for path, _ in host_targets(firefox=True):
         directory = path.parent
         if path.exists():
             print(('would remove ' if args.dry_run else 'removed ') + str(path))

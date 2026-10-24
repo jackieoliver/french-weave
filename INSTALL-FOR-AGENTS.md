@@ -19,11 +19,13 @@ human steps and the numbered questions as one chat message. Anyone who skips a q
 Human steps (send as written):
 
 > Setting up French Weave. A few quick questions below; I'll do the rest, except these steps for you:
-> 1. If you pick the Chrome extension: at the end, open `chrome://extensions`, switch on **Developer mode**, click
->    **Load unpacked**, and pick the folder I give you, then click the French Weave toolbar icon and **Allow all
->    websites** (or, on each site you want, tick the box next to the site's name). Chrome doesn't let scripts do this
->    part.
-> 2. If you pick the Chrome extension, optional: a Gemini API key (free at https://aistudio.google.com/apikey), as a
+> 1. If you pick the browser extension: at the end, in Chrome open `chrome://extensions`, switch on **Developer
+>    mode**, click **Load unpacked**, and pick the folder I give you (in Firefox, open
+>    `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on...** and pick the `manifest.json` in it,
+>    again after each Firefox restart until a signed build is out), then click the French Weave toolbar icon and
+>    **Allow all websites** (or, on each site you want, tick the box next to the site's name). Browsers don't let
+>    scripts do this part.
+> 2. If you pick the browser extension, optional: a Gemini API key (free at https://aistudio.google.com/apikey), as a
 >    file path now or pasted into the extension's popup at the end or later. With a free key, Google may use the page
 >    text it's sent to improve its products; a paid key (billing on) avoids that. Without a key the extension swaps
 >    only a few fixed words (and, but, with, because...) and sends no page text anywhere.
@@ -39,12 +41,15 @@ Questions:
 2. Where should French show up? (pick any)
    - Claude Code (always on with the plugin)
    - Codex CLI (default when installed; only offered if `codex --version` works)
-   - The Chrome extension on websites (default)
+   - The browser extension on websites (default)
    - A claude.ai / ChatGPT preferences block to paste
-3. If you picked the Chrome extension, which websites?
-   - Every site; turn any off from the toolbar (default)
-   - Only sites I turn on
-4. If you picked the Chrome extension, your Gemini API key:
+3. If you picked the browser extension, which browser and which websites? (Leave the Firefox options out if
+   Firefox isn't installed: `firefox` is null in `fw.py setup --dry-run`.)
+   - Chrome, every site; turn any off from the toolbar (default)
+   - Chrome, only sites I turn on
+   - Firefox, every site (a temporary add-on until a signed build is out: load it again after each restart)
+   - Firefox, only sites I turn on
+4. If you picked the browser extension, your Gemini API key:
    - Paste it into the extension's popup at the end (default)
    - A file that contains it: type its path (in Claude Code, as your own answer under "Type something"). Never paste the key itself here.
    - No key for now: the extension swaps only a few fixed words until one is pasted into its popup
@@ -60,9 +65,10 @@ How the answers map to setup (step 3) and the hand-over (step 5):
 | --- | --- |
 | 1. None / a few basic words / simple French | `--known-top 0` / `--known-top 40` / `--known-top 150` |
 | 2. Codex CLI | `--codex` |
-| 2. Chrome extension | pass answers 3 and 4; give the Chrome steps at the end |
+| 2. Browser extension | pass answers 3 and 4; give the browser steps at the end |
 | 2. Preferences block | run `export` at the end |
 | 3. Every site / only sites I turn on | `--sites all` / `--sites ask` |
+| 3. A Firefox option | also `--browser firefox` |
 | 4. A file path | `--gemini-key-file <path>` |
 | 4. No key for now | no `--gemini-key-file`; leave out hand-over item 2 |
 
@@ -134,6 +140,12 @@ It always installs the extension folder and native host, even if the person didn
 - Chrome and Chromium native messaging host manifests (user level, no sudo):
   - Linux: `~/.config/google-chrome/NativeMessagingHosts/`, `~/.config/chromium/NativeMessagingHosts/`
   - macOS: `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/`, `.../Chromium/NativeMessagingHosts/`
+- With `--browser firefox` (and on later runs once it's there), the Firefox one too:
+  - Linux: `~/.mozilla/native-messaging-hosts/`
+  - macOS: `~/Library/Application Support/Mozilla/NativeMessagingHosts/`
+
+If setup prints a WARNING that it has no permission to write a host folder (another installer, such as ExpressVPN's,
+can leave the Mozilla one owned by root), give the person its `sudo chown` fix to run, then rerun setup.
 
 ## 4. Verify
 
@@ -155,7 +167,10 @@ Tell the person, in plain English (leave out the items for things they didn't pi
    Weave toolbar icon (puzzle piece menu -> pin it): every-site mode, click **Allow all websites** (Chrome asks
    once; until then it only runs on x.com); only-sites-I-turn-on mode, tick the box next to the site's name on each site
    they want.
-2. Chrome extension, no key file given: click the French Weave toolbar icon (puzzle piece menu -> pin it) and paste
+   Firefox (setup ran with `--browser firefox`): `about:debugging#/runtime/this-firefox` -> **Load Temporary
+   Add-on...** -> the `manifest.json` in that folder, then the same toolbar step. Firefox drops a temporary add-on
+   when it quits, so they load it again after each restart until a signed build is out.
+2. Browser extension, no key file given: click the French Weave toolbar icon (puzzle piece menu -> pin it) and paste
    the Gemini key. Until they do, the extension swaps only a few fixed words, and its popup says "Built-in list, no key".
 3. Codex CLI: at the next `codex` start, choose **Trust all and continue** when it asks about the new hook.
 4. Chat weaving and the `/french-weave:*` commands start in the next Claude Code session they open, or right away

@@ -252,8 +252,16 @@ class Cli(Home):
         self.assertNotIn('chrome://extensions', out)
         self.assertIn('Firefox asks once; until then it runs only on x.com', out)
         self.assertIn(f'ok   native host manifest {path}', self.fw_output_on_exit('check'))
+        self.assertIn(str(path), out)  # named on the native host line
+        self.assertIn(str(path), self.fw('setup'))  # a rerun without --browser keeps it registered
         self.assertIn('removed ' + str(path), self.fw('uninstall'))
         self.assertFalse(path.exists())
+
+    # A Firefox add-on ID is only a name: the host (which hands out stored keys) trusts it only for Firefox users.
+    def test_firefox_host_manifest_only_when_picked(self):
+        self.fw('setup')
+        with mock.patch.object(Path, 'home', return_value=self.home):
+            self.assertFalse(fw.firefox_registered())
 
     def fw_output_on_exit(self, *argv):
         """stdout of an fw.py command that exits non-zero (check fails on parts this test doesn't set up)."""
@@ -273,12 +281,12 @@ class Cli(Home):
         locked.mkdir(parents=True)
         locked.chmod(0o555)
         try:
-            out = self.fw('setup')
+            out = self.fw('setup', '--browser', 'firefox')
         finally:
             locked.chmod(0o755)
         self.assertIn(f'no permission to write {locked / (fw.HOST_NAME + ".json")}', out)
         self.assertIn('sudo chown -R', out)
-        self.assertIn('Load unpacked', out)  # the rest of setup still ran
+        self.assertIn('Load Temporary Add-on', out)  # the rest of setup still ran
 
     def test_chrome_steps_stay_the_default(self):
         out = self.fw('setup')
