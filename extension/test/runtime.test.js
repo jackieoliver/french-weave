@@ -96,6 +96,7 @@ test('runtime: key privacy, native host sync and events, site controls, setup de
     expect(local.hostKey).toBe('synthetic-host');
     config = await dispatch({ type: 'config' }, page());
     expect(JSON.stringify(config)).not.toContain('synthetic-');
+    expect(config.language).toBe('French'); // picks the gloss speaker's voice; no language in the word state means French
     // Setup chose "ask": sites stay off until turned on; an explicit popup choice wins.
     expect(config.settings.newSitesEnabled).toBe(false);
     await call({ type: 'save', settings: { newSitesEnabled: true } });

@@ -190,7 +190,8 @@ async function context() {
   // The word list's version is left out, so a list change keeps cached swaps (cache.js CACHE_MAX_AGE_MS); its
   // language stays in, since swaps in another language are no use.
   const revision = hashKey(JSON.stringify([data.epoch || '', affecting, level, state?.language || '', paused, hasKey, origins]));
-  return { settings, level, revision, hasKey, tier: tierFor(hasKey, state), paused, origins, stage: state?.stage || 0, ...(await usage.flag()) };
+  return { settings, level, revision, hasKey, tier: tierFor(hasKey, state), paused, origins, stage: state?.stage || 0,
+    language: state?.language || 'French', ...(await usage.flag()) }; // the language picks the tip's voice
 }
 
 // The model APIs' own host permissions (manifest) are not sites the reader granted: openrouter.ai is also a website,

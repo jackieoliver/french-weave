@@ -110,6 +110,10 @@ and paste the block it prints. It carries your real progress; re-export about on
   payments, health portals, government sites, Google Docs and Drive, and local or intranet addresses (the list is in
   `extension/src/settings.js`). No list catches every sensitive site, so turn others off in the popup, or choose
   **Only sites I turn on**.
+- The speaker button in a hover gloss says the word with one of your browser's voices, only when you press it. A voice
+  on your computer is used when there is one; online voices, such as Chrome's "Google" voices, send the word to their
+  provider. Google Chrome on Linux has only those (for French, Google français) unless it is started with
+  `--enable-speech-dispatcher` and speech-dispatcher is installed. The button's tooltip says when its voice is online.
 - The extension reads your word list through a Chrome native messaging host that only this extension's ID may call.
   Key files you gave setup are copied to `~/.french-weave/` (`gemini_key`, `gemini_backup_key`, `openrouter_key`,
   `anthropic_key`, mode 600) and handed only to the extension's background worker, never to the pages it runs on.
@@ -274,8 +278,9 @@ phrases in frequency and usefulness order (connectors and adverbs first), each w
 In chat, new words get a one-line gloss with a sound hint at the end of the reply, and every third reply opens
 with a recall question. French never goes into code, files, commits or anything meant to be shared, and the model
 is told to use none for health, medication, legal, money, safety, emergency or driving topics. On web pages, hover
-for the meaning and click to flip a word back to English. The extension's prompts are built for levels 1-2; at
-Stage 3-4 it uses the level 2 rules.
+for the meaning and click to flip a word back to English; the speaker button in the gloss says the word, when your
+browser has a voice for the language. The extension's prompts are built for levels 1-2; at Stage 3-4 it uses the
+level 2 rules.
 
 From 150 known words, the chat instructions and exports name a band ("about the 400 most common French words")
 plus exceptions instead of listing every word, so they stay about 3 KB.

@@ -10,7 +10,13 @@
 // (a few requests), instant hover tip with a peek only after a dwell, click flip, health text untouched, links and
 // forms intact, seen/flip events flushed back to the word state, forged page events ignored, no swaps on webmail,
 // and the article reverting when its site is turned off. Expected for the tip: tipWithoutWait and hoverAfter show the gloss text,
-// peeksAfterQuickPass is 0 and peeksAfterDwell is 1 (on a profile that hasn't peeked at that word today).
+// peeksAfterQuickPass is 0 and peeksAfterDwell is 1 (on a profile that hasn't peeked at that word today). With a voice for
+// the language (on Linux: speech-dispatcher installed, see the launch flag), speaker names the button's tooltip;
+// bridgeKeepsGloss and detourKeepsGloss are true (the pointer reached the button straight up, and round through the
+// page); afterSpeaker shows the word said, still French, the gloss still open and no flip queued; keyboard shows Tab
+// going from the word to its speaker, Shift+Tab back, and Tab on from the word to the next stop; articleSpeaker names
+// the article's button and articleSpeakerKeepsFocus is true (pressing it left focus in the textarea).
+// SCREENSHOTS=<dir> saves the gloss on both pages.
 // With an Anthropic key too (setup's --anthropic-key-file), every level sends each batch to Claude Haiku 5.5 first,
 // direct to Anthropic; with only an OpenRouter key (--openrouter-key-file), through OpenRouter. servedCounts names the
 // model behind each batch, lastProvider the provider of the last, anthropicUsd and openRouterUsd today's spend, and
@@ -31,7 +37,7 @@
 import { chromium } from 'playwright';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 
 const STATE_DIR = process.env.FRENCH_WEAVE_HOME || join(homedir(), '.french-weave');
 const INSTALLED = join(STATE_DIR, 'extension');
@@ -48,7 +54,9 @@ const tweets = [
   ['t4', 'en', 'Went to the doctor about the migraine medication and the symptoms are still there, ugh.'],
   ['t5', 'en', 'Reading <a href="/someone">@someone</a> and their thread about compilers, also very good, check <a href="https://t.co/abc"><span>https://</span>example.com</a> now'],
 ];
-const html = `<!doctype html><html><head><meta charset="utf-8"><title>Home / X</title></head><body><main>${tweets
+// Room above the first post, so its gloss is drawn above the word as on a real timeline; and the rule some sites use
+// to hide custom elements before they load, which must not hide the gloss box or its speaker.
+const html = `<!doctype html><html><head><meta charset="utf-8"><title>Home / X</title><style>:not(:defined) { visibility: hidden }</style></head><body><main style="padding-top:48px">${tweets
   .map(([id, lang, t]) => `<article data-testid="tweet" id="${id}"><div lang="${lang}" dir="auto" data-testid="tweetText"><span>${t}</span></div></article>`)
   .join('\n')}</main></body></html>`;
 
@@ -64,12 +72,15 @@ const article = `<!doctype html><html lang="en"><head><meta charset="utf-8"><tit
 <form><p id="a5">Write your comment here and tell us what you think about the article today.</p><textarea></textarea></form>
 </article></main></body></html>`;
 
+const SHOTS = process.env.SCREENSHOTS;
+if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const userDataDir = process.env.PROFILE || mkdtempSync(join(tmpdir(), 'fw-profile-'));
 const ctx = await chromium.launchPersistentContext(userDataDir, {
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH }
     : { channel: 'chromium' }), // the default headless shell cannot load extensions
   headless: true,
-  args: ['--headless=new', `--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
+  // Chromium on Linux lists no speech voices without --enable-speech-dispatcher (then espeak-ng's); elsewhere a no-op.
+  args: ['--headless=new', '--enable-speech-dispatcher', `--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
 });
 const out = {};
 try {
@@ -144,6 +155,51 @@ try {
     await page.waitForTimeout(1000); // staying on the word counts as one peek
     out.hoverAfter = await page.evaluate(() => document.querySelector('fw-gloss.fw-gloss-on')?.textContent || '');
     out.peeksAfterDwell = (await peeks()).length - peeksBefore;
+    // The speaker says the word: watched from the page, which shares speechSynthesis with the content script.
+    const speaker = page.locator('fw-gloss.fw-gloss-on > fw-say');
+    out.speaker = (await speaker.count()) ? await speaker.getAttribute('title') : null;
+    if (out.speaker) {
+      if (SHOTS) await page.screenshot({ path: join(SHOTS, 'tip-x.png'), clip: { x: 0, y: 0, width: 640, height: 160 } });
+      // Straight up from the start of the word to the button, through the gap: the gloss stays open.
+      const word = await first.boundingBox();
+      const button = await speaker.boundingBox();
+      await page.mouse.move(word.x + 3, word.y + word.height / 2);
+      await page.mouse.move(button.x + button.width / 2, button.y + button.height / 2, { steps: 12 });
+      out.bridgeKeepsGloss = await page.evaluate(() => !!document.querySelector('fw-gloss.fw-gloss-on > fw-say'));
+      // A detour: off the end of the word into the page, then over to the button (a box pushed aside by the window's edge).
+      await page.mouse.move(word.x + word.width - 1, word.y + word.height / 2);
+      await page.mouse.move(word.x + word.width + 30, word.y - 2, { steps: 4 });
+      await page.mouse.move(button.x + button.width / 2, button.y + button.height / 2, { steps: 6 });
+      out.detourKeepsGloss = await page.evaluate(() => !!document.querySelector('fw-gloss.fw-gloss-on > fw-say'));
+      await page.evaluate(() => {
+        window.fwSpoke = false;
+        const t = setInterval(() => { if (speechSynthesis.speaking || speechSynthesis.pending) { window.fwSpoke = true; clearInterval(t); } }, 5);
+        setTimeout(() => clearInterval(t), 3000);
+      });
+      await speaker.click();
+      await page.waitForTimeout(1500);
+      if (SHOTS) await page.screenshot({ path: join(SHOTS, 'tip-x-speaker-hover.png'), clip: { x: 0, y: 0, width: 640, height: 160 } });
+      out.afterSpeaker = await first.evaluate((e) => ({ spoke: window.fwSpoke, french: e.firstChild?.data === e.dataset.fr && !e.classList.contains('fw-en'),
+        tipOpen: !!document.querySelector('fw-gloss.fw-gloss-on > fw-say') }));
+      out.afterSpeaker.flipsQueued = await sw.evaluate(() => chrome.storage.local.get('pendingEvents').then((o) => (o.pendingEvents || []).filter((x) => x.kind === 'flip').length));
+      // Keyboard: Tab from the focused word reaches its speaker, and Tab from there goes on to the stop after the word.
+      await page.mouse.move(0, 0);
+      const focused = () => page.evaluate(() => { const a = document.activeElement; return a?.dataset?.fr || a?.tagName.toLowerCase() || null; });
+      const onSpeaker = () => page.evaluate(() => document.activeElement?.matches('fw-gloss.fw-gloss-on > fw-say') || false);
+      const onFirst = () => page.evaluate(() => document.activeElement === document.querySelector('.fw-word'));
+      await first.focus();
+      out.keyboard = { wordStop: await focused() };
+      await page.keyboard.press('Tab');
+      out.keyboard.onSpeaker = await onSpeaker();
+      await page.keyboard.press('Shift+Tab');
+      out.keyboard.shiftTabBackToWord = await onFirst();
+      await page.keyboard.press('Tab');
+      out.keyboard.onSpeakerAgain = await onSpeaker();
+      await page.keyboard.press('Tab');
+      out.keyboard.next = await focused();
+      out.keyboard.nextIsSecondWord = await page.evaluate(() => [...document.querySelectorAll('.fw-word')].indexOf(document.activeElement) === 1);
+      await page.evaluate(() => document.activeElement?.blur());
+    }
     await first.click();
     out.afterClick = await first.evaluate((e) => ({ text: e.textContent, english: e.classList.contains('fw-en') }));
     await first.click();
@@ -186,6 +242,24 @@ try {
   out.articleHealthTouched = await reading.$$eval('#a3 .fw-word', (els) => els.length);
   out.articleFormTouched = await reading.$$eval('form .fw-word', (els) => els.length);
   out.articleNavIntact = await reading.$eval('nav', (n) => n.textContent);
+  if (out.articleSwaps.length) {
+    await reading.locator('.fw-word').first().hover();
+    out.articleTip = await reading.evaluate(() => document.querySelector('fw-gloss.fw-gloss-on')?.textContent || '');
+    out.articleSpeaker = await reading.evaluate(() => document.querySelector('fw-gloss.fw-gloss-on > fw-say')?.title || null);
+    if (out.articleSpeaker) {
+      // A press on the speaker leaves focus in the comment box being typed in.
+      await reading.focus('form textarea');
+      await reading.locator('.fw-word').first().hover();
+      await reading.locator('fw-gloss.fw-gloss-on > fw-say').click();
+      out.articleSpeakerKeepsFocus = await reading.evaluate(() => document.activeElement?.tagName === 'TEXTAREA');
+    }
+    if (SHOTS) {
+      const word = await reading.locator('.fw-word').first().boundingBox();
+      const y = Math.max(0, Math.round(word.y) - 80);
+      await reading.screenshot({ path: join(SHOTS, 'tip-article.png'), clip: { x: 0, y, width: 800, height: 160 } });
+    }
+    await reading.mouse.move(0, 0);
+  }
 
   // A page whose title names a sensitive topic: without a key, none of its passages get swaps.
   await ctx.route('https://safety.example/**', (route) => route.fulfill({ status: 200, contentType: 'text/html',
