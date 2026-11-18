@@ -48,3 +48,35 @@ SHA-256 in `MODULE.bazel` guards it instead.
 After a reviewed `MODULE.bazel` change, regenerate the lock with
 `nix develop --command bazel mod deps --lockfile_mode=update`, review the
 diff and commit it with the change.
+
+## Unpacked beta gates
+
+On Linux x86-64, build the unpacked ZIP and run the focused language and
+backup regressions with Bazel.
+
+```sh
+nix develop --command bazel build //:beta_zip
+nix develop --command bazel test //:fsrs_test //:package_boundary_test //:version_classifier_test //:extension_release_test
+```
+
+The artifact is `bazel-bin/lang-weave-beta.zip`. Use the version from its
+`manifest.json` in the release asset name `lang-weave-<version>.zip`.
+Tag the exact commit used to build the ZIP so GitHub's source archives on
+the release page correspond to the extension. The ZIP includes `LICENSE`,
+`LICENSE-MIT` and `NOTICE`.
+
+Pass an absolute path to a current Chromium executable to verify that ZIP
+in a fresh disposable profile. Playwright's Chromium is suitable.
+
+```sh
+nix develop --command bazel test //:beta_install_test \
+  --test_env=LANG_WEAVE_CHROMIUM=/absolute/path/to/chromium --test_output=errors
+```
+
+The browser test loads the extracted ZIP as-is and checks first-run setup,
+the interactive local demo, the stable extension ID and per-site consent.
+For a release with bundled Paraguayan Guaraní, add
+`--test_env=LANG_WEAVE_EXPECT_GUARANI=1` to exercise language selection and
+an offline review from the packaged vocabulary.
+It uses no real account or key. The focused Bun target covers language,
+backup and resource-manifest regressions without npm test dependencies.

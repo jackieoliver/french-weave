@@ -8,3 +8,20 @@ filegroup(
     ],
     visibility = ["//:__pkg__"],
 )
+
+filegroup(
+    name = "release_cases",
+    # The Guaraní test is contributed by the separate runtime change.
+    srcs = glob(
+        ["guarani.test.js"],
+        allow_empty = True,
+    ) + [
+        "backup-fixture.js",
+        "language-worker.test.js",
+        "languages.test.js",
+        "portability.test.js",
+        "portability-v2.test.js",
+        "web-accessible.test.js",
+    ],
+    visibility = ["//:__pkg__"],
+)

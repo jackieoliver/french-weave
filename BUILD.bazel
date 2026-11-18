@@ -46,3 +46,72 @@ sh_test(
     tags = ["block-network"],
     visibility = ["//visibility:public"],
 )
+
+genrule(
+    name = "beta_zip",
+    srcs = [
+        "LICENSE",
+        "LICENSE-MIT",
+        "NOTICE",
+        "//extension:payload",
+        "//extension/scripts:packager",
+    ],
+    outs = ["lang-weave-beta.zip"],
+    cmd = """
+        output="$$PWD/$@"
+        staging=$$(mktemp -d)
+        trap 'rm -rf "$$staging"' EXIT
+        cp -L --parents $(SRCS) "$$staging"
+        $(execpath @bun_linux_x64//:bun) "$$staging/extension/scripts/package.mjs" --out "$$staging/out"
+        mv "$$staging"/out/lang-weave-*.zip "$$output"
+    """,
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    tools = ["@bun_linux_x64//:bun"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "extension_release_test",
+    srcs = ["//build_defs:run_extension_release_test.sh"],
+    args = ["$(rlocationpath @bun_linux_x64//:bun)"],
+    data = [
+        "//extension:payload",
+        "//extension/scripts:packager",
+        "//extension/test:release_cases",
+        "@bun_linux_x64//:bun",
+    ],
+    tags = ["block-network"],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+)
+
+sh_test(
+    name = "beta_install_test",
+    srcs = ["//build_defs:run_beta_install_test.sh"],
+    args = [
+        "$(rlocationpath @bun_linux_x64//:bun)",
+        "$(rlocationpath @playwright_core//:index.mjs)",
+    ],
+    data = [
+        ":beta_zip",
+        "//extension:e2e/welcome.mjs",
+        "@bun_linux_x64//:bun",
+        "@playwright_core//:index.mjs",
+        "@playwright_core//:runtime",
+    ],
+    # Requires an explicitly supplied local Chromium executable.
+    tags = [
+        "external",
+        "local",
+        "manual",
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+)

@@ -4,29 +4,38 @@ import assert from 'node:assert/strict';
 import { mkdtemp, cp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const { chromium } = await import(process.env.LANG_WEAVE_PLAYWRIGHT
+  ? pathToFileURL(process.env.LANG_WEAVE_PLAYWRIGHT).href
+  : 'playwright');
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const scratch = await mkdtemp(join(tmpdir(), 'lang-weave-welcome-'));
-const extension = join(scratch, 'extension');
+const suppliedExtension = process.env.LANG_WEAVE_WELCOME_EXTENSION;
+const extension = suppliedExtension || join(scratch, 'extension');
 let context;
 try {
-  await cp(join(root, 'src'), join(extension, 'src'), { recursive: true });
-  await cp(join(root, 'icons'), join(extension, 'icons'), { recursive: true });
-  await cp(join(root, '_locales'), join(extension, '_locales'), { recursive: true }); // default_locale needs it
-  await writeFile(join(extension, 'manifest.json'), await readFile(join(root, 'manifest.json')));
+  if (!suppliedExtension) {
+    await cp(join(root, 'src'), join(extension, 'src'), { recursive: true });
+    await cp(join(root, 'icons'), join(extension, 'icons'), { recursive: true });
+    await cp(join(root, '_locales'), join(extension, '_locales'), { recursive: true }); // default_locale needs it
+    await writeFile(join(extension, 'manifest.json'), await readFile(join(root, 'manifest.json')));
+  }
   const geminiRequests = [];
+  const executablePath = process.env.LANG_WEAVE_CHROMIUM;
   context = await chromium.launchPersistentContext(join(scratch, 'profile'), {
-    channel: 'chromium', headless: true,
+    ...(executablePath ? { executablePath } : { channel: 'chromium' }), headless: true,
+    locale: 'en-US',
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`,
-      '--host-resolver-rules=MAP generativelanguage.googleapis.com ~NOTFOUND'],
+      '--host-resolver-rules=MAP * ~NOTFOUND', '--proxy-server=http://127.0.0.1:9'],
   });
   context.on('request', (request) => {
     if (request.url().startsWith('https://generativelanguage.googleapis.com/')) geminiRequests.push(request.url());
   });
   const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   const id = new URL(worker.url()).host;
+  assert.equal(id, 'lkbkmlgogcpcacjmdmoecgacdbfddbnh');
   const welcomeUrl = `chrome-extension://${id}/src/welcome.html`;
   const page = context.pages().find((p) => p.url() === welcomeUrl) ||
     await context.waitForEvent('page', { predicate: (p) => p.url() === welcomeUrl });
@@ -73,6 +82,20 @@ try {
   assert.equal(after.settings.gradual, true); // the site choice merges; it never resets the learning default
   assert.deepEqual(await worker.evaluate(() => chrome.permissions.getAll().then(({ origins }) => origins
     .filter((origin) => origin === '<all_urls>' || origin === 'http://*/*' || origin === 'https://*/*'))), []);
+  if (process.env.LANG_WEAVE_EXPECT_GUARANI === '1') {
+    await options.locator('#language').selectOption({ value: 'gn-PY-x-weave' });
+    await options.locator('#wordInfo').getByText(/Paraguayan Guaraní/).waitFor();
+
+    const review = await context.newPage();
+    await review.goto(`chrome-extension://${id}/src/review.html`);
+    await review.locator('#language').getByText(/Paraguayan Guaraní/).waitFor();
+    await review.locator('#introduce').click();
+    await review.locator('#prompt').getByText('water', { exact: true }).waitFor();
+    await review.locator('#reveal').click();
+    assert.equal(await review.locator('#answer').textContent(), 'y');
+    assert.equal((await worker.evaluate(() => chrome.storage.local.get('apiKey'))).apiKey, undefined);
+    console.log('PASS: selected bundled Paraguayan Guaraní and revealed water → y in offline review.');
+  }
   assert.deepEqual(geminiRequests, []);
   console.log('PASS: fresh install welcome demo, closed-page popup route, pending Settings controls, only-sites consent and no Gemini request.');
 } finally {

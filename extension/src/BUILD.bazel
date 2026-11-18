@@ -5,3 +5,15 @@ filegroup(
     srcs = ["fsrs.js"],
     visibility = ["//:__pkg__"],
 )
+
+filegroup(
+    name = "payload",
+    srcs = glob(
+        ["**"],
+        exclude = [
+            "BUILD",
+            "BUILD.bazel",
+        ],
+    ),
+    visibility = ["//extension:__pkg__"],
+)
