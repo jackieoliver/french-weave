@@ -1,6 +1,6 @@
 module(
     name = "lang_weave",
-    version = "0.12.25",
+    version = "0.12.26",
 )
 
 bazel_dep(name = "rules_shell", version = "0.8.0")

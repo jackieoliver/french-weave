@@ -8,6 +8,7 @@ import { MIN_RETENTION, MAX_RETENTION } from './fsrs.js';
 import { localDay } from './events.js';
 import { DAILY_MODEL_CALLS, callsToday, countCall } from './quota.js';
 import { futureBudgetDay } from './learning.js';
+import { bundledLanguage, GUARANI_STARTER } from './language-name.js';
 import { PACKS_KEY, MAX_PACKS, cleanPacks, generatePack, languageCode, languageName } from './languages.js';
 import { publicContext, laterDay } from './worker-context.js';
 import { personalReview } from './review-state.js';
@@ -126,7 +127,7 @@ export function createSettingsHandlers({ store, cache, locked, modelCall, worker
     await locked(async () => {
       const saved = await store.get(['settings', 'apiKey']);
       if (msg.settings && typeof msg.settings === 'object' && Object.hasOwn(msg.settings, 'language') &&
-          msg.settings.language !== 'es' && languageCode(msg.settings.language) !== msg.settings.language) {
+          !bundledLanguage(msg.settings.language) && languageCode(msg.settings.language) !== msg.settings.language) {
         throw new Error('Invalid language code');
       }
       const merged = { ...saved.settings, ...msg.settings };
@@ -143,8 +144,8 @@ export function createSettingsHandlers({ store, cache, locked, modelCall, worker
         else merged.siteOverrides[msg.siteOverride.host] = msg.siteOverride.enabled;
       }
       const next = cleanSettings(merged);
-      if (next.language !== 'es' && !cleanPacks((await store.get(PACKS_KEY))[PACKS_KEY])[next.language]) {
-        if (msg.settings && Object.hasOwn(msg.settings, 'language')) throw new Error('Choose a generated language pack');
+      if (!bundledLanguage(next.language) && !cleanPacks((await store.get(PACKS_KEY))[PACKS_KEY])[next.language]) {
+        if (msg.settings && Object.hasOwn(msg.settings, 'language')) throw new Error('Choose an available language');
         next.language = 'es';
       }
       // A settings round trip must not revive a result from its earlier revision.
@@ -268,7 +269,8 @@ export function createSettingsHandlers({ store, cache, locked, modelCall, worker
       safeModelStatus(data[STATUS_KEY])?.category === 'local_budget' &&
         await callsToday(chromeStorage) >= DAILY_MODEL_CALLS);
     return { config: publicContext(config), words: config.words.length,
-      languages: [{ code: 'es', name: 'Spanish', experimental: false }, ...Object.keys(cleanPacks(data[PACKS_KEY])).map((code) => ({ code, name: languageName(code), experimental: true }))],
+      languages: ['es', GUARANI_STARTER, ...Object.keys(cleanPacks(data[PACKS_KEY]))].map((code) =>
+        ({ code, name: languageName(code), experimental: !bundledLanguage(code) })),
       pastedKey: !!(data.apiKey || data.settings?.apiKey), consentShown: data.consentShown !== false,
       modelStatus: worker.keyIsolationUnavailable ? { category: 'key_isolation_unavailable' } : modelStatus,
       budgetWarning: laterDay(futureBudgetDay(state.learning, localDay()),

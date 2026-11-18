@@ -378,7 +378,7 @@
     "description": "Settings page: label of the learning-language selector."
   },
   "options_language_hint": {
-    "message": "Spanish is bundled; generated languages are experimental and stored locally.",
+    "message": "Spanish and Paraguayan Guaraní are included. Generated languages are experimental and stored on this device.",
     "description": "Settings page: hint under the language selector."
   },
   "options_remove_language": {

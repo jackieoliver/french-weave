@@ -1,4 +1,4 @@
-// Generated vocabulary is untrusted, profile-local data. Spanish is bundled and never needs generation.
+// Generated vocabulary is untrusted, profile-local data. Bundled catalogs are kept separately.
 import { buildRequest, API_BASE } from './gemini.js';
 import { hashKey } from './hash.js';
 import { languageCode, languageName } from './language-name.js';

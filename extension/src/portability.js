@@ -1,4 +1,6 @@
 // Explicit, bounded learning backup. This module never reads permissions or writes storage.
+import { bundledLanguage, GUARANI_STARTER } from './language-name.js';
+import { GUARANI_PACK } from './guarani.js';
 import { cleanPack, MAX_PACKS } from './languages.js';
 import { MEASUREMENTS_SKIPPED_KEY } from './measurement-skips.js';
 import { cleanPersonal, validForm, validLanguage, MAX_PERSONAL } from './personal.js';
@@ -184,7 +186,7 @@ function packs(value) {
   const result = Object.create(null);
   for (const [code, raw] of Object.entries(map(value, 'packs', MAX_PACKS))) {
     language(code);
-    if (code === 'es') fail('Spanish is bundled');
+    if (bundledLanguage(code)) fail('bundled languages cannot be stored as generated packs');
     keys(raw, ['version', 'words'], 'pack', ['version', 'words']);
     if (!VERSION.test(raw.version)) fail('invalid pack version');
     if (!Array.isArray(raw.words)) fail('invalid pack words');
@@ -206,7 +208,7 @@ function preferences(value, installed, m) {
     ...(m.schema >= 2 ? ['desiredRetention'] : [])],
   'preferences', ['language', 'levelOverride', 'gradual', 'newWordsPerDay', 'density', 'inlineRecall']);
   language(value.language);
-  if (value.language !== 'es' && !Object.hasOwn(installed, value.language)) fail('selected language pack is missing');
+  if (!bundledLanguage(value.language) && !Object.hasOwn(installed, value.language)) fail('selected language pack is missing');
   integer(value.levelOverride, 0, 4, 'level');
   integer(value.newWordsPerDay, 1, 10, 'daily budget');
   if (typeof value.gradual !== 'boolean' || typeof value.inlineRecall !== 'boolean' ||
@@ -379,11 +381,12 @@ function state(value, m) {
   keys(value, ['preferences', 'packs', 'personal', 'scopes', ...(m.schema >= 2 && !m.source ? ['logOmitted'] : [])],
     'state', ['preferences', 'packs', 'personal', 'scopes']);
   const installed = packs(value.packs);
+  const catalogs = { ...installed, [GUARANI_STARTER]: GUARANI_PACK };
   const own = personal(value.personal, m);
   const scopes = Object.create(null);
   for (const [id, raw] of Object.entries(map(value.scopes, 'scopes', MAX_SCOPES))) {
     scopeKey(id);
-    scopes[id] = feedback(raw, id, installed, own, m);
+    scopes[id] = feedback(raw, id, catalogs, own, m);
   }
   return { preferences: preferences(value.preferences, installed, m), packs: installed, personal: own, scopes,
     ...(Object.hasOwn(value, 'logOmitted') ? { logOmitted: logOmitted(value.logOmitted) } : {}) };
@@ -594,7 +597,7 @@ export function validateStorageSettings(settings) {
 export function backupPreview(backup) {
   const { state: s } = backup;
   return { exportedByVersion: backup.exportedByVersion,
-    languages: new Set(['es', ...Object.keys(s.packs), ...s.personal.entries.map((e) => e.language),
+    languages: new Set(['es', s.preferences.language, ...Object.keys(s.packs), ...s.personal.entries.map((e) => e.language),
       ...Object.keys(s.personal.history), ...Object.keys(s.scopes).map((k) => k === 'es' ? 'es' :
         k.startsWith('personal:') ? k.slice(9) : k.split(':')[1])]).size,
     packs: Object.keys(s.packs).length,

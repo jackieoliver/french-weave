@@ -7,7 +7,7 @@ Learn a language through the English you already read. This Chrome extension rep
 
 A browser-focused fork of [French Weave](https://github.com/jackieoliver/french-weave) by Jackie Oliver. Lang Weave is free software under the [GNU AGPL v3 or later](LICENSE). The upstream history and its [MIT license](LICENSE-MIT) are preserved (see [NOTICE](NOTICE)). No terminal plugin, Python setup or native messaging host is required.
 
-This describes version 0.12.25. There is no Chrome Web Store release yet. You load the extension unpacked, as below.
+This describes version 0.12.26. There is no Chrome Web Store release yet. You load the extension unpacked, as below.
 
 ## Install in Chrome
 
@@ -76,7 +76,7 @@ Apart from the key, which authenticates your requests to Google, none of this st
 
 ## Learning
 
-**Reading.** **Reading level** chooses the bundled vocabulary: **Beginner** (30 words) or **Expanded** (226 words, including the Beginner words). These are not CEFR grades. **Translation density** (Light, Normal or Heavy) limits how many words are woven into a passage. A model picks the Spanish word that fits the context. Deterministic validation rejects unlisted words and mismatched glosses, but a model can still make a contextual or grammatical mistake. This is mixed-language reading, not full-sentence translation.
+**Reading.** **Reading level** chooses how much vocabulary is available. Spanish has 30 Beginner words and 226 in Expanded. Paraguayan Guaraní has 9 Beginner words and 14 in Expanded. **Translation density** (Light, Normal or Heavy) limits how many words are woven into a passage. A model picks the target word that fits the context. Deterministic validation rejects unlisted words and mismatched glosses, but a model can still make a contextual or grammatical mistake. This is mixed-language reading, not full-sentence translation.
 
 The gloss appears after a 700 ms pause, so you have a beat to recall the word first. Seeing it counts as a peek, which is weak evidence that you needed the meaning.
 
@@ -87,7 +87,7 @@ The gloss appears after a 700 ms pause, so you have a beat to recall the word fi
 - Across one request, new, due and learning swaps are capped near 2% of the words read, with a minimum of one, whatever the density.
 - A pile of five or more due or weak words pauses new introductions.
 
-**Inline recall** is off by default and needs gradual learning. A due word then shows as English with a dashed underline and a small ?, at most two at a time. Activating one lets you reveal the Spanish and rate your recall without leaving the page.
+**Inline recall** is off by default and needs gradual learning. A due word then shows as English with a dashed underline and a small ?, at most two at a time. Activating one lets you reveal the target word and rate your recall without leaving the page.
 
 **Reviews** need no key and no network. The popup's main button opens the recall page when words are due or available. It shows the English meaning, you say the target word, reveal it, and rate **Again**, **Hard**, **Medium** or **Easy**. Space or Enter reveals, and 1 to 4 rate. With gradual learning on, **Already know** is a claim that counts as verified only after one later check. **Add 5 new words** brings in up to five bundled words from your reading level. Sightings, hints and flips while reading never count as recall.
 
@@ -95,7 +95,9 @@ Reviews are scheduled with FSRS-6 on the actual time since each review, aiming f
 
 **My words** lists every word's stage and next review, with search and a stage filter. Stages are new, learning, maintenance (long-interval reviews: stability of 21 days or more, or a card flagged for maintenance), marked known (your claim), and verified known (recalled after a gap of 21 days or more, within the card's current life). You can practise a word early, mark it known, reset it after a confirmation, or archive a personal entry. **Is this working?** shows measurements from your own reviews on this device, each marked "not enough data yet" until it has enough: next-day recall, retention after three weeks against your target, predicted against actual recall, hard words, meetings while reading, and workload.
 
-**The vocabulary** is a curated starter set, not a certified curriculum or a native-speaker review. Each bundled word also carries a coarse frequency band, which orders new words. The first Expanded addition selects 79 everyday nouns from an upstream AI-drafted list. [Selection, credits and limits](docs/UPSTREAM-CURRICULUM-MISSION.md) are documented. The selection and approximate sound hints lean Latin American. Spanish accents and ñ are preserved, and generated target forms are matched exactly.
+**Spanish vocabulary.** Coarse frequency bands order new words. The first Expanded addition selects 79 everyday nouns from an upstream AI-drafted list. [Selection, credits and limits](docs/UPSTREAM-CURRICULUM-MISSION.md) are documented. The selection and approximate sound hints lean Latin American. Spanish accents and ñ are preserved, and generated target forms are matched exactly.
+
+**Paraguayan Guaraní.** Select the included starter in Settings. My words and Review work without a key. Weaving words into web pages uses your Gemini key and site access settings. For backups, use 0.12.26 or later to restore the starter selection or its progress. [Starter vocabulary and sources](docs/guarani-starter.md)
 
 **Other languages.** In Settings, **Add a language**, enter a code such as `fr` or `ja`, and generate a local experimental pack with Gemini. It needs your key and a chosen site policy, and it counts toward the daily call cap. Quality is not certified. Each pack has its own progress and reviews. **Remove this generated language** frees a slot and deletes that pack's reading and review progress. Personal entries and their history stay under the target language.
 

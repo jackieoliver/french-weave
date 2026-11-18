@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_ext_name__",
-  "version": "0.12.25",
+  "version": "0.12.26",
   "minimum_chrome_version": "140",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA9kpzEBO0l5O99C+1ICkMrSDXc5mIkgo76cXghhyRtE9NekFsoE9tBb2DuQv/fQ4kyNiv1vxLQyY+QS5/jWEzPwxWl8Iq+f8HiJRAkNmBhEzYR9EkXWPN6T6bEdDezcAN+a0vGtLjHRwF5k8sUACWIYzBuzwelSCdX4gAIEXHPWOD4AseDQoXJOpcnk1amEeNhZinzYpVqQ5HtITozvxwpmx9OEFHp3GbsZI7e9WiWvKenE7VPm1+w1F0EtEKaxvO90qa24vYhOg7tyF8Wh7EHO9YSJKB/vfCB18wKLbYMV/QyHBrLzhiRYBWgIGrp/7pjQbJF6RF0FbMNShRzqTCqwIDAQAB",
   "description": "__MSG_ext_description__",

@@ -82,7 +82,7 @@ export const EN = Object.freeze({
   options_intro: "Choose how Lang Weave learns from the sites you allow.",
   options_learning_heading: "Learning",
   options_language_label: "Language",
-  options_language_hint: "Spanish is bundled; generated languages are experimental and stored locally.",
+  options_language_hint: "Spanish and Paraguayan Guaraní are included. Generated languages are experimental and stored on this device.",
   options_remove_language: "Remove this generated language and its local progress",
   options_add_language_summary: "Add a language",
   options_add_language_intro: "Generated vocabulary is experimental. Add your Gemini key below first. Use a language code such as fr or ja.",
