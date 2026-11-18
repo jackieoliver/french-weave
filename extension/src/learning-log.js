@@ -21,6 +21,7 @@
 import { localDay } from './events.js';
 import { validDay } from './learning.js';
 import { validPackForm } from './word-form.js';
+import { GUARANI_STARTER } from './language-name.js';
 
 export const RETRIEVALS_KEY = 'learningRetrievals';
 export const EXPOSURES_KEY = 'learningExposures';
@@ -52,7 +53,8 @@ const has = (allowed, id) => {
 // An ID is either an exact personal UUID or a generated-pack form. The latter's
 // shape is deliberately the same one cleanPack accepts; catalog membership is
 // the privacy guarantee, including for punctuation and fixed phrases.
-const PERSONAL_ID = /^personal:[a-z]{2,3}(?:-[a-z0-9]{2,8})*:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PERSONAL_ID = new RegExp(
+  `^personal:(?:[a-z]{2,3}(?:-[a-z0-9]{2,8})*|${GUARANI_STARTER}):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, 'i');
 export function validWordId(id) {
   if (typeof id !== 'string') return false;
   if (PERSONAL_ID.test(id)) return id.length <= 100;

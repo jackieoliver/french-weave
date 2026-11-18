@@ -1,6 +1,6 @@
 // Preferences, stored under chrome.storage.local["settings"]. The Gemini key is stored apart from these, so
 // the config pages get never carries it.
-import { languageCode } from './language-name.js';
+import { bundledLanguage, languageCode } from './language-name.js';
 import { MIN_RETENTION, MAX_RETENTION } from './fsrs.js';
 export const DEFAULT_SETTINGS = {
   enabled: true,
@@ -31,7 +31,7 @@ export function cleanSettings(s = {}) {
   if (typeof s.newSitesEnabled === 'boolean') d.newSitesEnabled = s.newSitesEnabled;
   if (['gemini-3.8-flash', 'gemini-3.5-flash-lite'].includes(s.model)) d.model = s.model;
   if (Number.isInteger(s.levelOverride) && s.levelOverride >= 0 && s.levelOverride <= 4) d.levelOverride = s.levelOverride;
-  if (typeof s.language === 'string' && (s.language === 'es' || languageCode(s.language) === s.language)) d.language = s.language;
+  if (typeof s.language === 'string' && (bundledLanguage(s.language) || languageCode(s.language) === s.language)) d.language = s.language;
   // FSRS desired retention. Kept only when explicitly set, never defaulted into storage, so a
   // build that predates the setting can still read these settings; absent means 0.9.
   if (typeof s.desiredRetention === 'number' && s.desiredRetention >= MIN_RETENTION &&

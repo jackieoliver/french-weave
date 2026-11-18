@@ -1,7 +1,7 @@
 import { exactTarget } from './levels.js';
 import { englishAnchors } from './catalog.js';
 import { cleanReview } from './review.js';
-import { languageCode } from './language-name.js';
+import { bundledLanguage, languageCode } from './language-name.js';
 
 export const PERSONAL_KEY = 'personalVocabularyV1';
 export const MAX_PERSONAL = 300;
@@ -25,7 +25,7 @@ export function validForm(value, { selection = false } = {}) {
 }
 
 export function validLanguage(code) {
-  return code === 'es' ? 'es' : languageCode(code);
+  return bundledLanguage(code) ? code : languageCode(code);
 }
 
 const normal = (s, language) => s.normalize('NFC').toLocaleLowerCase(language).replace(/\s+/gu, ' ').trim();

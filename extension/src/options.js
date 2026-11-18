@@ -55,9 +55,10 @@ async function refresh() {
     $('language').append(option);
   }
   $('language').value = c.language;
-  $('removeLanguage').hidden = c.language === 'es';
+  const selected = status.languages.find((item) => item.code === c.language);
+  $('removeLanguage').hidden = !selected?.experimental;
   $('model').value = s.model;
-  $('wordInfo').textContent = t('options_word_count', status.words, status.languages.find((item) => item.code === c.language)?.name || c.language);
+  $('wordInfo').textContent = t('options_word_count', status.words, selected?.name || c.language);
   $('reviewInfo').textContent = String(status.review.due);
   $('progressSummary').textContent = progress ? `${headline(progress.verifiedKnown)} · ${weekLine(progress.practisedThisWeek)}` : '';
   $('apiKey').placeholder = status.pastedKey ? t('options_key_saved_placeholder') : 'AIza…';
