@@ -14,15 +14,16 @@ out of the published payload. The package-owned runner label is exported by
 `//build_defs`; the packager source is declared under `//extension/scripts`.
 The existing full package suite separately checks the dev and Store ZIP entry
 sets against the real extension tree.
-`//:version_classifier_test` runs two self-contained Python classifier fixtures
+`//:version_classifier_test` runs self-contained Python classifier fixtures
 under the pinned Nix shell. The runner copies its two declared Python inputs
 into `$TEST_TMPDIR` and requires Python and Git from `/nix/store`. That check
 is a guard against host tools, not proof of the flake's exact pin.
 `.bazelrc` passes the shell's `PATH` into every test (`--test_env=PATH`), so
 run tests from `nix develop`. The fixtures
-check that BUILD metadata is exempt while package script changes still require
-a version bump. This target does
-not scan the real extension source or replace the full release check. The CTO
+check that BUILD metadata and known browser harness changes need no version
+bump, unknown harness and package script changes still need one, and runtime
+reference checks work even with binary assets. This target does not scan the
+real extension source or replace the full release check. The CTO
 chose 0.12.25 for this onboarding change; it is a source version only, not a
 Store release.
 
@@ -60,10 +61,10 @@ nix develop --command bazel run //:beta_zip -- /absolute/new/output/directory
 nix develop --command bazel test //:fsrs_test //:package_boundary_test //:version_classifier_test //:extension_release_test
 ```
 
-The packager writes `lang-weave-<version>.zip` in the output directory.
-Package from a clean checkout and tag that exact commit so GitHub's source archives on
-the release page correspond to the extension. The ZIP includes `LICENSE`,
-`LICENSE-MIT` and `NOTICE`.
+The target packages the committed files at `HEAD` and prints that commit's
+SHA. It writes `lang-weave-<version>.zip` in the new output directory. Tag the
+printed commit so GitHub's source archives on the release page correspond to
+the extension. The ZIP includes `LICENSE`, `LICENSE-MIT` and `NOTICE`.
 
 Pass absolute paths to the ZIP just produced and to a Chromium executable
 in a fresh disposable profile. The Chromium installed by Playwright 1.64.1
