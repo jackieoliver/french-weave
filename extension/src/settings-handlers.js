@@ -145,7 +145,7 @@ export function createSettingsHandlers({ store, cache, locked, modelCall, worker
       }
       const next = cleanSettings(merged);
       if (!bundledLanguage(next.language) && !cleanPacks((await store.get(PACKS_KEY))[PACKS_KEY])[next.language]) {
-        if (msg.settings && Object.hasOwn(msg.settings, 'language')) throw new Error('Choose an available language');
+        if (msg.settings && Object.hasOwn(msg.settings, 'language')) throw new Error('Choose a generated language pack');
         next.language = 'es';
       }
       // A settings round trip must not revive a result from its earlier revision.
