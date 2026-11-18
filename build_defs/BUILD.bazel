@@ -2,6 +2,7 @@ exports_files([
     "bun.BUILD.bazel",
     "run_fsrs_test.sh",
     "run_beta_install_test.sh",
+    "run_beta_zip.sh",
     "run_extension_release_test.sh",
     "run_package_boundary_test.sh",
     "run_version_classifier_test.sh",

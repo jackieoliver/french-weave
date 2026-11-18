@@ -64,12 +64,11 @@ try {
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${id}/src/popup.html`);
   await popup.locator('#welcomeRoute').waitFor({ state: 'visible' });
-  assert.match(await popup.locator('#operation').textContent(), /Finish setup/);
+  await popup.locator('#operation').getByText(/Finish setup/).waitFor();
   const options = await context.newPage();
   await options.goto(`chrome-extension://${id}/src/options.html`);
-  await options.locator('#newSitesEnabled').waitFor();
-  assert.equal(await options.locator('#newSitesEnabled').isDisabled(), true);
-  assert.equal(await options.locator('#welcomeLink').isVisible(), true);
+  await options.locator('#newSitesEnabled[disabled]').waitFor();
+  await options.locator('#welcomeLink').waitFor({ state: 'visible' });
   assert.match(await options.locator('#newSitesEnabled').locator('..').textContent(), /first choice on the welcome page/);
   const reopenedPromise = context.waitForEvent('page', { predicate: (p) => p.url() === welcomeUrl });
   await popup.locator('#openWelcome').click();
@@ -92,12 +91,12 @@ try {
     await review.locator('#introduce').click();
     await review.locator('#prompt').getByText('water', { exact: true }).waitFor();
     await review.locator('#reveal').click();
-    assert.equal(await review.locator('#answer').textContent(), 'y');
+    await review.locator('#answer').getByText('y', { exact: true }).waitFor();
     assert.equal((await worker.evaluate(() => chrome.storage.local.get('apiKey'))).apiKey, undefined);
     console.log('PASS: selected bundled Paraguayan Guaraní and revealed water → y in offline review.');
   }
   assert.deepEqual(geminiRequests, []);
-  console.log('PASS: fresh install welcome demo, closed-page popup route, pending Settings controls, only-sites consent and no Gemini request.');
+  console.log('PASS: fresh install welcome demo, closed-page popup route, pending Settings controls, only-sites consent and no Gemini request during setup.');
 } finally {
   try { await context?.close(); } finally { await rm(scratch, { recursive: true, force: true }); }
 }

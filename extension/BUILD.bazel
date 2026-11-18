@@ -13,6 +13,9 @@ filegroup(
 )
 
 exports_files(
-    ["e2e/welcome.mjs"],
+    [
+        "e2e/welcome.mjs",
+        "manifest.json",
+    ],
     visibility = ["//:__pkg__"],
 )
