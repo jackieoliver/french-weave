@@ -7,7 +7,7 @@ Spelling and the underlying senses come from the Dirección General de Investiga
 | Words | Numbered entries in the source |
 | --- | --- |
 | ama, jasy, kuarahy, panambi, yvoty, yvytu | 3, 54, 77, 117, 182, 187 |
-| y, yva, yvyra | Components explained in 177, 179, 186 |
+| y (water), yva (fruit), yvyra (tree) | Components explained in entries 177, 179, and 186, respectively |
 | mainumby, ysapy, ysyry, ytororõ, jasyrendy | 84, 175, 177, 178, 53 |
 
 Generated Guaraní packs remain available under their existing selections and keep their own progress. The starter has a separate catalog ID and its backup stores progress by that ID. Restore a backup containing the starter selection or progress with Lang Weave 0.12.26 or later.

@@ -186,7 +186,8 @@ function packs(value) {
   const result = Object.create(null);
   for (const [code, raw] of Object.entries(map(value, 'packs', MAX_PACKS))) {
     language(code);
-    if (bundledLanguage(code)) fail('bundled languages cannot be stored as generated packs');
+    if (code === 'es') fail('Spanish is bundled');
+    if (code === GUARANI_STARTER) fail('Paraguayan Guaraní starter is bundled');
     keys(raw, ['version', 'words'], 'pack', ['version', 'words']);
     if (!VERSION.test(raw.version)) fail('invalid pack version');
     if (!Array.isArray(raw.words)) fail('invalid pack words');

@@ -3,6 +3,7 @@ import { GUARANI_STARTER } from '../src/language-name.js';
 import { GUARANI_PACK } from '../src/guarani.js';
 import { cleanPack } from '../src/languages.js';
 import { validateSwaps } from '../src/levels.js';
+import { validPackForm } from '../src/word-form.js';
 import { createBackup, learningPatch, parseBackup } from '../src/portability.js';
 
 const ID = 'fw-guarani';
@@ -23,9 +24,15 @@ test('the starter is selectable without a key and its reviews round trip alongsi
   const gnPY = cleanPack({ words: generatedWords }, 'gn-PY');
   const generatedHistory = { version: 1, cards: { y: { due: 1000, interval: 1, reviews: 2 } },
     learning: { day: '', count: 0 } };
+  const uuid = '7f82ab19-ee4a-4d7c-9eee-6235c0873101';
+  const personalId = `personal:${GUARANI_STARTER}:${uuid}`;
   const data = {
     settings: { language: 'gn', levelOverride: 1 },
     languagePacks: { gn, 'gn-PY': gnPY },
+    personalVocabularyV1: { version: 1, revision: 1, history: {}, entries: [{
+      uuid, id: personalId, language: GUARANI_STARTER, source: 'hill', target: 'yvyty', sense: 'hill',
+      direction: 'en-to-target', provenance: 'manual', createdAt: 1, archived: false,
+    }] },
     [storageKey(`gn:${gn.version}`, 'recallReview')]: structuredClone(generatedHistory),
     [storageKey(`gn-PY:${gnPY.version}`, 'recallReview')]: structuredClone(generatedHistory),
   };
@@ -75,10 +82,9 @@ test('the starter is selectable without a key and its reviews round trip alongsi
     expect((await select('gn-PY')).ok).toBe(true);
     expect((await dispatch('options', { type: 'status' })).config.scope).toBe(`gn-PY:${gnPY.version}`);
     expect((await select(GUARANI_STARTER, 2)).ok).toBe(true);
-    expect((await dispatch('options', { type: 'removeLanguage', code: GUARANI_STARTER })).error).toBeTruthy();
     const expanded = await dispatch('words', { type: 'wordsList' });
     expect(expanded.scope).toBe(starterScope);
-    expect(expanded.rows).toHaveLength(14);
+    expect(expanded.rows.filter(({ kind }) => kind === 'pack')).toHaveLength(14);
     expect(expanded.rows.find(({ target }) => target === 'ytororõ')).toMatchObject({ gloss: 'waterfall', practise: true });
     expect(await dispatch('words', { type: 'wordPractice', id: 'ytororõ', scope: starterScope }))
       .toMatchObject({ ok: true });
@@ -93,14 +99,31 @@ test('the starter is selectable without a key and its reviews round trip alongsi
     expect((await dispatch('words', { type: 'wordsList' })).rows.find(({ target }) => target === 'ytororõ'))
       .toMatchObject({ reviews: 1, practise: false });
 
+    expect(await dispatch('words', { type: 'wordPractice', id: personalId, scope: starterScope }))
+      .toMatchObject({ ok: true });
+    const personal = (await dispatch('review', { type: 'reviewNext' })).card;
+    expect(personal.en).toBe('hill');
+    expect((await dispatch('review', { type: 'reviewReveal', ticket: personal.ticket })).answer.fr).toBe('yvyty');
+    expect((await dispatch('review', { type: 'reviewRate', ticket: personal.ticket, rating: 'medium' })).ok).toBe(true);
+
     const backup = parseBackup(createBackup(data, '0.12.26'));
     expect(backup.state.preferences.language).toBe(GUARANI_STARTER);
     expect(backup.state.packs).toEqual({ gn, 'gn-PY': gnPY });
     expect(backup.state.scopes[`lang:${starterScope}`].retrievals.retrievals[0][0]).toBe('ytororõ');
+    expect(backup.state.scopes[`personal:${GUARANI_STARTER}`].retrievals.retrievals[0][0]).toBe(personalId);
     const restored = learningPatch(backup, {});
     expect(restored[storageKey(starterScope, 'recallReview')].cards.ytororõ.reviews).toBe(1);
     expect(restored[storageKey(`gn:${gn.version}`, 'recallReview')]).toEqual(generatedHistory);
     expect(restored[storageKey(`gn-PY:${gnPY.version}`, 'recallReview')]).toEqual(generatedHistory);
+    const bundledKey = storageKey(starterScope, 'recallReview');
+    const bundledHistory = structuredClone(data[bundledKey]);
+    expect((await dispatch('options', { type: 'removeLanguage', code: GUARANI_STARTER })).error).toBeTruthy();
+    expect(data[bundledKey]).toEqual(bundledHistory);
+    expect((await select('gn-PY')).ok).toBe(true);
+    expect((await dispatch('options', { type: 'removeLanguage', code: 'gn-PY' })).ok).toBe(true);
+    expect(data[storageKey(`gn-PY:${gnPY.version}`, 'recallReview')]).toBeUndefined();
+    expect(data[storageKey(`gn:${gn.version}`, 'recallReview')]).toEqual(generatedHistory);
+    expect(data[bundledKey]).toEqual(bundledHistory);
     expect((await select('es')).ok).toBe(true);
     expect(await dispatch('review', { type: 'reviewStatus' })).toMatchObject({ language: 'Spanish', new: 30 });
     expect(network).toEqual([]);
@@ -110,6 +133,9 @@ test('the starter is selectable without a key and its reviews round trip alongsi
 });
 
 test('reading validation keeps the listed Guaraní diacritics and rejects unlisted forms and glosses', () => {
+  expect(new Set(GUARANI_PACK.words.map(({ fr }) => fr)).size).toBe(GUARANI_PACK.words.length);
+  expect(new Set(GUARANI_PACK.words.map(({ en }) => en)).size).toBe(GUARANI_PACK.words.length);
+  expect(GUARANI_PACK.words.every(({ fr }) => validPackForm(fr) && fr.normalize('NFC') === fr)).toBe(true);
   const validate = (o, f) => validateSwaps(2, [{ o, f, g: 'invented gloss', h: 'invented pronunciation' }],
     GUARANI_PACK.words, GUARANI_STARTER);
   expect(validate('waterfall', 'ytororõ'.normalize('NFD'))).toMatchObject([
