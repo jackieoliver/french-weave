@@ -11,14 +11,12 @@ filegroup(
 
 filegroup(
     name = "release_cases",
-    # The Guaraní test is contributed by the separate runtime change.
-    srcs = glob(
-        ["guarani.test.js"],
-        allow_empty = True,
-    ) + [
+    srcs = [
         "backup-fixture.js",
+        "guarani.test.js",
         "language-worker.test.js",
         "languages.test.js",
+        "learning-log.test.js",
         "portability.test.js",
         "portability-v2.test.js",
         "web-accessible.test.js",

@@ -79,8 +79,6 @@ nix develop --command bazel test --nocache_test_results //:beta_install_test \
 The browser test checks the manifest and license files against the checkout,
 then loads the extracted ZIP as-is and checks first-run setup,
 the interactive local demo, the stable extension ID and per-site consent.
-For a release with bundled Paraguayan Guaraní, add
-`--test_env=LANG_WEAVE_EXPECT_GUARANI=1` to exercise language selection and
-an offline review from the packaged vocabulary.
+It also selects bundled Paraguayan Guaraní and reviews a word offline.
 It uses no real account or key. The focused Bun target covers language,
 backup and resource-manifest regressions without npm test dependencies.

@@ -81,20 +81,18 @@ try {
   assert.equal(after.settings.gradual, true); // the site choice merges; it never resets the learning default
   assert.deepEqual(await worker.evaluate(() => chrome.permissions.getAll().then(({ origins }) => origins
     .filter((origin) => origin === '<all_urls>' || origin === 'http://*/*' || origin === 'https://*/*'))), []);
-  if (process.env.LANG_WEAVE_EXPECT_GUARANI === '1') {
-    await options.locator('#language').selectOption({ value: 'gn-PY-x-weave' });
-    await options.locator('#wordInfo').getByText(/Paraguayan Guaraní/).waitFor();
+  await options.locator('#language').selectOption({ value: 'gn-PY-x-weave' });
+  await options.locator('#wordInfo').getByText(/Paraguayan Guaraní/).waitFor();
 
-    const review = await context.newPage();
-    await review.goto(`chrome-extension://${id}/src/review.html`);
-    await review.locator('#language').getByText(/Paraguayan Guaraní/).waitFor();
-    await review.locator('#introduce').click();
-    await review.locator('#prompt').getByText('water', { exact: true }).waitFor();
-    await review.locator('#reveal').click();
-    await review.locator('#answer').getByText('y', { exact: true }).waitFor();
-    assert.equal((await worker.evaluate(() => chrome.storage.local.get('apiKey'))).apiKey, undefined);
-    console.log('PASS: selected bundled Paraguayan Guaraní and revealed water → y in offline review.');
-  }
+  const review = await context.newPage();
+  await review.goto(`chrome-extension://${id}/src/review.html`);
+  await review.locator('#language').getByText(/Paraguayan Guaraní/).waitFor();
+  await review.locator('#introduce').click();
+  await review.locator('#prompt').getByText('water', { exact: true }).waitFor();
+  await review.locator('#reveal').click();
+  await review.locator('#answer').getByText('y', { exact: true }).waitFor();
+  assert.equal((await worker.evaluate(() => chrome.storage.local.get('apiKey'))).apiKey, undefined);
+  console.log('PASS: selected bundled Paraguayan Guaraní and revealed water → y in offline review.');
   assert.deepEqual(geminiRequests, []);
   console.log('PASS: fresh install welcome demo, closed-page popup route, pending Settings controls, only-sites consent and no Gemini request during setup.');
 } finally {
