@@ -1,0 +1,21 @@
+package(default_visibility = ["//visibility:private"])
+
+filegroup(
+    name = "payload",
+    srcs = glob([
+        "_locales/**",
+        "icons/**",
+    ]) + [
+        "manifest.json",
+        "//extension/src:payload",
+    ],
+    visibility = ["//:__pkg__"],
+)
+
+exports_files(
+    [
+        "e2e/welcome.mjs",
+        "manifest.json",
+    ],
+    visibility = ["//:__pkg__"],
+)

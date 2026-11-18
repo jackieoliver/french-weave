@@ -15,3 +15,19 @@ bun_archive(
     strip_prefix = "bun-linux-x64",
     urls = ["https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-linux-x64.zip"],
 )
+
+playwright_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+playwright_archive(
+    name = "playwright_core",
+    build_file_content = """filegroup(
+    name = "runtime",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+exports_files(["index.mjs"], visibility = ["//visibility:public"])
+""",
+    integrity = "sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ==",
+    strip_prefix = "package",
+    urls = ["https://registry.npmjs.org/playwright-core/-/playwright-core-1.64.1.tgz"],
+)

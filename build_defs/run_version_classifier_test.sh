@@ -15,5 +15,7 @@ done
 export PYTHONDONTWRITEBYTECODE=1
 export TMPDIR="${TEST_TMPDIR}"
 exec python3 -m unittest \
+  test_version_bump.VersionBump.test_runtime_reference_scan_handles_build_metadata_and_binary_assets \
+  test_version_bump.VersionBump.test_new_e2e_file_fails_closed \
   test_version_bump.VersionBump.test_unshipped_changes_need_no_bump \
   test_version_bump.VersionBump.test_build_metadata_exemption_does_not_hide_packager_change

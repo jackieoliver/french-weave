@@ -4,29 +4,38 @@ import assert from 'node:assert/strict';
 import { mkdtemp, cp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const { chromium } = await import(process.env.LANG_WEAVE_PLAYWRIGHT
+  ? pathToFileURL(process.env.LANG_WEAVE_PLAYWRIGHT).href
+  : 'playwright');
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const scratch = await mkdtemp(join(tmpdir(), 'lang-weave-welcome-'));
-const extension = join(scratch, 'extension');
+const suppliedExtension = process.env.LANG_WEAVE_WELCOME_EXTENSION;
+const extension = suppliedExtension || join(scratch, 'extension');
 let context;
 try {
-  await cp(join(root, 'src'), join(extension, 'src'), { recursive: true });
-  await cp(join(root, 'icons'), join(extension, 'icons'), { recursive: true });
-  await cp(join(root, '_locales'), join(extension, '_locales'), { recursive: true }); // default_locale needs it
-  await writeFile(join(extension, 'manifest.json'), await readFile(join(root, 'manifest.json')));
+  if (!suppliedExtension) {
+    await cp(join(root, 'src'), join(extension, 'src'), { recursive: true });
+    await cp(join(root, 'icons'), join(extension, 'icons'), { recursive: true });
+    await cp(join(root, '_locales'), join(extension, '_locales'), { recursive: true }); // default_locale needs it
+    await writeFile(join(extension, 'manifest.json'), await readFile(join(root, 'manifest.json')));
+  }
   const geminiRequests = [];
+  const executablePath = process.env.LANG_WEAVE_CHROMIUM;
   context = await chromium.launchPersistentContext(join(scratch, 'profile'), {
-    channel: 'chromium', headless: true,
+    ...(executablePath ? { executablePath } : { channel: 'chromium' }), headless: true,
+    locale: 'en-US',
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`,
-      '--host-resolver-rules=MAP generativelanguage.googleapis.com ~NOTFOUND'],
+      '--host-resolver-rules=MAP * ~NOTFOUND', '--proxy-server=http://127.0.0.1:9'],
   });
   context.on('request', (request) => {
     if (request.url().startsWith('https://generativelanguage.googleapis.com/')) geminiRequests.push(request.url());
   });
   const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   const id = new URL(worker.url()).host;
+  assert.equal(id, 'lkbkmlgogcpcacjmdmoecgacdbfddbnh');
   const welcomeUrl = `chrome-extension://${id}/src/welcome.html`;
   const page = context.pages().find((p) => p.url() === welcomeUrl) ||
     await context.waitForEvent('page', { predicate: (p) => p.url() === welcomeUrl });
@@ -55,12 +64,11 @@ try {
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${id}/src/popup.html`);
   await popup.locator('#welcomeRoute').waitFor({ state: 'visible' });
-  assert.match(await popup.locator('#operation').textContent(), /Finish setup/);
+  await popup.locator('#operation').getByText(/Finish setup/).waitFor();
   const options = await context.newPage();
   await options.goto(`chrome-extension://${id}/src/options.html`);
-  await options.locator('#newSitesEnabled').waitFor();
-  assert.equal(await options.locator('#newSitesEnabled').isDisabled(), true);
-  assert.equal(await options.locator('#welcomeLink').isVisible(), true);
+  await options.locator('#newSitesEnabled[disabled]').waitFor();
+  await options.locator('#welcomeLink').waitFor({ state: 'visible' });
   assert.match(await options.locator('#newSitesEnabled').locator('..').textContent(), /first choice on the welcome page/);
   const reopenedPromise = context.waitForEvent('page', { predicate: (p) => p.url() === welcomeUrl });
   await popup.locator('#openWelcome').click();
@@ -73,8 +81,22 @@ try {
   assert.equal(after.settings.gradual, true); // the site choice merges; it never resets the learning default
   assert.deepEqual(await worker.evaluate(() => chrome.permissions.getAll().then(({ origins }) => origins
     .filter((origin) => origin === '<all_urls>' || origin === 'http://*/*' || origin === 'https://*/*'))), []);
+  if (process.env.LANG_WEAVE_EXPECT_GUARANI === '1') {
+    await options.locator('#language').selectOption({ value: 'gn-PY-x-weave' });
+    await options.locator('#wordInfo').getByText(/Paraguayan Guaraní/).waitFor();
+
+    const review = await context.newPage();
+    await review.goto(`chrome-extension://${id}/src/review.html`);
+    await review.locator('#language').getByText(/Paraguayan Guaraní/).waitFor();
+    await review.locator('#introduce').click();
+    await review.locator('#prompt').getByText('water', { exact: true }).waitFor();
+    await review.locator('#reveal').click();
+    await review.locator('#answer').getByText('y', { exact: true }).waitFor();
+    assert.equal((await worker.evaluate(() => chrome.storage.local.get('apiKey'))).apiKey, undefined);
+    console.log('PASS: selected bundled Paraguayan Guaraní and revealed water → y in offline review.');
+  }
   assert.deepEqual(geminiRequests, []);
-  console.log('PASS: fresh install welcome demo, closed-page popup route, pending Settings controls, only-sites consent and no Gemini request.');
+  console.log('PASS: fresh install welcome demo, closed-page popup route, pending Settings controls, only-sites consent and no Gemini request during setup.');
 } finally {
   try { await context?.close(); } finally { await rm(scratch, { recursive: true, force: true }); }
 }

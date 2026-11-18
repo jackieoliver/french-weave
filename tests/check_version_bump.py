@@ -25,19 +25,21 @@ VERSIONED = (PLUGIN, '.claude-plugin/marketplace.json', 'extension/manifest.json
 # copied by setup but never loaded by the plugin or unpacked extension.
 SHIPPED = ('.claude-plugin/', 'scripts/', 'hooks/', 'commands/', 'skills/', 'agents/', 'data/', 'extension/')
 # Developer-only tools do not need an installed runtime version bump. Only
-# these two known harness entry points are exempt; new e2e files fail closed.
+# the known harness entry points are exempt. New e2e files fail closed.
 NOT_SHIPPED = ('extension/test/', 'extension/node_modules/', 'extension/package.json', 'extension/bun.lock',
                'extension/bun.lockb')
 E2E_HARNESSES = ('extension/e2e/smoke.mjs', 'extension/e2e/gradual.mjs',
                  'extension/e2e/again.mjs', 'extension/e2e/adaptive.mjs',
-                 'extension/e2e/highlights.mjs', 'extension/e2e/badge.mjs')
+                 'extension/e2e/highlights.mjs', 'extension/e2e/badge.mjs',
+                 'extension/e2e/welcome.mjs')
 ZERO = re.compile(r'^0+$')  # GitHub's "before" SHA for a new branch
 
 
-def git(repo, *args, check=True):
-    result = subprocess.run(['git', '-C', str(repo), *args], capture_output=True, text=True)
+def git(repo, *args, check=True, text=True):
+    result = subprocess.run(['git', '-C', str(repo), *args], capture_output=True, text=text)
     if check and result.returncode:
-        raise RuntimeError(f'git {" ".join(args)}: {result.stderr.strip()}')
+        error = result.stderr if text else os.fsdecode(result.stderr)
+        raise RuntimeError(f'git {" ".join(args)}: {error.strip()}')
     return result
 
 
@@ -79,16 +81,15 @@ def e2e_runtime_references(repo, ref=None):
     """Conservatively reject e2e path references anywhere in installed runtime files."""
     root = Path(repo) / 'extension'
     def runtime(path):
-        return path.startswith('extension/') and not path.startswith(
-            ('extension/e2e/', 'extension/test/', 'extension/node_modules/')) and path not in (
-            'extension/package.json', 'extension/bun.lock', 'extension/bun.lockb')
+        return path.startswith('extension/') and not path.startswith('extension/e2e/') and shipped(path)
     if ref is None:
         return [str(path.relative_to(repo)) for path in root.rglob('*')
                 if path.is_file() and runtime(str(path.relative_to(repo)))
-                and 'e2e/' in path.read_text(errors='replace')]
-    listed = git(repo, 'ls-tree', '-r', '--name-only', ref, '--', 'extension').stdout.splitlines()
-    return [path for path in listed
-            if runtime(path) and 'e2e/' in git(repo, 'show', f'{ref}:{path}').stdout]
+                and b'e2e/' in path.read_bytes()]
+    listed = git(repo, 'ls-tree', '-r', '-z', '--name-only', ref, '--', 'extension', text=False).stdout
+    paths = os.fsdecode(listed).split('\0')
+    return [path for path in paths
+            if runtime(path) and b'e2e/' in git(repo, 'show', f'{ref}:{path}', text=False).stdout]
 
 
 def key(version):

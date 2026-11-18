@@ -1,3 +1,4 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 package(default_visibility = ["//visibility:private"])
@@ -45,4 +46,62 @@ sh_test(
     ],
     tags = ["block-network"],
     visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "beta_zip",
+    srcs = ["//build_defs:run_beta_zip.sh"],
+    args = ["$(rlocationpath @bun_linux_x64//:bun)"],
+    data = ["@bun_linux_x64//:bun"],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "extension_release_test",
+    srcs = ["//build_defs:run_extension_release_test.sh"],
+    args = ["$(rlocationpath @bun_linux_x64//:bun)"],
+    data = [
+        "//extension:payload",
+        "//extension/scripts:packager",
+        "//extension/test:release_cases",
+        "@bun_linux_x64//:bun",
+    ],
+    tags = ["block-network"],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+)
+
+sh_test(
+    name = "beta_install_test",
+    srcs = ["//build_defs:run_beta_install_test.sh"],
+    args = [
+        "$(rlocationpath @bun_linux_x64//:bun)",
+        "$(rlocationpath @playwright_core//:index.mjs)",
+    ],
+    data = [
+        "LICENSE",
+        "LICENSE-MIT",
+        "NOTICE",
+        "//extension:e2e/welcome.mjs",
+        "//extension:manifest.json",
+        "@bun_linux_x64//:bun",
+        "@playwright_core//:index.mjs",
+        "@playwright_core//:runtime",
+    ],
+    # Requires an explicitly supplied local Chromium executable.
+    tags = [
+        "external",
+        "local",
+        "manual",
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
 )

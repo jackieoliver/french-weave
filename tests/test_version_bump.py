@@ -93,11 +93,23 @@ class VersionBump(unittest.TestCase):
                      'extension/src/BUILD.bazel', 'extension/scripts/BUILD',
                      'extension/e2e/smoke.mjs', 'extension/e2e/gradual.mjs', 'extension/e2e/again.mjs',
                      'extension/e2e/adaptive.mjs',
-                     'extension/e2e/highlights.mjs',
+                     'extension/e2e/highlights.mjs', 'extension/e2e/welcome.mjs',
                      'extension/bun.lock',
                      'blocks/level-01.md'):
             self.write(path, 'changed\n')
         self.assertEqual(self.problems(self.base, self.commit('docs and tests')), [])
+
+    def test_runtime_reference_scan_handles_build_metadata_and_binary_assets(self):
+        self.write('extension/BUILD.bazel', 'exports_files(["e2e/welcome.mjs"])\n')
+        self.write('extension/icons/binary.png', '')
+        (self.repo / 'extension/icons/binary.png').write_bytes(b'\x89PNG\r\n\x1a\n')
+        head = self.commit('Bazel harness metadata and binary icon')
+        self.assertEqual(self.problems(), [])
+        self.assertEqual(self.problems(head=head), [])
+        self.write('extension/src/runtime.js', "import '../e2e/welcome.mjs';\n")
+        head = self.commit('runtime import of welcome harness')
+        self.assertIn('extension/src/runtime.js', self.problems()[0])
+        self.assertIn('extension/src/runtime.js', self.problems(head=head)[0])
 
     def test_build_metadata_exemption_does_not_hide_packager_change(self):
         self.write('extension/src/BUILD.bazel', 'filegroup(name = "source")\n')
